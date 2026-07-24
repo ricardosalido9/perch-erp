@@ -1455,6 +1455,14 @@
     var c = lineCfg(); if (!c) return false;
     return c.line.some(function (f) { return norm(f) === norm(h); });
   }
+  // Campos especiales de Ventas: Tela (Sí/No + nombre) y Descuento (% o valor).
+  var SPECIAL_FIELDS = {
+    ventas_registro: { tela: 'Tela', descuento: { pct: '% descuento', val: 'Descuentos' } }
+  };
+  function specialCfg() { return SPECIAL_FIELDS[state.key] || null; }
+  function isTelaField(h) { var s = specialCfg(); return !!(s && s.tela && norm(s.tela) === norm(h)); }
+  function isDiscPctField(h) { var s = specialCfg(); return !!(s && s.descuento && norm(s.descuento.pct) === norm(h)); }
+  function isDiscValField(h) { var s = specialCfg(); return !!(s && s.descuento && norm(s.descuento.val) === norm(h)); }
   // Campos que NO se muestran en "Agregar registro" (el resto sí). Por área.
   var EXCLUDE_FIELDS = {
     ventas_registro: ['Mes', 'Año1'],
@@ -1604,16 +1612,27 @@
   }
   function onCascadeChange(level) {
     var c = cascadeLU(); if (!c) return;
-    var chosen = [];
-    for (var i = 0; i <= level; i++) { var el = cascElem(i); chosen.push(el ? el.value : ''); }
-    // Repoblar los niveles más profundos; el usuario debe elegir cada uno.
-    for (var d = level + 1; d < c.levels.length; d++) {
-      var sel = cascElem(d);
-      var opts = cascDistinct(c, chosen, d);
-      if (sel) { fillOptions(sel, opts); sel.value = ''; showFld(sel, opts.length > 0); }
-      chosen[d] = '';
+    if (level === 0) {
+      // Al elegir Producto, se llenan TODOS los ejes (Material, Material Extra…) de forma independiente.
+      var prod = cascElem(0) ? cascElem(0).value : '';
+      for (var d = 1; d < c.levels.length; d++) {
+        var sel = cascElem(d);
+        var opts = cascDistinctByProduct(c, prod, d);
+        if (sel) { fillOptions(sel, opts); sel.value = ''; showFld(sel, opts.length > 0); }
+      }
     }
     resolveCascadeFills();
+  }
+  // Valores distintos del eje `d` entre las variantes de un producto (independiente de otros ejes).
+  function cascDistinctByProduct(c, prod, d) {
+    var seen = {}, out = [];
+    c.rows.forEach(function (r) {
+      if (norm(r[c.levels[0]] || '') !== norm(prod || '')) return;
+      var v = r[c.levels[d]] || '';
+      if (v && !seen[norm(v)]) { seen[norm(v)] = 1; out.push(v); }
+    });
+    out.sort(function (a, b) { return a.localeCompare(b, 'es'); });
+    return out;
   }
   function resolveCascadeFills() {
     var c = cascadeLU(); if (!c) return;
@@ -1682,6 +1701,11 @@
       var el = document.querySelector('#formFields [data-col="' + real + '"]');
       if (el) el.value = '';
     });
+    // Reset de controles especiales (Tela Sí/No y Descuento)
+    var ts = document.querySelector('#formFields .tela-sino'); if (ts) ts.value = '';
+    var tn = document.querySelector('#formFields input[placeholder="Nombre de la tela"]'); if (tn) tn.style.display = 'none';
+    var dt = document.querySelector('#formFields .disc-type'); if (dt) dt.value = '';
+    var da = document.querySelector('#formFields .disc-amt'); if (da) { da.value = ''; da.disabled = true; }
     initCascade();
     recalcComputed();
   }
@@ -1900,6 +1924,51 @@
         box.appendChild(wrap);
         return;
       }
+      // --- Tela: Sí/No y, si es Sí, el nombre de la tela ---
+      if (isTelaField(h)) {
+        var tsel = document.createElement('select'); tsel.className = 'tela-sino';
+        tsel.innerHTML = '<option value="">— ¿lleva tela? —</option><option value="si">Sí</option><option value="no">No</option>';
+        var tname = document.createElement('input'); tname.type = 'text';
+        tname.setAttribute('data-col', h); tname.placeholder = 'Nombre de la tela';
+        tname.style.display = 'none'; tname.style.marginTop = '6px';
+        tsel.addEventListener('change', function () {
+          if (tsel.value === 'si') { tname.style.display = ''; tname.focus(); }
+          else { tname.style.display = 'none'; tname.value = ''; }
+        });
+        wrap.appendChild(tsel); wrap.appendChild(tname);
+        box.appendChild(wrap);
+        return;
+      }
+      // --- Descuento: tipo (% o $) + monto; escribe en la columna correcta ---
+      if (isDiscPctField(h)) {
+        var dcfg = specialCfg().descuento;
+        lab.innerHTML = 'Descuento';
+        var drow = document.createElement('div'); drow.style.display = 'flex'; drow.style.gap = '6px';
+        var dtype = document.createElement('select'); dtype.className = 'disc-type'; dtype.style.flex = '0 0 auto';
+        dtype.innerHTML = '<option value="">Ninguno</option><option value="pct">%</option><option value="val">$ valor</option>';
+        var damt = document.createElement('input'); damt.type = 'number'; damt.className = 'disc-amt';
+        damt.placeholder = '0'; damt.style.flex = '1'; damt.disabled = true;
+        drow.appendChild(dtype); drow.appendChild(damt);
+        var hPct = document.createElement('input'); hPct.type = 'hidden'; hPct.setAttribute('data-col', findHeaderByName(dcfg.pct) || dcfg.pct);
+        var hVal = document.createElement('input'); hVal.type = 'hidden'; hVal.setAttribute('data-col', findHeaderByName(dcfg.val) || dcfg.val);
+        function applyDisc() {
+          var t = dtype.value, a = (damt.value || '').trim();
+          hPct.value = (t === 'pct') ? a : '';
+          hVal.value = (t === 'val') ? a : '';
+          updateOrderTotal();
+        }
+        dtype.addEventListener('change', function () {
+          damt.disabled = !dtype.value;
+          damt.placeholder = dtype.value === 'pct' ? '% (ej. 10)' : (dtype.value === 'val' ? '$ (ej. 500)' : '0');
+          if (!dtype.value) damt.value = '';
+          applyDisc();
+        });
+        damt.addEventListener('input', applyDisc);
+        wrap.appendChild(drow); wrap.appendChild(hPct); wrap.appendChild(hVal);
+        box.appendChild(wrap);
+        return;
+      }
+      if (isDiscValField(h)) { return; }   // se maneja junto con "% descuento"
       var cat = isReadonlyField(h) ? null : categoryFor(h);  // solo lectura gana sobre desplegable
       var lkf = lookupFor(h);
       if (lkf) {
