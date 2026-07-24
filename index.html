@@ -1402,6 +1402,13 @@
   // Un área que no esté acá muestra todas sus columnas.
   var FORM_FIELDS = {
     // Vacío = cada área muestra todas sus columnas (en el orden de la hoja).
+    // Ventas: solo estos campos aparecen en "Agregar registro" (en este orden).
+    // No. de Referencia y Status se generan solos en el servidor; el resto son fórmulas de la hoja.
+    ventas_registro: [
+      'Fecha del Cierre', 'Cliente', 'Despacho', 'Vendedor', 'Fecha de entrega acordada',
+      'Direccion de envio', 'Telefono', 'Cantidad', 'Producto', 'Material', 'Tipo de Producto',
+      'Tela', 'Especificaciones', 'Precio Unitario', '% descuento', 'Descuentos', 'Envio'
+    ]
   };
   // Campos que NO se muestran en "Agregar registro" (el resto sí). Por área.
   var EXCLUDE_FIELDS = {
@@ -1410,18 +1417,15 @@
   };
   // Campos que se muestran solo como referencia (no editables, no se guardan: los calcula la hoja).
   var READONLY_FIELDS = {
-    ventas_registro: ['Marca', 'Modelo', 'Referencia', 'Serie', 'Año', 'Costo Total USD',
-                      'Total USD', 'Utilidad Bruta', 'Margen Bruto'],
+    // Ventas: los autocompletados (Despacho, Dirección, Teléfono, Material, Tipo de Producto,
+    // Precio) se activan al conectar los lookups de Clientes/Catálogo.
+    ventas_registro: [],
     compras_registro: ['Producto', 'Total USD', 'Costo Total USD']
   };
   // Campos calculados (solo lectura). Se recalculan en orden por dependencias.
   // op: 'sub' a-b, 'add' a+b, 'mul' a*b, 'div' a/b. format:'percent' muestra %.
   var COMPUTED_FIELDS = {
-    ventas_registro: {
-      'Total USD':      { op: 'div', a: 'Total', b: 'Tipo de Cambio' },
-      'Utilidad Bruta': { op: 'sub', a: 'Total USD', b: 'Costo Total USD' },
-      'Margen Bruto':   { op: 'div', a: 'Utilidad Bruta', b: 'Total USD', format: 'percent' }
-    },
+    // Ventas: los cálculos (precio sin IVA, impuestos, totales, utilidad) los hace tu hoja por fórmula.
     compras_registro: {
       'Producto': { op: 'concat', fields: ['Marca', 'Modelo', 'Referencia', 'Serie'], sep: '/' },
       'Total USD': { op: 'div', a: 'Total', b: 'Tipo de Cambio' },
@@ -1430,7 +1434,6 @@
   };
   // Regla de moneda: si Moneda=USD -> Tipo de Cambio=1.00 y bloqueado; si no, editable.
   var CURRENCY_RULE = {
-    ventas_registro: { currencyField: 'Moneda', rateField: 'Tipo de Cambio', fixed: { 'USD': '1.00' } },
     compras_registro: { currencyField: 'Moneda', rateField: 'Tipo de Cambio', fixed: { 'USD': '1.00' } }
   };
   function isReadonlyField(h) {
@@ -1466,8 +1469,8 @@
   }
   // Campos obligatorios por área (por nombre; tolera espacios/acentos/mayúsculas).
   var REQUIRED_FIELDS = {
-    ventas_registro: ['Fecha', 'Cliente', 'Producto', 'Canal de Venta', 'Total', 'Moneda',
-                      'Tipo de Cambio', 'Método de Pago', 'Vendedor'],
+    ventas_registro: ['Fecha del Cierre', 'Cliente', 'Vendedor', 'Fecha de entrega acordada',
+                      'Cantidad', 'Producto'],
     ventas_clientes: ['Nombre/Razón Social'],
     compras_registro: ['Fecha', 'Proveedor', 'Marca', 'Canal de Compra', 'Unidades', 'Total',
                        'Moneda', 'Tipo de Cambio', 'Proveedor de Pago', 'Comision Compra',
