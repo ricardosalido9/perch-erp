@@ -903,9 +903,9 @@
       { k: 'Total con envío s/IVA',  type: 'sum',   field: 'Total con envio sin impuestos' },
       { k: 'Costo total',            type: 'sum',   field: 'Costo total' },
       { k: 'Costo envío',            type: 'sum',   field: 'Costo Envío' },
-      { k: 'Utilidad',               type: 'sum',   field: 'Utilidad' },
+      { k: 'Utilidad',               type: 'sum',   field: ['Utilidad', 'Utilidad Final', 'Utilidad Bruta'] },
       // % Utilidad = suma de Utilidad ÷ suma de Total con envío sin impuestos
-      { k: '% Utilidad',             type: 'ratio', num: 'Utilidad', den: 'Total con envio sin impuestos', percent: true }
+      { k: '% Utilidad',             type: 'ratio', num: ['Utilidad', 'Utilidad Final', 'Utilidad Bruta'], den: 'Total con envio sin impuestos', percent: true }
     ],
     compras_registro: [
       { k: 'Total USD',       type: 'sum', field: 'Total USD' },
@@ -914,6 +914,19 @@
       { k: 'Costo Total USD', type: 'sum', field: 'Costo Total USD' }
     ]
   };
+  // Devuelve el encabezado real. Si se pasa una lista, elige la columna que sume más (pesos, no %).
+  function resolveMoneyCol(rows, nameOrList) {
+    if (!Array.isArray(nameOrList)) return findHeaderByName(nameOrList);
+    var seen = {}, cands = [];
+    nameOrList.forEach(function (n) { var h = findHeaderByName(n); if (h && !seen[h]) { seen[h] = 1; cands.push(h); } });
+    if (!cands.length) return null;
+    var best = cands[0], bestSum = -1;
+    cands.forEach(function (h) {
+      var s = 0; rows.forEach(function (r) { var n = parseNumber(r[h]); if (n !== null) s += Math.abs(n); });
+      if (s > bestSum) { bestSum = s; best = h; }
+    });
+    return best;
+  }
   function renderSummary(rows) {
     var box = document.getElementById('summary');
     if (!state.headers.length) { box.innerHTML = ''; return; }
@@ -925,13 +938,13 @@
     if (custom) {
       custom.forEach(function (c) {
         if (c.type === 'sum') {
-          var real = findHeaderByName(c.field);
+          var real = resolveMoneyCol(rows, c.field);
           var sum = 0;
           rows.forEach(function (r) { var n = parseNumber(real ? r[real] : null); if (n !== null) sum += n; });
           html += '<div class="sum-card"><div class="k">' + esc(c.k) + '</div><div class="v">' +
                   esc(formatMoney(sum)) + '</div></div>';
         } else if (c.type === 'ratio') {
-          var rn = findHeaderByName(c.num), rd = findHeaderByName(c.den);
+          var rn = resolveMoneyCol(rows, c.num), rd = resolveMoneyCol(rows, c.den);
           var sn = 0, sd = 0;
           rows.forEach(function (r) {
             var a = parseNumber(rn ? r[rn] : null); if (a !== null) sn += a;
@@ -1051,17 +1064,18 @@
     h += '<div class="hero"><h2>' + esc(saludo()) + (nombre ? ', ' + esc(nombre) : '') + '</h2>' +
          '<p>' + esc(fechaLarga()) + '</p></div>';
 
-    // Cuatro indicadores clave del momento
+    // Cuatro indicadores clave del mes en curso
     h += '<div class="kpi-grid" style="margin-bottom:28px">' +
-      '<div class="kpi dark"><div class="k">Ventas del mes (USD)</div><div class="v" title="' +
+      '<div class="kpi dark"><div class="k">Ventas del mes</div><div class="v" title="' +
         esc(formatMoney(r.ventasMes)) + '">' + esc(fmtMoneyShort(r.ventasMes)) + '</div>' +
-        '<div class="s">' + fmtNum(r.opsMes) + ' operaciones</div></div>' +
-      '<div class="kpi"><div class="k">Utilidad del mes (USD)</div><div class="v" title="' +
+        '<div class="s">' + fmtNum(r.opsMes) + ' registros · Total con envío s/IVA</div></div>' +
+      '<div class="kpi"><div class="k">Utilidad del mes</div><div class="v" title="' +
         esc(formatMoney(r.utilidadMes)) + '">' + esc(fmtMoneyShort(r.utilidadMes)) + '</div></div>' +
-      '<div class="kpi"><div class="k">Piezas disponibles</div><div class="v">' +
-        fmtNum(r.disponibles) + '</div></div>' +
-      '<div class="kpi"><div class="k">Valor de stock (USD)</div><div class="v" title="' +
-        esc(formatMoney(r.valorStockUSD)) + '">' + esc(fmtMoneyShort(r.valorStockUSD)) + '</div></div>' +
+      '<div class="kpi"><div class="k">% Utilidad del mes</div><div class="v">' +
+        ((r.ventasMes ? (r.utilidadMes / r.ventasMes) * 100 : 0).toFixed(1)) + '%</div></div>' +
+      '<div class="kpi"><div class="k">Compras del mes</div><div class="v" title="' +
+        esc(formatMoney(r.comprasMes)) + '">' + esc(fmtMoneyShort(r.comprasMes)) + '</div>' +
+        '<div class="s">' + fmtNum(r.opsCompraMes) + ' registros</div></div>' +
       '</div>';
 
     // Accesos rápidos
@@ -1104,7 +1118,7 @@
     if (uv) {
       h += '<div class="dash-section"><h3>Últimas ventas</h3>' +
         '<div class="panel"><div class="panel-body">' +
-        '<table class="mini-table"><thead><tr><th>Fecha</th><th>Cliente</th><th>Categoría</th>' +
+        '<table class="mini-table"><thead><tr><th>Fecha</th><th>Cliente</th><th>Producto</th>' +
         '<th style="text-align:right">Total USD</th></tr></thead><tbody>' + uv + '</tbody></table>' +
         '</div></div></div>';
     }

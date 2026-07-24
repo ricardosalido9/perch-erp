@@ -50,6 +50,32 @@ function col(headers, ...nombres) {
 }
 function txt(v) { return String(v == null ? '' : v).trim(); }
 
+// Entre TODAS las columnas cuyo encabezado coincide (por nombre), elige la que tenga más celdas con texto.
+// Sirve cuando hay dos columnas casi iguales (ej. "Tipo de Producto" y "Tipo de producto").
+function colConDatos(H, rows, nombres) {
+  const cands = H.filter(h => nombres.some(n => norm(h) === norm(n)));
+  if (!cands.length) return null;
+  if (cands.length === 1) return cands[0];
+  let best = cands[0], bestN = -1;
+  cands.forEach(h => {
+    let c = 0; rows.forEach(r => { if (String(r[h] == null ? '' : r[h]).trim() !== '') c++; });
+    if (c > bestN) { bestN = c; best = h; }
+  });
+  return best;
+}
+// Entre columnas candidatas, elige la que sume MÁS (en valor absoluto): distingue pesos (~2M) de margen (~0.55).
+function colMonto(H, rows, nombres) {
+  const cands = H.filter(h => nombres.some(n => norm(h) === norm(n)));
+  if (!cands.length) return null;
+  if (cands.length === 1) return cands[0];
+  let best = cands[0], bestSum = -1;
+  cands.forEach(h => {
+    let s = 0; rows.forEach(r => { const n = num(r[h]); if (n !== null) s += Math.abs(n); });
+    if (s > bestSum) { bestSum = s; best = h; }
+  });
+  return best;
+}
+
 module.exports = async (req, res) => {
   try {
     const { token } = await core.readBody(req);
@@ -57,16 +83,17 @@ module.exports = async (req, res) => {
 
     const ventas = await leer('ventas_registro');
     const H = ventas.headers;
+    const R = ventas.rows;
 
     const cFecha = col(H, 'Fecha del Cierre', 'Fecha');
     const cProd  = col(H, 'Producto');
     const cCli   = col(H, 'Cliente');
-    const cTipo  = col(H, 'Tipo de Producto', 'Categoria producto', 'Categoría');
+    const cTipo  = colConDatos(H, R, ['Tipo de producto', 'Tipo de Producto', 'Categoria producto', 'Categoría']);
     const cVend  = col(H, 'Vendedor');
     const cCant  = col(H, 'Cantidad', 'Unidades');
-    const cVenta = col(H, 'Total con envio sin impuestos', 'Total con envío sin impuestos',
-                        'Total con envío', 'Total Pedido');
-    const cUtil  = col(H, 'Utilidad', 'Utilidad Final');
+    const cVenta = colMonto(H, R, ['Total con envio sin impuestos', 'Total con envío sin impuestos',
+                        'Total con envío', 'Total Pedido']);
+    const cUtil  = colMonto(H, R, ['Utilidad', 'Utilidad Final', 'Utilidad Bruta']);
 
     // Filas compactas: d(fecha num) f(fecha texto) venta util u(unidades) prod cli tipo vend
     const out = ventas.rows.map(r => ({

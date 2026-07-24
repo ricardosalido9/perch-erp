@@ -42,11 +42,24 @@ async function leer(key) {
   return { headers, rows };
 }
 function col(headers, ...nombres) {
-  for (const n of nombres) {
-    const h = headers.find(x => norm(x) === norm(n));
-    if (h) return h;
-  }
+  for (const n of nombres) { const h = headers.find(x => norm(x) === norm(n)); if (h) return h; }
   return null;
+}
+// Entre columnas casi iguales, elige la que tenga más celdas con texto (ej. dos "Tipo de producto").
+function colConDatos(H, rows, nombres) {
+  const cands = H.filter(h => nombres.some(n => norm(h) === norm(n)));
+  if (cands.length <= 1) return cands[0] || null;
+  let best = cands[0], bestN = -1;
+  cands.forEach(h => { let c = 0; rows.forEach(r => { if (String(r[h] == null ? '' : r[h]).trim() !== '') c++; }); if (c > bestN) { bestN = c; best = h; } });
+  return best;
+}
+// Entre columnas candidatas, elige la que sume más (pesos, no margen).
+function colMonto(H, rows, nombres) {
+  const cands = H.filter(h => nombres.some(n => norm(h) === norm(n)));
+  if (cands.length <= 1) return cands[0] || null;
+  let best = cands[0], bestSum = -1;
+  cands.forEach(h => { let s = 0; rows.forEach(r => { const n = num(r[h]); if (n !== null) s += Math.abs(n); }); if (s > bestSum) { bestSum = s; best = h; } });
+  return best;
 }
 function txt(v) { return String(v == null ? '' : v).trim(); }
 
@@ -55,31 +68,31 @@ module.exports = async (req, res) => {
     const { token } = await core.readBody(req);
     if (!core.verifyToken(token)) return res.status(401).json({ error: 'Sesión no válida.' });
 
-    const [ventas, inventario, compras] = await Promise.all([
-      leer('ventas_registro'), leer('inventario'), leer('compras_registro')
+    const [ventas, compras] = await Promise.all([
+      leer('ventas_registro'), leer('compras_registro')
     ]);
 
     const hoy = new Date();
     const aaaamm = hoy.getFullYear() * 100 + (hoy.getMonth() + 1);
-
     const out = { avisos: [], resumen: {} };
 
     // ===== VENTAS: mes en curso + calidad de datos + últimas ventas =====
     {
       const H = ventas.headers, R = ventas.rows;
-      const cF = col(H, 'Fecha');
-      const cTU = col(H, 'TOTAL USD', 'Total USD');
-      const cUB = col(H, 'Utilidad Bruta');
-      const cV = col(H, 'Vendedor');
-      const cCl = col(H, 'Cliente');
-      const cMar = col(H, 'Categoría', 'Categoria', 'Colección', 'Coleccion', 'Línea', 'Linea', 'Marca');
+      const cF   = col(H, 'Fecha del Cierre', 'Fecha');
+      const cVen = colMonto(H, R, ['Total con envio sin impuestos', 'Total con envío sin impuestos', 'Total con envío', 'Total Pedido']);
+      const cUt  = colMonto(H, R, ['Utilidad', 'Utilidad Final', 'Utilidad Bruta']);
+      const cV   = col(H, 'Vendedor');
+      const cCl  = col(H, 'Cliente');
+      const cTipo = colConDatos(H, R, ['Tipo de producto', 'Tipo de Producto']);
+      const cProd = col(H, 'Producto');
 
       let ventasMes = 0, opsMes = 0, utilMes = 0, sinVendedor = 0, sinCliente = 0;
       R.forEach(r => {
         const f = cF ? fechaNum(r[cF]) : null;
         if (f !== null && Math.floor(f / 100) === aaaamm) {
-          const t = cTU ? num(r[cTU]) : null; if (t !== null) { ventasMes += t; opsMes++; }
-          const u = cUB ? num(r[cUB]) : null; if (u !== null) utilMes += u;
+          const t = cVen ? num(r[cVen]) : null; if (t !== null) { ventasMes += t; opsMes++; }
+          const u = cUt ? num(r[cUt]) : null; if (u !== null) utilMes += u;
         }
         if (cV && !txt(r[cV])) sinVendedor++;
         if (cCl && !txt(r[cCl])) sinCliente++;
@@ -98,36 +111,16 @@ module.exports = async (req, res) => {
         .map(x => ({
           fecha: cF ? txt(x.r[cF]) : '',
           cliente: cCl ? txt(x.r[cCl]) : '',
-          marca: cMar ? txt(x.r[cMar]) : '',
-          tu: cTU ? num(x.r[cTU]) : null
+          marca: cProd ? txt(x.r[cProd]) : (cTipo ? txt(x.r[cTipo]) : ''),
+          tu: cVen ? num(x.r[cVen]) : null
         }));
-    }
-
-    // ===== INVENTARIO: stock disponible + piezas sin costo =====
-    {
-      const H = inventario.headers, R = inventario.rows;
-      const cDisp = col(H, 'Disponible');
-      const cCosto = col(H, 'Costo Total USD');
-      let disponibles = 0, valorStockUSD = 0, sinCosto = 0;
-      R.forEach(r => {
-        const disp = cDisp ? num(r[cDisp]) : null;
-        if (disp === null || disp <= 0) return;
-        disponibles++;
-        const costo = cCosto ? num(r[cCosto]) : null;
-        if (costo === null || costo === 0) sinCosto++;
-        else valorStockUSD += costo;
-      });
-      out.resumen.disponibles = disponibles;
-      out.resumen.valorStockUSD = valorStockUSD;
-      if (sinCosto) out.avisos.push({ tipo: 'warn', area: 'inventario',
-        titulo: 'Piezas sin costo cargado', detalle: sinCosto + (sinCosto === 1 ? ' pieza disponible sin Costo Total USD' : ' piezas disponibles sin Costo Total USD'), n: sinCosto });
     }
 
     // ===== COMPRAS: mes en curso =====
     {
       const H = compras.headers, R = compras.rows;
       const cF = col(H, 'Fecha');
-      const cCosto = col(H, 'Costo Total USD', 'TOTAL USD', 'Total USD');
+      const cCosto = colMonto(H, R, ['Costo Total USD', 'TOTAL USD', 'Total USD', 'Total']);
       let comprasMes = 0, opsCompraMes = 0;
       R.forEach(r => {
         const f = cF ? fechaNum(r[cF]) : null;
