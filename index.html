@@ -1943,11 +1943,11 @@
       if (isDiscPctField(h)) {
         var dcfg = specialCfg().descuento;
         lab.innerHTML = 'Descuento';
-        var drow = document.createElement('div'); drow.style.display = 'flex'; drow.style.gap = '6px';
-        var dtype = document.createElement('select'); dtype.className = 'disc-type'; dtype.style.flex = '0 0 auto';
-        dtype.innerHTML = '<option value="">Ninguno</option><option value="pct">%</option><option value="val">$ valor</option>';
+        var drow = document.createElement('div'); drow.style.display = 'flex'; drow.style.flexDirection = 'column'; drow.style.gap = '6px';
+        var dtype = document.createElement('select'); dtype.className = 'disc-type'; dtype.style.width = '100%';
+        dtype.innerHTML = '<option value="">Sin descuento</option><option value="pct">Porcentaje (%)</option><option value="val">Valor ($)</option>';
         var damt = document.createElement('input'); damt.type = 'number'; damt.className = 'disc-amt';
-        damt.placeholder = '0'; damt.style.flex = '1'; damt.disabled = true;
+        damt.placeholder = '0'; damt.style.width = '100%'; damt.disabled = true;
         drow.appendChild(dtype); drow.appendChild(damt);
         var hPct = document.createElement('input'); hPct.type = 'hidden'; hPct.setAttribute('data-col', findHeaderByName(dcfg.pct) || dcfg.pct);
         var hVal = document.createElement('input'); hVal.type = 'hidden'; hVal.setAttribute('data-col', findHeaderByName(dcfg.val) || dcfg.val);
