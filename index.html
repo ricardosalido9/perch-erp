@@ -1406,8 +1406,8 @@
     // No. de Referencia y Status se generan solos en el servidor; el resto son fórmulas de la hoja.
     ventas_registro: [
       'Fecha del Cierre', 'Cliente', 'Despacho', 'Vendedor', 'Fecha de entrega acordada',
-      'Direccion de envio', 'Telefono', 'Cantidad', 'Producto', 'Material', 'Tipo de Producto',
-      'Tela', 'Especificaciones', 'Precio Unitario', '% descuento', 'Descuentos', 'Envio'
+      'Direccion de envio', 'Telefono', 'Cantidad', 'Producto', 'Material', 'Material Extra',
+      'Tipo de Producto', 'Tela', 'Especificaciones', 'Precio Unitario', '% descuento', 'Descuentos', 'Envio'
     ]
   };
   // Campos que NO se muestran en "Agregar registro" (el resto sí). Por área.
@@ -1499,6 +1499,7 @@
   function lookupFor(h) {
     var list = state.lookups || [];
     for (var i = 0; i < list.length; i++) {
+      if (list[i].type === 'cascade') continue;   // la cascada se maneja aparte
       if (norm(list[i].keyField) === norm(h)) return list[i];
     }
     return null;
@@ -1517,7 +1518,96 @@
     });
     recalcComputed();
   }
-  // ===== Campos calculados (Utilidad Bruta = Total USD - Costo Total USD, etc.) =====
+
+  // ===== Cascada de producto (Producto -> Material -> Material 2 -> autocompleta) =====
+  function cascadeLU() {
+    var list = state.lookups || [];
+    for (var i = 0; i < list.length; i++) if (list[i].type === 'cascade') return list[i];
+    return null;
+  }
+  function cascadeLevelIndex(h) {
+    var c = cascadeLU(); if (!c) return -1;
+    for (var i = 0; i < c.levels.length; i++) if (norm(c.levels[i]) === norm(h)) return i;
+    return -1;
+  }
+  function isCascadeFill(h) {
+    var c = cascadeLU(); if (!c) return false;
+    return (c.fills || []).some(function (f) { return norm(f) === norm(h); });
+  }
+  function closestFld(el) { while (el && !(el.classList && el.classList.contains('fld'))) el = el.parentNode; return el; }
+  function cascElem(level) { return document.querySelector('#formFields [data-casc-level="' + level + '"]'); }
+  function cascFillElem(name) {
+    var real = findHeaderByName(name);
+    return real ? document.querySelector('#formFields [data-col="' + real + '"]') : null;
+  }
+  function showFld(el, show) { var f = closestFld(el); if (f) f.style.display = show ? '' : 'none'; }
+  function fillOptions(sel, opts) {
+    var html = '<option value="">— elegir —</option>';
+    opts.forEach(function (o) { html += '<option>' + esc(o) + '</option>'; });
+    sel.innerHTML = html;
+  }
+  // Valores distintos (no vacíos) del nivel `level` entre filas que coinciden con lo elegido antes.
+  function cascDistinct(c, chosen, level) {
+    var seen = {}, out = [];
+    c.rows.forEach(function (r) {
+      for (var k = 0; k < level; k++) { if (norm(r[c.levels[k]] || '') !== norm(chosen[k] || '')) return; }
+      var v = r[c.levels[level]] || '';
+      if (v && !seen[norm(v)]) { seen[norm(v)] = 1; out.push(v); }
+    });
+    out.sort(function (a, b) { return a.localeCompare(b, 'es'); });
+    return out;
+  }
+  function onCascadeChange(level) {
+    var c = cascadeLU(); if (!c) return;
+    var chosen = [];
+    for (var i = 0; i <= level; i++) { var el = cascElem(i); chosen.push(el ? el.value : ''); }
+    // Repoblar / limpiar los niveles más profundos según lo elegido
+    for (var d = level + 1; d < c.levels.length; d++) {
+      var sel = cascElem(d); if (!sel) continue;
+      var opts = cascDistinct(c, chosen, d);
+      fillOptions(sel, opts); sel.value = '';
+      showFld(sel, opts.length > 0);
+      chosen[d] = '';
+    }
+    resolveCascadeFills();
+  }
+  function resolveCascadeFills() {
+    var c = cascadeLU(); if (!c) return;
+    var chosen = [];
+    for (var i = 0; i < c.levels.length; i++) { var el = cascElem(i); chosen[i] = el ? el.value : ''; }
+    var matches = c.rows.filter(function (r) {
+      for (var k = 0; k < c.levels.length; k++) {
+        if (chosen[k] && norm(r[c.levels[k]] || '') !== norm(chosen[k])) return false;
+      }
+      return true;
+    });
+    // ¿Falta elegir algún nivel que sí tiene opciones visibles? entonces aún no está definida.
+    var pending = false;
+    for (var d = 0; d < c.levels.length; d++) {
+      var s = cascElem(d);
+      if (s) { var f = closestFld(s); var visible = f && f.style.display !== 'none';
+        if (visible && !s.value) { pending = true; break; } }
+    }
+    var resolved = !pending && matches.length > 0;
+    (c.fills || []).forEach(function (fname) {
+      var el = cascFillElem(fname); if (!el) return;
+      if (resolved) {
+        var val = matches[0][fname] || '';
+        var same = matches.every(function (m) { return norm(m[fname] || '') === norm(val); });
+        el.value = same ? val : '';
+      } else { el.value = ''; }
+    });
+    recalcComputed();
+  }
+  function initCascade() {
+    var c = cascadeLU(); if (!c) return;
+    var s0 = cascElem(0);
+    if (s0) { fillOptions(s0, cascDistinct(c, [], 0)); s0.value = ''; }
+    for (var d = 1; d < c.levels.length; d++) {
+      var sd = cascElem(d); if (sd) { fillOptions(sd, []); showFld(sd, false); }
+    }
+    (c.fills || []).forEach(function (fname) { var el = cascFillElem(fname); if (el) el.value = ''; });
+  }
   function toNum(v) {
     var s = String(v == null ? '' : v).replace(/[^0-9.,\-]/g, '').replace(/,/g, '');
     var n = parseFloat(s); return isNaN(n) ? 0 : n;
@@ -1612,6 +1702,26 @@
       var lab = document.createElement('label');
       lab.innerHTML = esc(String(h).trim()) + (isRequiredField(h) ? ' <span style="color:var(--danger)">*</span>' : '');
       wrap.appendChild(lab);
+      // --- Cascada de producto: niveles encadenados y campos autocompletados ---
+      var cLevel = cascadeLevelIndex(h);
+      if (cLevel >= 0) {
+        var csel = document.createElement('select');
+        csel.setAttribute('data-col', h);
+        csel.setAttribute('data-casc-level', cLevel);
+        csel.innerHTML = '<option value="">— elegir —</option>';
+        csel.addEventListener('change', function () { onCascadeChange(cLevel); });
+        wrap.appendChild(csel);
+        box.appendChild(wrap);
+        return;
+      }
+      if (isCascadeFill(h)) {
+        var cinp = document.createElement('input');
+        cinp.type = 'text'; cinp.readOnly = true; cinp.tabIndex = -1;
+        cinp.setAttribute('data-col', h);
+        wrap.appendChild(cinp);
+        box.appendChild(wrap);
+        return;
+      }
       var cat = isReadonlyField(h) ? null : categoryFor(h);  // solo lectura gana sobre desplegable
       var lkf = lookupFor(h);
       if (lkf) {
@@ -1655,6 +1765,7 @@
       if (curEl) { curEl.addEventListener('change', applyCurrencyRule); curEl.addEventListener('input', applyCurrencyRule); }
       applyCurrencyRule();
     }
+    initCascade();
     recalcComputed();
   }
 
