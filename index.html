@@ -1252,14 +1252,13 @@
   function renderDashboard() {
     var d = dashData; if (!d) return;
     var V = (d.ventas || []).filter(function (r) { return enRango(r.d); });
-    var inv = d.inventario || {};
 
-    var ventasUSD = suma(V, 'tu');
-    var utilidadUSD = suma(V, 'ub');
+    var venta = suma(V, 'venta');
+    var util = suma(V, 'util');
     var unidades = suma(V, 'u');
     var ops = V.length;
-    var ticket = ops ? ventasUSD / ops : 0;
-    var margen = ventasUSD ? (utilidadUSD / ventasUSD) : 0;
+    var ticket = ops ? venta / ops : 0;
+    var margen = venta ? (util / venta) : 0;
     var h = '';
 
     // --- Filtro de fechas ---
@@ -1275,62 +1274,55 @@
         (hayFiltro ? 'Filtrando ventas por periodo' : 'Mostrando todas las ventas') +
       '</span></div>';
 
-    // --- KPIs ---
-    h += '<div class="dash-section"><h3>Resumen comercial (USD)</h3><div class="kpi-grid">' +
-      '<div class="kpi dark"><div class="k">Ventas totales</div><div class="v" title="' + esc(formatMoney(ventasUSD)) + '">' +
-        esc(fmtMoneyShort(ventasUSD)) + '</div><div class="s">' + fmtNum(ops) + ' operaciones</div></div>' +
+    // --- KPIs (Total con envío sin impuestos) ---
+    h += '<div class="dash-section"><h3>Resumen comercial · Total con envío sin impuestos</h3><div class="kpi-grid">' +
+      '<div class="kpi dark"><div class="k">Ventas totales</div><div class="v" title="' + esc(formatMoney(venta)) + '">' +
+        esc(fmtMoneyShort(venta)) + '</div><div class="s">' + fmtNum(ops) + ' registros</div></div>' +
       '<div class="kpi"><div class="k">Unidades vendidas</div><div class="v">' + fmtNum(unidades) + '</div></div>' +
       '<div class="kpi"><div class="k">Ticket promedio</div><div class="v" title="' + esc(formatMoney(ticket)) + '">' +
         esc(fmtMoneyShort(ticket)) + '</div></div>' +
-      '<div class="kpi"><div class="k">Utilidad bruta</div><div class="v" title="' + esc(formatMoney(utilidadUSD)) + '">' +
-        esc(fmtMoneyShort(utilidadUSD)) + '</div></div>' +
-      '<div class="kpi"><div class="k">Margen bruto</div><div class="v">' + (margen * 100).toFixed(1) + '%</div></div>' +
-      '<div class="kpi"><div class="k">Piezas disponibles</div><div class="v">' + fmtNum(inv.disponibles || 0) +
-        '</div><div class="s">de ' + fmtNum(inv.registros || 0) + ' en inventario</div></div>' +
-      '<div class="kpi"><div class="k">Valor de stock</div><div class="v" title="' + esc(formatMoney(inv.valorStockUSD || 0)) + '">' +
-        esc(fmtMoneyShort(inv.valorStockUSD || 0)) + '</div><div class="s">costo de piezas disponibles</div></div>' +
-      '<div class="kpi"><div class="k">Piezas vendidas</div><div class="v">' + fmtNum(inv.vendidos || 0) + '</div></div>' +
+      '<div class="kpi"><div class="k">Utilidad</div><div class="v" title="' + esc(formatMoney(util)) + '">' +
+        esc(fmtMoneyShort(util)) + '</div></div>' +
+      '<div class="kpi"><div class="k">% Utilidad</div><div class="v">' + (margen * 100).toFixed(1) + '%</div></div>' +
       '</div></div>';
 
-    // --- Ventas ---
+    // --- Ventas por mes / categoría / vendedor ---
     h += '<div class="dash-section"><h3>Ventas</h3><div class="dash-cols">' +
-      '<div class="panel"><h4>Ventas por mes (USD)</h4><div class="panel-body">' +
-        chartHTML(porMesSuma(V, 'tu'), { money: true }) + '</div></div>' +
-      '<div class="panel"><h4>Ventas por categoría (USD)</h4><div class="panel-body">' +
-        barsHTML(agruparSuma(V, 'mar', 'tu'), { money: true, limit: 8 }) + '</div></div>' +
-      '<div class="panel"><h4>Ventas por vendedor (USD)</h4><div class="panel-body">' +
-        barsHTML(agruparSuma(V, 'v', 'tu'), { money: true }) + '</div></div>' +
+      '<div class="panel"><h4>Ventas por mes</h4><div class="panel-body">' +
+        chartHTML(porMesSuma(V, 'venta'), { money: true }) + '</div></div>' +
+      '<div class="panel"><h4>Ventas por categoría de producto</h4><div class="panel-body">' +
+        barsHTML(agruparSuma(V, 'tipo', 'venta'), { money: true, limit: 20 }) + '</div></div>' +
+      '<div class="panel"><h4>Ventas por vendedor</h4><div class="panel-body">' +
+        barsHTML(agruparSuma(V, 'vend', 'venta'), { money: true, limit: 20 }) + '</div></div>' +
       '</div></div>';
 
-    // --- Rentabilidad y canal ---
-    h += '<div class="dash-section"><h3>Rentabilidad y canal</h3><div class="dash-cols">' +
-      '<div class="panel"><h4>Utilidad por categoría (USD)</h4><div class="panel-body">' +
-        barsHTML(agruparSuma(V, 'mar', 'ub'), { money: true, limit: 8 }) + '</div></div>' +
-      '<div class="panel"><h4>Ventas por canal (USD)</h4><div class="panel-body">' +
-        barsHTML(agruparSuma(V, 'ch', 'tu'), { money: true }) + '</div></div>' +
-      '<div class="panel"><h4>Unidades por categoría</h4><div class="panel-body">' +
-        barsHTML(agruparSuma(V, 'mar', 'u'), { limit: 8 }) + '</div></div>' +
+    // --- Top productos y clientes ---
+    h += '<div class="dash-section"><h3>Top 10</h3><div class="dash-cols">' +
+      '<div class="panel"><h4>Productos más vendidos (top 10)</h4><div class="panel-body">' +
+        barsHTML(agruparSuma(V, 'prod', 'venta'), { money: true, limit: 10 }) + '</div></div>' +
+      '<div class="panel"><h4>Clientes principales (top 10)</h4><div class="panel-body">' +
+        barsHTML(agruparSuma(V, 'cli', 'venta'), { money: true, limit: 10 }) + '</div></div>' +
       '</div></div>';
 
-    // --- Inventario ---
-    h += '<div class="dash-section"><h3>Inventario disponible</h3><div class="dash-cols">' +
-      '<div class="panel"><h4>Piezas disponibles por categoría</h4><div class="panel-body">' +
-        barsHTML(inv.dispPorMarca, { limit: 10 }) + '</div></div>' +
-      '<div class="panel"><h4>Valor de stock por categoría (USD)</h4><div class="panel-body">' +
-        barsHTML(inv.valorPorMarca, { money: true, limit: 10 }) + '</div></div>' +
+    // --- Utilidad ---
+    h += '<div class="dash-section"><h3>Utilidad</h3><div class="dash-cols">' +
+      '<div class="panel"><h4>Utilidad por producto (top 10)</h4><div class="panel-body">' +
+        barsHTML(agruparSuma(V, 'prod', 'util'), { money: true, limit: 10 }) + '</div></div>' +
+      '<div class="panel"><h4>Utilidad por tipo de producto</h4><div class="panel-body">' +
+        barsHTML(agruparSuma(V, 'tipo', 'util'), { money: true, limit: 20 }) + '</div></div>' +
       '</div></div>';
 
     // --- Ventas recientes ---
     var vOrd = V.filter(function (r) { return r.d; }).sort(function (a, b) { return b.d - a.d; }).slice(0, 10);
     var vRows = vOrd.map(function (r) {
-      return '<tr><td>' + esc(formatDateCell(r.f)) + '</td><td title="' + esc(r.cl) + '">' + esc(r.cl) +
-             '</td><td title="' + esc(r.pr) + '">' + esc(r.mar) +
-             '</td><td class="num">' + esc(r.tu !== null ? formatMoney(r.tu) : '') +
-             '</td><td class="num">' + esc(r.ub !== null ? formatMoney(r.ub) : '') + '</td></tr>';
+      return '<tr><td>' + esc(formatDateCell(r.f)) + '</td><td title="' + esc(r.cli) + '">' + esc(r.cli) +
+             '</td><td title="' + esc(r.prod) + '">' + esc(r.prod) +
+             '</td><td class="num">' + esc(r.venta !== null ? formatMoney(r.venta) : '') +
+             '</td><td class="num">' + esc(r.util !== null ? formatMoney(r.util) : '') + '</td></tr>';
     }).join('');
     h += '<div class="dash-section"><h3>Ventas recientes</h3>' +
       '<div class="panel"><div class="panel-body">' +
-      (vRows ? '<table class="mini-table"><thead><tr><th>Fecha</th><th>Cliente</th><th>Categoría</th><th style="text-align:right">Total USD</th><th style="text-align:right">Utilidad</th></tr></thead><tbody>' + vRows + '</tbody></table>'
+      (vRows ? '<table class="mini-table"><thead><tr><th>Fecha</th><th>Cliente</th><th>Producto</th><th style="text-align:right">Total s/IVA</th><th style="text-align:right">Utilidad</th></tr></thead><tbody>' + vRows + '</tbody></table>'
              : '<div class="dash-empty">Sin ventas en el periodo.</div>') + '</div></div></div>';
 
     document.getElementById('dashView').innerHTML = h;
@@ -1509,7 +1501,7 @@
   // Campos obligatorios por área (por nombre; tolera espacios/acentos/mayúsculas).
   var REQUIRED_FIELDS = {
     ventas_registro: ['Fecha del Cierre', 'Cliente', 'Vendedor', 'Fecha de entrega acordada',
-                      'Cantidad', 'Producto'],
+                      'Cantidad', 'Producto', 'Material', 'Material Extra'],
     ventas_clientes: ['Nombre/Razón Social'],
     compras_registro: ['Fecha', 'Proveedor', 'Marca', 'Canal de Compra', 'Unidades', 'Total',
                        'Moneda', 'Tipo de Cambio', 'Proveedor de Pago', 'Comision Compra',
@@ -1600,18 +1592,12 @@
     var c = cascadeLU(); if (!c) return;
     var chosen = [];
     for (var i = 0; i <= level; i++) { var el = cascElem(i); chosen.push(el ? el.value : ''); }
-    // Repoblar los niveles más profundos; si un nivel tiene una sola opción, se elige solo.
+    // Repoblar los niveles más profundos; el usuario debe elegir cada uno.
     for (var d = level + 1; d < c.levels.length; d++) {
       var sel = cascElem(d);
       var opts = cascDistinct(c, chosen, d);
-      if (sel) fillOptions(sel, opts);
-      if (opts.length === 1) {
-        if (sel) { sel.value = opts[0]; showFld(sel, true); }
-        chosen[d] = opts[0];
-      } else {
-        if (sel) { sel.value = ''; showFld(sel, opts.length > 0); }
-        chosen[d] = '';
-      }
+      if (sel) { fillOptions(sel, opts); sel.value = ''; showFld(sel, opts.length > 0); }
+      chosen[d] = '';
     }
     resolveCascadeFills();
   }
@@ -1764,6 +1750,8 @@
     updateOrderTotal();
   }
   function addProductLine() {
+    var falta = cascadeLevelsMissing();
+    if (falta) { toast('Falta elegir: ' + falta, 'err'); return; }
     var info = readLineFromForm();
     if (!info) return;
     if (!info.ok) { toast('Elige un Producto antes de añadir.', 'err'); return; }
@@ -1773,6 +1761,16 @@
     clearLineFields();
     renderLineList();
     toast('Producto añadido.', 'ok');
+  }
+  // Devuelve el nombre del primer nivel visible de la cascada sin elegir (o null si están todos).
+  function cascadeLevelsMissing() {
+    var c = cascadeLU(); if (!c) return null;
+    for (var d = 0; d < c.levels.length; d++) {
+      var sel = cascElem(d); if (!sel) continue;
+      var f = closestFld(sel); var visible = f && f.style.display !== 'none';
+      if (visible && !(sel.value || '').trim()) return c.levels[d];
+    }
+    return null;
   }
   function toNum(v) {
     var s = String(v == null ? '' : v).replace(/[^0-9.,\-]/g, '').replace(/,/g, '');
@@ -1983,6 +1981,8 @@
     var lines = (state.lineItems || []).slice();
     var pend = readLineFromForm();
     if (pend && pend.ok) {
+      var falta = cascadeLevelsMissing();
+      if (falta) { toast('Falta elegir en el último producto: ' + falta, 'err'); return; }
       if (!pend.cantidad) { toast('Falta la Cantidad del último producto.', 'err'); return; }
       lines.push(pend.rec);
     }

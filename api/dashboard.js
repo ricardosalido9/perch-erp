@@ -55,70 +55,32 @@ module.exports = async (req, res) => {
     const { token } = await core.readBody(req);
     if (!core.verifyToken(token)) return res.status(401).json({ error: 'Sesión no válida.' });
 
-    const [ventas, inventario] = await Promise.all([
-      leer('ventas_registro'), leer('inventario')
-    ]);
+    const ventas = await leer('ventas_registro');
+    const H = ventas.headers;
 
-    const out = {};
+    const cFecha = col(H, 'Fecha del Cierre', 'Fecha');
+    const cProd  = col(H, 'Producto');
+    const cCli   = col(H, 'Cliente');
+    const cTipo  = col(H, 'Tipo de Producto', 'Categoria producto', 'Categoría');
+    const cVend  = col(H, 'Vendedor');
+    const cCant  = col(H, 'Cantidad', 'Unidades');
+    const cVenta = col(H, 'Total con envio sin impuestos', 'Total con envío sin impuestos',
+                        'Total con envío', 'Total Pedido');
+    const cUtil  = col(H, 'Utilidad Final', 'Utilidad');
 
-    // ===== VENTAS -> filas compactas =====
-    // d(fecha num) f(fecha texto) tu(Total USD) ub(Utilidad) u(unidades)
-    // mar(marca) v(vendedor) ch(canal) cl(cliente) pr(producto)
-    {
-      const H = ventas.headers;
-      const cF = col(H, 'Fecha');
-      const cTU = col(H, 'TOTAL USD', 'Total USD');
-      const cUB = col(H, 'Utilidad Bruta');
-      const cU = col(H, 'Unidades');
-      const cMar = col(H, 'Categoría', 'Categoria', 'Colección', 'Coleccion', 'Línea', 'Linea', 'Marca');
-      const cV = col(H, 'Vendedor');
-      const cCh = col(H, 'Canal de Venta');
-      const cCl = col(H, 'Cliente');
-      const cPr = col(H, 'Producto');
-      out.ventas = ventas.rows.map(r => ({
-        d: cF ? fechaNum(r[cF]) : null,
-        f: cF ? txt(r[cF]) : '',
-        tu: cTU ? num(r[cTU]) : null,
-        ub: cUB ? num(r[cUB]) : null,
-        u: cU ? (num(r[cU]) || 0) : 0,
-        mar: cMar ? txt(r[cMar]) : '',
-        v: cV ? txt(r[cV]) : '',
-        ch: cCh ? txt(r[cCh]) : '',
-        cl: cCl ? txt(r[cCl]) : '',
-        pr: cPr ? txt(r[cPr]) : ''
-      }));
-    }
+    // Filas compactas: d(fecha num) f(fecha texto) venta util u(unidades) prod cli tipo vend
+    const out = ventas.rows.map(r => ({
+      d:     cFecha ? fechaNum(r[cFecha]) : null,
+      f:     cFecha ? txt(r[cFecha]) : '',
+      venta: cVenta ? num(r[cVenta]) : null,
+      util:  cUtil ? num(r[cUtil]) : null,
+      u:     cCant ? (num(r[cCant]) || 0) : 0,
+      prod:  cProd ? txt(r[cProd]) : '',
+      cli:   cCli ? txt(r[cCli]) : '',
+      tipo:  cTipo ? txt(r[cTipo]) : '',
+      vend:  cVend ? txt(r[cVend]) : ''
+    }));
 
-    // ===== INVENTARIO -> agregados (snapshot actual) =====
-    {
-      const H = inventario.headers, R = inventario.rows;
-      const cDisp = col(H, 'Disponible');
-      const cCosto = col(H, 'Costo Total USD');
-      const cMar = col(H, 'Categoría', 'Categoria', 'Colección', 'Coleccion', 'Línea', 'Linea', 'Marca');
-      let disponibles = 0, valorStockUSD = 0;
-      const dispPorMarca = {}, valorPorMarca = {};
-      R.forEach(r => {
-        const disp = cDisp ? num(r[cDisp]) : null;
-        if (disp === null || disp <= 0) return;   // solo disponibles
-        disponibles++;
-        const costo = cCosto ? (num(r[cCosto]) || 0) : 0;
-        valorStockUSD += costo;
-        const m = cMar ? txt(r[cMar]) : '';
-        if (m) {
-          dispPorMarca[m] = (dispPorMarca[m] || 0) + 1;
-          valorPorMarca[m] = (valorPorMarca[m] || 0) + costo;
-        }
-      });
-      out.inventario = {
-        registros: R.length,
-        disponibles: disponibles,
-        vendidos: R.length - disponibles,
-        valorStockUSD: valorStockUSD,
-        dispPorMarca: dispPorMarca,
-        valorPorMarca: valorPorMarca
-      };
-    }
-
-    return res.status(200).json(out);
+    return res.status(200).json({ ventas: out });
   } catch (e) { return res.status(500).json({ error: e.message }); }
 };
