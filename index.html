@@ -899,10 +899,13 @@
   // type:'sum' suma una columna; type:'ratio' = sum(num)/sum(den) (percent:true -> %).
   var SUMMARY_CARDS = {
     ventas_registro: [
-      { k: 'Total USD',       type: 'sum',   field: 'Total USD' },
-      { k: 'Costo Total USD', type: 'sum',   field: 'Costo Total USD' },
-      { k: 'Utilidad Bruta',  type: 'sum',   field: 'Utilidad Bruta' },
-      { k: 'Margen Bruto',    type: 'ratio', num: 'Utilidad Bruta', den: 'Total USD', percent: true }
+      { k: 'Total con envío',        type: 'sum',   field: 'Total con envío' },
+      { k: 'Total con envío s/IVA',  type: 'sum',   field: 'Total con envio sin impuestos' },
+      { k: 'Costo total',            type: 'sum',   field: 'Costo total' },
+      { k: 'Costo envío',            type: 'sum',   field: 'Costo Envío' },
+      { k: 'Utilidad',               type: 'sum',   field: 'Utilidad Final' },
+      // % Utilidad = suma de Utilidad ÷ suma de Total con envío sin impuestos
+      { k: '% Utilidad',             type: 'ratio', num: 'Utilidad Final', den: 'Total con envio sin impuestos', percent: true }
     ],
     compras_registro: [
       { k: 'Total USD',       type: 'sum', field: 'Total USD' },
