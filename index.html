@@ -1561,13 +1561,18 @@
     var c = cascadeLU(); if (!c) return;
     var chosen = [];
     for (var i = 0; i <= level; i++) { var el = cascElem(i); chosen.push(el ? el.value : ''); }
-    // Repoblar / limpiar los niveles más profundos según lo elegido
+    // Repoblar los niveles más profundos; si un nivel tiene una sola opción, se elige solo.
     for (var d = level + 1; d < c.levels.length; d++) {
-      var sel = cascElem(d); if (!sel) continue;
+      var sel = cascElem(d);
       var opts = cascDistinct(c, chosen, d);
-      fillOptions(sel, opts); sel.value = '';
-      showFld(sel, opts.length > 0);
-      chosen[d] = '';
+      if (sel) fillOptions(sel, opts);
+      if (opts.length === 1) {
+        if (sel) { sel.value = opts[0]; showFld(sel, true); }
+        chosen[d] = opts[0];
+      } else {
+        if (sel) { sel.value = ''; showFld(sel, opts.length > 0); }
+        chosen[d] = '';
+      }
     }
     resolveCascadeFills();
   }
