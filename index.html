@@ -312,6 +312,11 @@
   #lineItemsBox .li-row .li-txt { flex:1; font-size:13px; color:var(--ink); }
   #lineItemsBox .li-row .li-txt small { color:var(--slate); }
   #lineItemsBox .li-row .li-del { background:none; border:none; color:var(--danger); cursor:pointer; font-size:18px; line-height:1; }
+  #lineItemsBox .li-total { display:flex; align-items:baseline; gap:10px; justify-content:flex-end;
+    margin-top:12px; padding-top:12px; border-top:1px solid var(--line); }
+  #lineItemsBox .li-total .li-total-sub { flex:1; color:var(--muted); font-size:12px; }
+  #lineItemsBox .li-total .li-total-lbl { color:var(--slate); font-weight:600; }
+  #lineItemsBox .li-total .li-total-val { color:var(--ink); font-weight:700; font-size:20px; font-variant-numeric:tabular-nums; }
 
   .state { padding:28px 16px; text-align:center; color:var(--muted); font-size:14px; }
 
@@ -379,7 +384,7 @@
         <div class="card-body">
           <div class="form-grid" id="formFields"></div>
           <div id="lineItemsBox" style="display:none"></div>
-          <div class="form-actions"><button class="primary" id="saveBtn" type="button">Guardar registro</button><button id="clearBtn" type="button">Limpiar todo</button></div>
+          <div class="form-actions"><button class="primary" id="saveBtn" type="button">Guardar registro</button><button id="addLineBtn" type="button" style="display:none">＋ Agregar producto al pedido</button><button id="clearBtn" type="button">Limpiar todo</button></div>
         </div>
       </section>
       <div class="controls">
@@ -1634,6 +1639,7 @@
       } else { el.value = ''; }
     });
     recalcComputed();
+    updateOrderTotal();
   }
   function initCascade() {
     var c = cascadeLU(); if (!c) return;
@@ -1685,37 +1691,74 @@
     var det = [mat, me].filter(Boolean).join(' · ');
     var extra = [];
     if (cant) extra.push(cant + ' pz');
-    if (precio) extra.push('$' + precio);
+    if (precio) extra.push('$' + fmtMoney(precio));
     return { titulo: prod || '(sin producto)', sub: [det].concat(extra).filter(Boolean).join('  ·  ') };
   }
+  function fmtMoney(v) {
+    var n = toNum(v);
+    return n.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  // Total de una línea: Precio × Cantidad, aplicando % descuento o Descuentos (valor).
+  function lineTotal(rec) {
+    var precio = toNum(rec[findHeaderByName('Precio Unitario')]);
+    var cant = toNum(rec[findHeaderByName('Cantidad')]); if (cant <= 0) cant = 1;
+    var base = precio * cant;
+    var pct = toNum(rec[findHeaderByName('% descuento')]);
+    var desc = toNum(rec[findHeaderByName('Descuentos')]);
+    if (pct > 0) base = base * (1 - pct / 100);
+    else if (desc > 0) base = base - desc;
+    return base < 0 ? 0 : base;
+  }
+  function currentLineRec() {
+    var info = readLineFromForm();
+    return (info && info.ok) ? info.rec : null;
+  }
+  function updateOrderTotal() {
+    if (!lineCfg()) return;
+    var el = document.getElementById('orderTotalVal');
+    var cntEl = document.getElementById('orderTotalCount');
+    if (!el) return;
+    var items = (state.lineItems || []).slice();
+    var pend = currentLineRec(); if (pend) items.push(pend);
+    var subtotal = 0; items.forEach(function (r) { subtotal += lineTotal(r); });
+    var envio = toNum(fieldEl('Envio') ? fieldEl('Envio').value : 0);
+    var total = subtotal + envio;
+    el.textContent = '$' + fmtMoney(total);
+    if (cntEl) cntEl.textContent = items.length + (items.length === 1 ? ' producto' : ' productos') +
+      (envio > 0 ? ' + envío $' + fmtMoney(envio) : '');
+  }
   function renderLineList() {
+    var addBtn = document.getElementById('addLineBtn');
     var box = document.getElementById('lineItemsBox');
     var c = lineCfg();
-    if (!c) { box.style.display = 'none'; box.innerHTML = ''; return; }
+    if (!c) { if (addBtn) addBtn.style.display = 'none'; box.style.display = 'none'; box.innerHTML = ''; return; }
+    if (addBtn) addBtn.style.display = '';
     box.style.display = '';
     var items = state.lineItems || [];
-    var html = '<div class="li-head"><span class="li-title">Productos de esta venta (' + items.length + ')</span>' +
-               '<button type="button" class="li-add" id="addLineBtn">＋ Añadir producto</button></div>';
+    var html = '<div class="li-head"><span class="li-title">Productos del pedido</span></div>';
     html += '<div class="li-list">';
     if (!items.length) {
-      html += '<div class="li-empty">Llena el producto de arriba y toca “Añadir producto”. Puedes agregar varios; se guardarán con el mismo folio y datos del cliente.</div>';
+      html += '<div class="li-empty">Elige un producto arriba. Toca “Agregar producto al pedido” para sumar otro; al guardar se crea una fila por producto con el mismo folio.</div>';
     } else {
       items.forEach(function (rec, i) {
         var r = lineResumen(rec);
         html += '<div class="li-row"><span class="li-n">' + (i + 1) + '</span>' +
                 '<span class="li-txt">' + esc(r.titulo) + (r.sub ? ' <small>' + esc(r.sub) + '</small>' : '') + '</span>' +
+                '<span class="li-txt" style="flex:none;font-weight:600">$' + fmtMoney(lineTotal(rec)) + '</span>' +
                 '<button type="button" class="li-del" data-i="' + i + '" title="Quitar">✕</button></div>';
       });
     }
     html += '</div>';
+    html += '<div class="li-total"><span id="orderTotalCount" class="li-total-sub"></span>' +
+            '<span class="li-total-lbl">Total del pedido</span><span id="orderTotalVal" class="li-total-val">$0.00</span></div>';
     box.innerHTML = html;
-    document.getElementById('addLineBtn').addEventListener('click', addProductLine);
     Array.prototype.forEach.call(box.querySelectorAll('.li-del'), function (b) {
       b.addEventListener('click', function () {
         state.lineItems.splice(parseInt(b.getAttribute('data-i'), 10), 1);
         renderLineList();
       });
     });
+    updateOrderTotal();
   }
   function addProductLine() {
     var info = readLineFromForm();
@@ -2069,6 +2112,11 @@
   });
   document.getElementById('saveBtn').addEventListener('click', save);
   document.getElementById('clearBtn').addEventListener('click', clearForm);
+  document.getElementById('addLineBtn').addEventListener('click', addProductLine);
+  // Total del pedido en vivo al escribir cantidad/precio/descuento/envío
+  document.getElementById('formFields').addEventListener('input', function () {
+    if (lineCfg()) updateOrderTotal();
+  });
   document.getElementById('user').focus();
 </script>
 </body>
