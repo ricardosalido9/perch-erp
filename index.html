@@ -297,6 +297,21 @@
   .form-grid input[readonly] { background:#cfc9bb; color:#3f3b33; border-color:#bdb6a5; cursor:not-allowed; }
   .form-grid input[readonly]:focus { outline:none; border-color:#bdb6a5; }
   .form-actions { margin-top:16px; display:flex; gap:10px; align-items:center; }
+  #lineItemsBox { margin-top:18px; border-top:1px dashed var(--line); padding-top:14px; }
+  #lineItemsBox .li-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+  #lineItemsBox .li-title { font-weight:600; color:var(--ink); font-size:14px; }
+  #lineItemsBox .li-add { background:var(--surface); border:1px solid var(--primary); color:var(--primary);
+    border-radius:8px; padding:8px 12px; font-weight:600; cursor:pointer; }
+  #lineItemsBox .li-add:hover { background:var(--success-bg); }
+  #lineItemsBox .li-list { display:flex; flex-direction:column; gap:8px; }
+  #lineItemsBox .li-empty { color:var(--muted); font-size:13px; }
+  #lineItemsBox .li-row { display:flex; align-items:center; gap:10px; background:var(--paper);
+    border:1px solid var(--line); border-radius:8px; padding:8px 12px; }
+  #lineItemsBox .li-row .li-n { width:22px; height:22px; border-radius:999px; background:var(--rail); color:#f2eee3;
+    display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; flex:none; }
+  #lineItemsBox .li-row .li-txt { flex:1; font-size:13px; color:var(--ink); }
+  #lineItemsBox .li-row .li-txt small { color:var(--slate); }
+  #lineItemsBox .li-row .li-del { background:none; border:none; color:var(--danger); cursor:pointer; font-size:18px; line-height:1; }
 
   .state { padding:28px 16px; text-align:center; color:var(--muted); font-size:14px; }
 
@@ -363,6 +378,7 @@
         <div class="card-head">Agregar registro</div>
         <div class="card-body">
           <div class="form-grid" id="formFields"></div>
+          <div id="lineItemsBox" style="display:none"></div>
           <div class="form-actions"><button class="primary" id="saveBtn" type="button">Guardar registro</button><button id="clearBtn" type="button">Limpiar todo</button></div>
         </div>
       </section>
@@ -416,7 +432,7 @@
     return data;
   }
 
-  var state = { token:null, key:null, label:'', headers:[], rows:[], categories:{}, lookups:[], rol:'' };
+  var state = { token:null, key:null, label:'', headers:[], rows:[], categories:{}, lookups:[], lineItems:[], rol:'' };
 
   // Áreas de solo consulta: sin formulario "Agregar registro"
   var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc'];
@@ -544,7 +560,7 @@
   function loadArea() {
     document.getElementById('tableWrap').innerHTML = '<div class="state">Cargando...</div>';
     document.getElementById('count').textContent = '';
-    state.categories = {}; state.lookups = [];
+    state.categories = {}; state.lookups = []; state.lineItems = [];
     Promise.all([
       api('data', { token: state.token, key: state.key }),
       api('categories', { token: state.token, key: state.key }).catch(function () { return {}; }),
@@ -1410,6 +1426,21 @@
       'Tipo de Producto', 'Tela', 'Especificaciones', 'Precio Unitario', '% descuento', 'Descuentos', 'Envio'
     ]
   };
+  // ===== Ventas con varios productos: campos "por producto" (line) vs "de la orden" =====
+  // Los demás campos de FORM_FIELDS se capturan una sola vez (nivel de orden).
+  // 'Envio' es de la orden y se escribe SOLO en la primera fila del pedido.
+  var LINE_ITEMS = {
+    ventas_registro: {
+      line: ['Producto', 'Material', 'Material Extra', 'Tipo de Producto', 'Tela',
+             'Especificaciones', 'Cantidad', 'Precio Unitario', '% descuento', 'Descuentos'],
+      envioOnce: 'Envio'   // va solo en la primera fila del pedido
+    }
+  };
+  function lineCfg() { return LINE_ITEMS[state.key] || null; }
+  function isLineField(h) {
+    var c = lineCfg(); if (!c) return false;
+    return c.line.some(function (f) { return norm(f) === norm(h); });
+  }
   // Campos que NO se muestran en "Agregar registro" (el resto sí). Por área.
   var EXCLUDE_FIELDS = {
     ventas_registro: ['Mes', 'Año1'],
@@ -1613,6 +1644,90 @@
     }
     (c.fills || []).forEach(function (fname) { var el = cascFillElem(fname); if (el) el.value = ''; });
   }
+
+  // ===== Varios productos por venta (líneas) =====
+  function fieldEl(name) {
+    var real = findHeaderByName(name);
+    return real ? document.querySelector('#formFields [data-col="' + real + '"]') : null;
+  }
+  function readLineFromForm() {
+    var c = lineCfg(); if (!c) return null;
+    var rec = {}, tienePrincipales = false;
+    c.line.forEach(function (f) {
+      var real = findHeaderByName(f); if (!real) return;
+      var el = document.querySelector('#formFields [data-col="' + real + '"]');
+      if (!el) return;
+      var v = (el.value || '').trim();
+      if (v && el.type === 'date') v = isoToLargo(v);
+      rec[real] = v;
+    });
+    // ¿tiene al menos Producto y Cantidad?
+    var prod = fieldEl('Producto'), cant = fieldEl('Cantidad');
+    if (prod && (prod.value || '').trim()) tienePrincipales = true;
+    return { rec: rec, ok: tienePrincipales, cantidad: cant ? (cant.value || '').trim() : '' };
+  }
+  function clearLineFields() {
+    var c = lineCfg(); if (!c) return;
+    c.line.forEach(function (f) {
+      var real = findHeaderByName(f); if (!real) return;
+      var el = document.querySelector('#formFields [data-col="' + real + '"]');
+      if (el) el.value = '';
+    });
+    initCascade();
+    recalcComputed();
+  }
+  function lineResumen(rec) {
+    var prod = rec[findHeaderByName('Producto')] || '';
+    var mat = rec[findHeaderByName('Material')] || '';
+    var me = rec[findHeaderByName('Material Extra')] || '';
+    var cant = rec[findHeaderByName('Cantidad')] || '';
+    var precio = rec[findHeaderByName('Precio Unitario')] || '';
+    var det = [mat, me].filter(Boolean).join(' · ');
+    var extra = [];
+    if (cant) extra.push(cant + ' pz');
+    if (precio) extra.push('$' + precio);
+    return { titulo: prod || '(sin producto)', sub: [det].concat(extra).filter(Boolean).join('  ·  ') };
+  }
+  function renderLineList() {
+    var box = document.getElementById('lineItemsBox');
+    var c = lineCfg();
+    if (!c) { box.style.display = 'none'; box.innerHTML = ''; return; }
+    box.style.display = '';
+    var items = state.lineItems || [];
+    var html = '<div class="li-head"><span class="li-title">Productos de esta venta (' + items.length + ')</span>' +
+               '<button type="button" class="li-add" id="addLineBtn">＋ Añadir producto</button></div>';
+    html += '<div class="li-list">';
+    if (!items.length) {
+      html += '<div class="li-empty">Llena el producto de arriba y toca “Añadir producto”. Puedes agregar varios; se guardarán con el mismo folio y datos del cliente.</div>';
+    } else {
+      items.forEach(function (rec, i) {
+        var r = lineResumen(rec);
+        html += '<div class="li-row"><span class="li-n">' + (i + 1) + '</span>' +
+                '<span class="li-txt">' + esc(r.titulo) + (r.sub ? ' <small>' + esc(r.sub) + '</small>' : '') + '</span>' +
+                '<button type="button" class="li-del" data-i="' + i + '" title="Quitar">✕</button></div>';
+      });
+    }
+    html += '</div>';
+    box.innerHTML = html;
+    document.getElementById('addLineBtn').addEventListener('click', addProductLine);
+    Array.prototype.forEach.call(box.querySelectorAll('.li-del'), function (b) {
+      b.addEventListener('click', function () {
+        state.lineItems.splice(parseInt(b.getAttribute('data-i'), 10), 1);
+        renderLineList();
+      });
+    });
+  }
+  function addProductLine() {
+    var info = readLineFromForm();
+    if (!info) return;
+    if (!info.ok) { toast('Elige un Producto antes de añadir.', 'err'); return; }
+    if (!info.cantidad) { toast('Falta la Cantidad del producto.', 'err'); return; }
+    state.lineItems = state.lineItems || [];
+    state.lineItems.push(info.rec);
+    clearLineFields();
+    renderLineList();
+    toast('Producto añadido.', 'ok');
+  }
   function toNum(v) {
     var s = String(v == null ? '' : v).replace(/[^0-9.,\-]/g, '').replace(/,/g, '');
     var n = parseFloat(s); return isNaN(n) ? 0 : n;
@@ -1772,9 +1887,12 @@
     }
     initCascade();
     recalcComputed();
+    renderLineList();
   }
 
   function save() {
+    var lc = lineCfg();
+    if (lc) { return saveOrder(lc); }   // ventas: una fila por producto
     var record = {}; var els = document.querySelectorAll('#formFields [data-col]'); var has = false;
     els.forEach(function (i) {
       var v = (i.value || '').trim();
@@ -1796,9 +1914,58 @@
     }).catch(fail).then(function () { btn.disabled = false; btn.textContent = 'Guardar registro'; });
   }
 
+  // Guarda una venta con 1..N productos: cada producto = una fila, mismo folio y datos del cliente.
+  function saveOrder(lc) {
+    // 1) Datos de la orden (todo lo que NO es campo de producto)
+    var order = {};
+    document.querySelectorAll('#formFields [data-col]').forEach(function (i) {
+      var col = i.getAttribute('data-col');
+      if (isLineField(col)) return;
+      var v = (i.value || '').trim();
+      if (v === '__add__') v = '';
+      if (v && i.type === 'date') v = isoToLargo(v);
+      order[col] = v;
+    });
+    // 2) Obligatorios de la orden (los de producto se validan por línea)
+    var reqs = REQUIRED_FIELDS[state.key] || [];
+    for (var ri = 0; ri < reqs.length; ri++) {
+      if (isLineField(reqs[ri])) continue;
+      var rh = findHeaderByName(reqs[ri]);
+      if (!rh || !String(order[rh] || '').trim()) { toast('Falta llenar: ' + reqs[ri], 'err'); return; }
+    }
+    // 3) Productos: los añadidos + el que esté cargado en el formulario (si tiene Producto)
+    var lines = (state.lineItems || []).slice();
+    var pend = readLineFromForm();
+    if (pend && pend.ok) {
+      if (!pend.cantidad) { toast('Falta la Cantidad del último producto.', 'err'); return; }
+      lines.push(pend.rec);
+    }
+    if (!lines.length) { toast('Agrega al menos un producto a la venta.', 'err'); return; }
+
+    // 4) Arma una fila por producto (envío solo en la primera)
+    var envioCol = lc.envioOnce ? findHeaderByName(lc.envioOnce) : null;
+    var records = lines.map(function (ln, idx) {
+      var rec = {};
+      Object.keys(order).forEach(function (k) { rec[k] = order[k]; });
+      Object.keys(ln).forEach(function (k) { rec[k] = ln[k]; });
+      if (envioCol && idx > 0) rec[envioCol] = '';   // el envío va solo en la primera fila
+      return rec;
+    });
+
+    var btn = document.getElementById('saveBtn'); btn.disabled = true; btn.textContent = 'Guardando...';
+    api('add', { token: state.token, key: state.key, records: records }).then(function (out) {
+      var n = (out && out.filas) || records.length;
+      var folio = (out && out.folio) ? (' · Folio ' + out.folio) : '';
+      toast('Venta guardada: ' + n + (n === 1 ? ' producto' : ' productos') + folio + '.', 'ok');
+      state.lineItems = [];
+      loadArea();
+    }).catch(fail).then(function () { btn.disabled = false; btn.textContent = 'Guardar registro'; });
+  }
+
   function fail(err) { toast((err && err.message) || 'Ocurrió un error.', 'err'); }
 
   function clearForm() {
+    state.lineItems = [];
     renderForm(); // vacía todo y vuelve a sugerir el número disponible
   }
 
