@@ -1185,11 +1185,18 @@
   }
   function barsHTML(obj, opts) {
     opts = opts || {};
-    var items = topN(obj, opts.limit || 6);
-    if (!items.length) return '<div class="dash-empty">Sin datos en el periodo.</div>';
-    var granTotal = 0;
-    Object.keys(obj || {}).forEach(function (k) { granTotal += obj[k] || 0; });
+    var all = Object.keys(obj || {}).map(function (k) { return { k: k, v: obj[k] }; })
+      .sort(function (a, b) { return b.v - a.v; });
+    if (!all.length) return '<div class="dash-empty">Sin datos en el periodo.</div>';
+    var granTotal = 0; all.forEach(function (it) { granTotal += it.v || 0; });
+    var limit = opts.limit || 6;
+    var items = all.slice(0, limit);
+    var otrosVal = 0, otrosN = 0;
+    if (opts.otros && all.length > limit) {
+      all.slice(limit).forEach(function (it) { otrosVal += it.v || 0; otrosN++; });
+    }
     var max = items[0].v || 1;
+    if (otrosVal > max) max = otrosVal;
     var html = '<div class="bars">';
     items.forEach(function (it) {
       var pct = Math.max(2, Math.round((it.v / max) * 100));
@@ -1200,6 +1207,15 @@
         '<span class="bar-track"><span class="bar-fill" style="width:' + pct + '%"></span></span>' +
         '<span class="val">' + esc(val) + '</span></div>';
     });
+    if (otrosVal > 0) {
+      var pcto = Math.max(2, Math.round((otrosVal / max) * 100));
+      var valo = opts.money ? fmtMoneyShort(otrosVal) : fmtNum(otrosVal);
+      var tipo = 'Otros (' + otrosN + '): ' + (opts.money ? formatMoney(otrosVal) : fmtNum(otrosVal));
+      html += '<div class="bar-row" title="' + esc(tipo) + '" style="opacity:.72">' +
+        '<span class="lbl">Otros (' + otrosN + ')</span>' +
+        '<span class="bar-track"><span class="bar-fill" style="width:' + pcto + '%;background:var(--muted)"></span></span>' +
+        '<span class="val">' + esc(valo) + '</span></div>';
+    }
     html += '</div><div class="bar-total"><span>Total</span><span class="tv">' +
             esc(opts.money ? formatMoney(granTotal) : fmtNum(granTotal)) + '</span></div>';
     return html;
@@ -1314,15 +1330,15 @@
     // --- Top productos y clientes ---
     h += '<div class="dash-section"><h3>Top 10</h3><div class="dash-cols">' +
       '<div class="panel"><h4>Productos más vendidos (top 10)</h4><div class="panel-body">' +
-        barsHTML(agruparSuma(V, 'prod', 'venta'), { money: true, limit: 10 }) + '</div></div>' +
+        barsHTML(agruparSuma(V, 'prod', 'venta'), { money: true, limit: 10, otros: true }) + '</div></div>' +
       '<div class="panel"><h4>Clientes principales (top 10)</h4><div class="panel-body">' +
-        barsHTML(agruparSuma(V, 'cli', 'venta'), { money: true, limit: 10 }) + '</div></div>' +
+        barsHTML(agruparSuma(V, 'cli', 'venta'), { money: true, limit: 10, otros: true }) + '</div></div>' +
       '</div></div>';
 
     // --- Utilidad ---
     h += '<div class="dash-section"><h3>Utilidad</h3><div class="dash-cols">' +
       '<div class="panel"><h4>Utilidad por producto (top 10)</h4><div class="panel-body">' +
-        barsHTML(agruparSuma(V, 'prod', 'util'), { money: true, limit: 10 }) + '</div></div>' +
+        barsHTML(agruparSuma(V, 'prod', 'util'), { money: true, limit: 10, otros: true }) + '</div></div>' +
       '<div class="panel"><h4>Utilidad por tipo de producto</h4><div class="panel-body">' +
         barsHTML(agruparSuma(V, 'tipo', 'util'), { money: true, limit: 20 }) + '</div></div>' +
       '</div></div>';

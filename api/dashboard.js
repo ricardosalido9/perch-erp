@@ -101,9 +101,9 @@ module.exports = async (req, res) => {
       venta: cVenta ? num(r[cVenta]) : null,
       util:  cUtil ? num(r[cUtil]) : null,
       u:     cCant ? (num(r[cCant]) || 0) : 0,
-      prod:  cProd ? txt(r[cProd]) : '',
+      prod:  cProd ? (txt(r[cProd]) || 'Sin nombre') : 'Sin nombre',
       cli:   cCli ? txt(r[cCli]) : '',
-      tipo:  cTipo ? txt(r[cTipo]) : '',
+      tipo:  cTipo ? (txt(r[cTipo]) || 'Sin categorizar') : 'Sin categorizar',
       vend:  cVend ? txt(r[cVend]) : ''
     }));
 
