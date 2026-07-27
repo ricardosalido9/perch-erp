@@ -91,8 +91,7 @@ module.exports = async (req, res) => {
     const cTipo  = colConDatos(H, R, ['Tipo de producto', 'Tipo de Producto', 'Categoria producto', 'Categoría']);
     const cVend  = col(H, 'Vendedor');
     const cCant  = col(H, 'Cantidad', 'Unidades');
-    const cVenta = colMonto(H, R, ['Total con envio sin impuestos', 'Total con envío sin impuestos',
-                        'Total con envío', 'Total Pedido']);
+    const cVenta = col(H, 'Total con envio sin impuestos', 'Total con envío sin impuestos');
     const cUtil  = colMonto(H, R, ['Utilidad', 'Utilidad Final', 'Utilidad Bruta']);
 
     // Filas compactas: d(fecha num) f(fecha texto) venta util u(unidades) prod cli tipo vend

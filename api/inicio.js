@@ -80,7 +80,7 @@ module.exports = async (req, res) => {
     {
       const H = ventas.headers, R = ventas.rows;
       const cF   = col(H, 'Fecha del Cierre', 'Fecha');
-      const cVen = colMonto(H, R, ['Total con envio sin impuestos', 'Total con envío sin impuestos', 'Total con envío', 'Total Pedido']);
+      const cVen = col(H, 'Total con envio sin impuestos', 'Total con envío sin impuestos');
       const cUt  = colMonto(H, R, ['Utilidad', 'Utilidad Final', 'Utilidad Bruta']);
       const cV   = col(H, 'Vendedor');
       const cCl  = col(H, 'Cliente');
