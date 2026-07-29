@@ -1508,6 +1508,30 @@
         '</div></div>';
     }
 
+    // --- Cuentas por Cobrar (snapshot global, no depende del filtro de fecha) ---
+    var cx = d.cxc;
+    if (cx && cx.pedidos) {
+      h += '<div class="dash-section"><h3>Cuentas por Cobrar · saldo actual</h3><div class="kpi-grid">' +
+        '<div class="kpi"><div class="k">Facturado (con envío)</div><div class="v" title="' + esc(formatMoney(cx.facturado)) + '">' +
+          esc(fmtMoneyShort(cx.facturado)) + '</div><div class="s">' + fmtNum(cx.pedidos) + ' pedidos</div></div>' +
+        '<div class="kpi"><div class="k">Cobrado</div><div class="v" title="' + esc(formatMoney(cx.pagado)) + '">' +
+          esc(fmtMoneyShort(cx.pagado)) + '</div></div>' +
+        '<div class="kpi dark"><div class="k">Por cobrar</div><div class="v" title="' + esc(formatMoney(cx.porCobrar)) + '">' +
+          esc(fmtMoneyShort(cx.porCobrar)) + '</div><div class="s">' + fmtNum(cx.conSaldo) + ' pedidos con saldo</div></div>' +
+        '<div class="kpi"><div class="k">% Cobrado</div><div class="v">' +
+          (cx.facturado ? ((cx.pagado / cx.facturado) * 100).toFixed(0) : 0) + '%</div></div>' +
+        '</div>';
+      var cxRows = (cx.rows || []).map(function (r) {
+        return '<tr><td>' + esc(r.ref) + '</td><td title="' + esc(r.cli) + '">' + esc(r.cli) + '</td>' +
+          '<td class="num">' + esc(formatMoney(r.tot)) + '</td><td class="num">' + esc(formatMoney(r.pag)) + '</td>' +
+          '<td class="num" style="font-weight:700">' + esc(formatMoney(r.pc)) + '</td></tr>';
+      }).join('');
+      h += '<div class="panel"><h4>Pedidos con saldo pendiente (mayores)</h4><div class="panel-body">' +
+        (cxRows ? '<table class="mini-table"><thead><tr><th>Pedido</th><th>Cliente</th>' +
+          '<th style="text-align:right">Total</th><th style="text-align:right">Pagado</th><th style="text-align:right">Por cobrar</th></tr></thead><tbody>' +
+          cxRows + '</tbody></table>' : '<div class="dash-empty">Sin saldos pendientes.</div>') + '</div></div></div>';
+    }
+
     // --- Ventas recientes ---
     var vOrd = V.filter(function (r) { return r.d; }).sort(function (a, b) { return b.d - a.d; }).slice(0, 10);
     var vRows = vOrd.map(function (r) {

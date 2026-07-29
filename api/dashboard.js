@@ -157,6 +157,34 @@ module.exports = async (req, res) => {
       }).filter(x => x.anio && x.mes && (x.mv || x.mu));
     } catch (e) { metas = []; }
 
-    return res.status(200).json({ ventas: out, marketing: marketing, metas: metas });
+    // ===== Cuentas por Cobrar (por pedido) =====
+    let cxc = { facturado: 0, pagado: 0, porCobrar: 0, pedidos: 0, conSaldo: 0, rows: [] };
+    try {
+      const cx = await leer('fin_cxc');
+      const Hc = cx.headers;
+      const numPos = (v) => { const s = String(v == null ? '' : v).replace(/[^0-9.]/g, ''); const n = parseFloat(s); return isNaN(n) ? 0 : n; };
+      const cRef = col(Hc, 'No. de Referencia', 'No de Referencia', 'Referencia');
+      const cCli = col(Hc, 'Cliente');
+      const cTot = col(Hc, 'Total con envío', 'Total con envio', 'Total Pedido');
+      const cPag = col(Hc, 'Pagado');
+      const cPC  = col(Hc, 'Por cobrar', 'Por Cobrar');
+      const cF   = col(Hc, 'Fecha del Cierre', 'Fecha');
+      cx.rows.forEach(r => {
+        const ref = cRef ? txt(r[cRef]) : '';
+        if (!ref) return;
+        const tot = cTot ? numPos(r[cTot]) : 0;
+        const pag = cPag ? numPos(r[cPag]) : 0;
+        const pc  = cPC ? numPos(r[cPC]) : Math.max(0, tot - pag);
+        cxc.facturado += tot; cxc.pagado += pag; cxc.porCobrar += pc; cxc.pedidos++;
+        if (pc > 0.5) {
+          cxc.conSaldo++;
+          cxc.rows.push({ ref: ref, cli: cCli ? txt(r[cCli]) : '', tot: tot, pag: pag, pc: pc, f: cF ? txt(r[cF]) : '' });
+        }
+      });
+      cxc.rows.sort((a, b) => b.pc - a.pc);
+      cxc.rows = cxc.rows.slice(0, 15);
+    } catch (e) { cxc = { facturado: 0, pagado: 0, porCobrar: 0, pedidos: 0, conSaldo: 0, rows: [] }; }
+
+    return res.status(200).json({ ventas: out, marketing: marketing, metas: metas, cxc: cxc });
   } catch (e) { return res.status(500).json({ error: e.message }); }
 };
