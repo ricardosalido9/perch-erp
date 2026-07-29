@@ -1163,6 +1163,7 @@
   // Arranca filtrado del 1 de enero del año en curso a hoy (botón "Ver todo" para quitarlo)
   var dashRange = { from: isoInicioAnio(), to: isoHoy() };
   var dashCompare = false;   // comparar con el mismo periodo del año anterior
+  var dashMetas = false;     // comparar contra metas
 
   // Rango del año anterior (mismo periodo, -1 año). d es número AAAAMMDD.
   function rangoPrev() {
@@ -1308,7 +1309,8 @@
     rows.forEach(function (r) { if (r.d) { var m = Math.floor(r.d / 100) % 100; if (o[m] != null) o[m] += (r[campo] || 0); } });
     return o;
   }
-  function chartCompareHTML(curr, prev) {
+  function chartCompareHTML(curr, prev, label) {
+    label = label || 'año ant.';
     var max = 1, totC = 0, totP = 0, m;
     for (m = 1; m <= 12; m++) { if (curr[m] > max) max = curr[m]; if (prev[m] > max) max = prev[m]; }
     var html = '<div class="chart">';
@@ -1317,7 +1319,7 @@
       if (vc === 0 && vp === 0) continue;
       var hc = Math.max(2, Math.round((vc / max) * 128)), hp = Math.max(2, Math.round((vp / max) * 128));
       var lbl = MESES_CORTO[m - 1];
-      var tip = lbl + ': ' + fmtMoneyShort(vc) + ' vs ' + fmtMoneyShort(vp) + ' (año ant.)';
+      var tip = lbl + ': ' + fmtMoneyShort(vc) + ' vs ' + fmtMoneyShort(vp) + ' (' + label + ')';
       html += '<div class="cbar" title="' + esc(tip) + '">' +
         '<span class="cv">' + esc(fmtMoneyShort(vc)) + '</span>' +
         '<span class="cmp-bars"><span class="fill fill-prev" style="height:' + hp + 'px"></span>' +
@@ -1326,10 +1328,32 @@
     }
     var vpct = totP ? (((totC - totP) / Math.abs(totP)) * 100) : 0;
     var up = vpct >= 0;
-    html += '</div><div class="bar-total"><span>Actual ' + esc(fmtMoneyShort(totC)) +
-      ' · Año ant. ' + esc(fmtMoneyShort(totP)) + '</span><span class="tv" style="color:' +
+    html += '</div><div class="bar-total"><span>Real ' + esc(fmtMoneyShort(totC)) +
+      ' · ' + esc(label.charAt(0).toUpperCase() + label.slice(1)) + ' ' + esc(fmtMoneyShort(totP)) + '</span><span class="tv" style="color:' +
       (up ? 'var(--success)' : 'var(--danger)') + '">' + (up ? '▲' : '▼') + ' ' + Math.abs(vpct).toFixed(1) + '%</span></div>';
     return html;
+  }
+  // Metas por número de mes dentro del periodo filtrado (suma sobre los años del rango)
+  function metasPorMes(campo) {
+    var o = {}; for (var m = 1; m <= 12; m++) o[m] = 0;
+    var d = dashData; if (!d || !d.metas) return o;
+    var fromYM = dashRange.from ? parseInt(dashRange.from.slice(0, 7).replace('-', ''), 10) : null;
+    var toYM = dashRange.to ? parseInt(dashRange.to.slice(0, 7).replace('-', ''), 10) : null;
+    d.metas.forEach(function (r) {
+      var ym = r.anio * 100 + r.mes;
+      if (fromYM && ym < fromYM) return;
+      if (toYM && ym > toYM) return;
+      if (o[r.mes] != null) o[r.mes] += (campo === 'mu' ? r.mu : r.mv) || 0;
+    });
+    return o;
+  }
+  function sumaObj(o) { var t = 0; for (var k in o) t += o[k] || 0; return t; }
+  function cumplimientoHTML(real, meta) {
+    if (!meta) return '<span class="s">sin meta</span>';
+    var pct = (real / meta) * 100;
+    var ok = pct >= 100;
+    return '<span class="s" style="color:' + (ok ? 'var(--success)' : 'var(--danger)') + '">' +
+      pct.toFixed(0) + '% de meta (' + fmtMoneyShort(meta) + ')</span>';
   }
 
   function renderDashboard() {
@@ -1337,6 +1361,10 @@
     var V = (d.ventas || []).filter(function (r) { return enRango(r.d); });
     var cmpOn = dashCompare && dashRange.from && dashRange.to;
     var Vp = cmpOn ? (d.ventas || []).filter(function (r) { return enRangoPrev(r.d); }) : [];
+    var hayMetas = d.metas && d.metas.length;
+    var metasOn = dashMetas && hayMetas && dashRange.from && dashRange.to;
+    var metaV = metasOn ? sumaObj(metasPorMes('mv')) : 0;
+    var metaU = metasOn ? sumaObj(metasPorMes('mu')) : 0;
 
     var venta = suma(V, 'venta');
     var util = suma(V, 'util');
@@ -1358,6 +1386,8 @@
       (hayFiltro ? '<button type="button" id="dClear">Ver todo</button>' : '') +
       '<button type="button" id="dCmp" class="' + (dashCompare ? 'primary' : '') + '">' +
         (dashCompare ? '✓ Comparando año anterior' : 'Comparar con año anterior') + '</button>' +
+      (hayMetas ? '<button type="button" id="dMetas" class="' + (dashMetas ? 'primary' : '') + '">' +
+        (dashMetas ? '✓ Comparando metas' : 'Comparar con metas') + '</button>' : '') +
       '<span class="dash-hint">' +
         (cmpOn ? 'Comparando vs mismo periodo del año anterior' :
           (dashCompare ? 'Elige un periodo (desde/hasta) para comparar' :
@@ -1368,15 +1398,24 @@
     h += '<div class="dash-section"><h3>Resumen comercial · Total con envío sin impuestos</h3><div class="kpi-grid">' +
       '<div class="kpi dark"><div class="k">Ventas totales</div><div class="v" title="' + esc(formatMoney(venta)) + '">' +
         esc(fmtMoneyShort(venta)) + '</div>' +
-        (cmpOn ? variacionHTML(venta, ventaP) : '<div class="s">' + fmtNum(ops) + ' registros</div>') + '</div>' +
+        (cmpOn ? variacionHTML(venta, ventaP) : '<div class="s">' + fmtNum(ops) + ' registros</div>') +
+        (metasOn ? cumplimientoHTML(venta, metaV) : '') + '</div>' +
       '<div class="kpi"><div class="k">Unidades vendidas</div><div class="v">' + fmtNum(unidades) + '</div>' +
         (cmpOn ? variacionHTML(unidades, uniP) : '') + '</div>' +
       '<div class="kpi"><div class="k">Ticket promedio</div><div class="v" title="' + esc(formatMoney(ticket)) + '">' +
         esc(fmtMoneyShort(ticket)) + '</div></div>' +
       '<div class="kpi"><div class="k">Utilidad</div><div class="v" title="' + esc(formatMoney(util)) + '">' +
-        esc(fmtMoneyShort(util)) + '</div>' + (cmpOn ? variacionHTML(util, utilP) : '') + '</div>' +
+        esc(fmtMoneyShort(util)) + '</div>' + (cmpOn ? variacionHTML(util, utilP) : '') +
+        (metasOn ? cumplimientoHTML(util, metaU) : '') + '</div>' +
       '<div class="kpi"><div class="k">% Utilidad</div><div class="v">' + (margen * 100).toFixed(1) + '%</div></div>' +
       '</div></div>';
+
+    // --- Cumplimiento de metas por mes ---
+    if (metasOn) {
+      h += '<div class="dash-section"><h3>Cumplimiento de metas · Ventas (verde claro = meta)</h3>' +
+        '<div class="panel"><div class="panel-body">' +
+        chartCompareHTML(porMesNum(V, 'venta'), metasPorMes('mv'), 'meta') + '</div></div></div>';
+    }
 
     // --- Ventas por mes / categoría / vendedor ---
     h += '<div class="dash-section"><h3>Ventas</h3><div class="dash-cols">' +
@@ -1460,6 +1499,12 @@
       dashRange.from = document.getElementById('dFrom').value;
       dashRange.to = document.getElementById('dTo').value;
       dashCompare = !dashCompare; renderDashboard();
+    });
+    var mtb = document.getElementById('dMetas');
+    if (mtb) mtb.addEventListener('click', function () {
+      dashRange.from = document.getElementById('dFrom').value;
+      dashRange.to = document.getElementById('dTo').value;
+      dashMetas = !dashMetas; renderDashboard();
     });
   }
 

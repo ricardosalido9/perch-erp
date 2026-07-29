@@ -138,6 +138,25 @@ module.exports = async (req, res) => {
       })).filter(x => x.d !== null && x.tot !== null);
     } catch (e) { marketing = []; }
 
-    return res.status(200).json({ ventas: out, marketing: marketing });
+    // ===== Metas mensuales =====
+    let metas = [];
+    try {
+      const mt = await leer('metas');
+      const Ht = mt.headers;
+      const tPer = col(Ht, 'Periodo', 'Fecha del Cierre', 'Fecha');
+      const tMes = col(Ht, 'Mes');
+      const tMV  = col(Ht, 'Meta Ventas', 'Meta de Ventas', 'Meta ventas');
+      const tMU  = col(Ht, 'Meta Utilidad Bruta', 'Meta Utilidad', 'Meta de Utilidad');
+      const numG = (v) => { const s = String(v == null ? '' : v).replace(/[^0-9.]/g, ''); const n = parseFloat(s); return isNaN(n) ? 0 : n; };
+      metas = mt.rows.map(r => {
+        const f = tPer ? fechaNum(r[tPer]) : null;
+        let anio = null, mes = null;
+        if (f !== null) { anio = Math.floor(f / 10000); mes = Math.floor(f / 100) % 100; }
+        if ((!mes) && tMes) mes = parseInt(numG(r[tMes]), 10) || null;
+        return { anio: anio, mes: mes, mv: tMV ? numG(r[tMV]) : 0, mu: tMU ? numG(r[tMU]) : 0 };
+      }).filter(x => x.anio && x.mes && (x.mv || x.mu));
+    } catch (e) { metas = []; }
+
+    return res.status(200).json({ ventas: out, marketing: marketing, metas: metas });
   } catch (e) { return res.status(500).json({ error: e.message }); }
 };
