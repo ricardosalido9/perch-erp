@@ -1304,6 +1304,40 @@
     rows.forEach(function (r) { var n = r[campo]; if (n !== null && n !== undefined) t += n; });
     return t;
   }
+  function variacionMini(v, p) {
+    if (!p) return '<span style="color:var(--muted);font-size:11px">nvo</span>';
+    var pct = ((v - p) / Math.abs(p)) * 100, up = pct >= 0;
+    return '<span style="color:' + (up ? 'var(--success)' : 'var(--danger)') + ';font-size:11px;font-weight:600;white-space:nowrap">' +
+      (up ? '▲' : '▼') + Math.abs(pct).toFixed(0) + '%</span>';
+  }
+  function barsCompareHTML(objC, objP, opts) {
+    opts = opts || {}; objC = objC || {}; objP = objP || {};
+    var keys = {}; Object.keys(objC).forEach(function (k) { keys[k] = 1; }); Object.keys(objP).forEach(function (k) { keys[k] = 1; });
+    var all = Object.keys(keys).map(function (k) { return { k: k, v: objC[k] || 0, p: objP[k] || 0 }; })
+      .sort(function (a, b) { return b.v - a.v; });
+    if (!all.length) return '<div class="dash-empty">Sin datos en el periodo.</div>';
+    var granC = 0, granP = 0; all.forEach(function (it) { granC += it.v; granP += it.p; });
+    var limit = opts.limit || 6;
+    var items = all.slice(0, limit);
+    var otrosC = 0, otrosP = 0, otrosN = 0;
+    if (opts.otros && all.length > limit) all.slice(limit).forEach(function (it) { otrosC += it.v; otrosP += it.p; otrosN++; });
+    var max = items.length ? items[0].v : 1; if (otrosC > max) max = otrosC; if (max <= 0) max = 1;
+    function row(k, v, p, dim) {
+      var pct = Math.max(2, Math.round((v / max) * 100));
+      var val = opts.money ? fmtMoneyShort(v) : fmtNum(v);
+      var tip = k + ': ' + (opts.money ? formatMoney(v) : fmtNum(v)) + ' · año ant. ' + (opts.money ? formatMoney(p) : fmtNum(p));
+      return '<div class="bar-row" title="' + esc(tip) + '"' + (dim ? ' style="opacity:.72"' : '') + '>' +
+        '<span class="lbl">' + esc(k) + '</span>' +
+        '<span class="bar-track"><span class="bar-fill" style="width:' + pct + '%' + (dim ? ';background:var(--muted)' : '') + '"></span></span>' +
+        '<span class="val">' + esc(val) + ' ' + variacionMini(v, p) + '</span></div>';
+    }
+    var html = '<div class="bars">';
+    items.forEach(function (it) { html += row(it.k, it.v, it.p, false); });
+    if (otrosN > 0) html += row('Otros (' + otrosN + ')', otrosC, otrosP, true);
+    html += '</div><div class="bar-total"><span>Total · año ant. ' + esc(fmtMoneyShort(granP)) +
+      '</span><span class="tv">' + esc(opts.money ? formatMoney(granC) : fmtNum(granC)) + ' ' + variacionMini(granC, granP) + '</span></div>';
+    return html;
+  }
   function porMesNum(rows, campo) {
     var o = {}; for (var m = 1; m <= 12; m++) o[m] = 0;
     rows.forEach(function (r) { if (r.d) { var m = Math.floor(r.d / 100) % 100; if (o[m] != null) o[m] += (r[campo] || 0); } });
@@ -1418,55 +1452,59 @@
     }
 
     // --- Ventas por mes / categoría / vendedor ---
+    function barsX(dataC, dataP, campo, valfield, opts) {
+      var oc = agruparSuma(dataC, campo, valfield);
+      return cmpOn ? barsCompareHTML(oc, agruparSuma(dataP, campo, valfield), opts) : barsHTML(oc, opts);
+    }
     h += '<div class="dash-section"><h3>Ventas</h3><div class="dash-cols">' +
       '<div class="panel"><h4>Ventas por mes' + (cmpOn ? ' (verde claro = año anterior)' : '') + '</h4><div class="panel-body">' +
         (cmpOn ? chartCompareHTML(porMesNum(V, 'venta'), porMesNum(Vp, 'venta'))
                : chartHTML(porMesSuma(V, 'venta'), { money: true })) + '</div></div>' +
       '<div class="panel"><h4>Ventas por categoría de producto</h4><div class="panel-body">' +
-        barsHTML(agruparSuma(V, 'tipo', 'venta'), { money: true, limit: 20 }) + '</div></div>' +
+        barsX(V, Vp, 'tipo', 'venta', { money: true, limit: 20 }) + '</div></div>' +
       '<div class="panel"><h4>Ventas por vendedor</h4><div class="panel-body">' +
-        barsHTML(agruparSuma(V, 'vend', 'venta'), { money: true, limit: 20 }) + '</div></div>' +
+        barsX(V, Vp, 'vend', 'venta', { money: true, limit: 20 }) + '</div></div>' +
       '</div></div>';
 
     // --- Top productos y clientes ---
     h += '<div class="dash-section"><h3>Top 10</h3><div class="dash-cols">' +
       '<div class="panel"><h4>Productos más vendidos (top 10)</h4><div class="panel-body">' +
-        barsHTML(agruparSuma(V, 'prod', 'venta'), { money: true, limit: 10, otros: true }) + '</div></div>' +
+        barsX(V, Vp, 'prod', 'venta', { money: true, limit: 10, otros: true }) + '</div></div>' +
       '<div class="panel"><h4>Clientes principales (top 10)</h4><div class="panel-body">' +
-        barsHTML(agruparSuma(V, 'cli', 'venta'), { money: true, limit: 10, otros: true }) + '</div></div>' +
+        barsX(V, Vp, 'cli', 'venta', { money: true, limit: 10, otros: true }) + '</div></div>' +
       '</div></div>';
 
     // --- Utilidad ---
     h += '<div class="dash-section"><h3>Utilidad</h3><div class="dash-cols">' +
       '<div class="panel"><h4>Utilidad por producto (top 10)</h4><div class="panel-body">' +
-        barsHTML(agruparSuma(V, 'prod', 'util'), { money: true, limit: 10, otros: true }) + '</div></div>' +
+        barsX(V, Vp, 'prod', 'util', { money: true, limit: 10, otros: true }) + '</div></div>' +
       '<div class="panel"><h4>Utilidad por tipo de producto</h4><div class="panel-body">' +
-        barsHTML(agruparSuma(V, 'tipo', 'util'), { money: true, limit: 20 }) + '</div></div>' +
+        barsX(V, Vp, 'tipo', 'util', { money: true, limit: 20 }) + '</div></div>' +
       '</div></div>';
-
     // --- Marketing (pestaña Marketing, por pedido) ---
     var Vm = (d.marketing || []).filter(function (r) { return enRango(r.d); });
+    var Vmp = cmpOn ? (d.marketing || []).filter(function (r) { return enRangoPrev(r.d); }) : [];
     if (Vm.length) {
       var totMk = suma(Vm, 'tot');
       h += '<div class="dash-section"><h3>Marketing · ' + Vm.length + ' pedidos · ' + esc(fmtMoneyShort(totMk)) + '</h3><div class="dash-cols">' +
         '<div class="panel"><h4>Ventas por Tipo de Cliente (B2C / B2B)</h4><div class="panel-body">' +
-          barsHTML(agruparSuma(Vm, 'tl', 'tot'), { money: true, limit: 20 }) + '</div></div>' +
+          barsX(Vm, Vmp, 'tl', 'tot', { money: true, limit: 20 }) + '</div></div>' +
         '<div class="panel"><h4>Ventas por Línea de Negocio</h4><div class="panel-body">' +
-          barsHTML(agruparSuma(Vm, 'lin', 'tot'), { money: true, limit: 20 }) + '</div></div>' +
+          barsX(Vm, Vmp, 'lin', 'tot', { money: true, limit: 20 }) + '</div></div>' +
         '<div class="panel"><h4>Ventas por Tipo de Proyecto</h4><div class="panel-body">' +
-          barsHTML(agruparSuma(Vm, 'proy', 'tot'), { money: true, limit: 20 }) + '</div></div>' +
+          barsX(Vm, Vmp, 'proy', 'tot', { money: true, limit: 20 }) + '</div></div>' +
         '</div></div>';
       h += '<div class="dash-section"><div class="dash-cols">' +
         '<div class="panel"><h4>Ventas por Cómo Llegó</h4><div class="panel-body">' +
-          barsHTML(agruparSuma(Vm, 'como', 'tot'), { money: true, limit: 10, otros: true }) + '</div></div>' +
+          barsX(Vm, Vmp, 'como', 'tot', { money: true, limit: 10, otros: true }) + '</div></div>' +
         '<div class="panel"><h4>Ventas por Ciudad (top 10)</h4><div class="panel-body">' +
-          barsHTML(agruparSuma(Vm, 'city', 'tot'), { money: true, limit: 10, otros: true }) + '</div></div>' +
+          barsX(Vm, Vmp, 'city', 'tot', { money: true, limit: 10, otros: true }) + '</div></div>' +
         '</div></div>';
       h += '<div class="dash-section"><div class="dash-cols">' +
         '<div class="panel"><h4>Ventas por Showroom</h4><div class="panel-body">' +
-          barsHTML(agruparSuma(Vm, 'show', 'tot'), { money: true, limit: 20 }) + '</div></div>' +
+          barsX(Vm, Vmp, 'show', 'tot', { money: true, limit: 20 }) + '</div></div>' +
         '<div class="panel"><h4>Ventas por Happening / Campaña</h4><div class="panel-body">' +
-          barsHTML(agruparSuma(Vm, 'hap', 'tot'), { money: true, limit: 15, otros: true }) + '</div></div>' +
+          barsX(Vm, Vmp, 'hap', 'tot', { money: true, limit: 15, otros: true }) + '</div></div>' +
         '</div></div>';
     }
 
