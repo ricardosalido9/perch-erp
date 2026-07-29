@@ -1343,6 +1343,32 @@
         barsHTML(agruparSuma(V, 'tipo', 'util'), { money: true, limit: 20 }) + '</div></div>' +
       '</div></div>';
 
+    // --- Marketing (pestaña Marketing, por pedido) ---
+    var Vm = (d.marketing || []).filter(function (r) { return enRango(r.d); });
+    if (Vm.length) {
+      var totMk = suma(Vm, 'tot');
+      h += '<div class="dash-section"><h3>Marketing · ' + Vm.length + ' pedidos · ' + esc(fmtMoneyShort(totMk)) + '</h3><div class="dash-cols">' +
+        '<div class="panel"><h4>Ventas por Tipo de Cliente (B2C / B2B)</h4><div class="panel-body">' +
+          barsHTML(agruparSuma(Vm, 'tl', 'tot'), { money: true, limit: 20 }) + '</div></div>' +
+        '<div class="panel"><h4>Ventas por Línea de Negocio</h4><div class="panel-body">' +
+          barsHTML(agruparSuma(Vm, 'lin', 'tot'), { money: true, limit: 20 }) + '</div></div>' +
+        '<div class="panel"><h4>Ventas por Tipo de Proyecto</h4><div class="panel-body">' +
+          barsHTML(agruparSuma(Vm, 'proy', 'tot'), { money: true, limit: 20 }) + '</div></div>' +
+        '</div></div>';
+      h += '<div class="dash-section"><div class="dash-cols">' +
+        '<div class="panel"><h4>Ventas por Cómo Llegó</h4><div class="panel-body">' +
+          barsHTML(agruparSuma(Vm, 'como', 'tot'), { money: true, limit: 10, otros: true }) + '</div></div>' +
+        '<div class="panel"><h4>Ventas por Ciudad (top 10)</h4><div class="panel-body">' +
+          barsHTML(agruparSuma(Vm, 'city', 'tot'), { money: true, limit: 10, otros: true }) + '</div></div>' +
+        '</div></div>';
+      h += '<div class="dash-section"><div class="dash-cols">' +
+        '<div class="panel"><h4>Ventas por Showroom</h4><div class="panel-body">' +
+          barsHTML(agruparSuma(Vm, 'show', 'tot'), { money: true, limit: 20 }) + '</div></div>' +
+        '<div class="panel"><h4>Ventas por Happening / Campaña</h4><div class="panel-body">' +
+          barsHTML(agruparSuma(Vm, 'hap', 'tot'), { money: true, limit: 15, otros: true }) + '</div></div>' +
+        '</div></div>';
+    }
+
     // --- Ventas recientes ---
     var vOrd = V.filter(function (r) { return r.d; }).sort(function (a, b) { return b.d - a.d; }).slice(0, 10);
     var vRows = vOrd.map(function (r) {

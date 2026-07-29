@@ -107,6 +107,37 @@ module.exports = async (req, res) => {
       vend:  cVend ? txt(r[cVend]) : ''
     }));
 
-    return res.status(200).json({ ventas: out });
+    // ===== Marketing (misma base, otra pestaña; por pedido) =====
+    let marketing = [];
+    try {
+      const mk = await leer('marketing');
+      const Hm = mk.headers;
+      const mF   = col(Hm, 'Fecha del Cierre', 'Fecha');
+      const mTot = colMonto(Hm, mk.rows, ['Total con envio sin impuestos', 'Total con envío sin impuestos', 'Total Pedido', 'Total']);
+      const mCli = col(Hm, 'Cliente');
+      const mCity = col(Hm, 'Ciudad');
+      const mProy = col(Hm, 'Proyecto');
+      const mComo = col(Hm, 'Cómo Llego', 'Cómo Llegó', 'Como Llego', 'Como Llegó');
+      const mLin  = col(Hm, 'Línea de Negocio', 'Linea de Negocio');
+      const mTL   = col(Hm, 'Tipo de Línea', 'Tipo de Linea');
+      const mShow = col(Hm, 'Showroom');
+      const mHap  = col(Hm, 'Happening');
+      const lim  = (v) => { const s = txt(v); return s ? s : 'Sin especificar'; };
+      const limH = (v) => { const s = txt(v); const n = s.toLowerCase(); return (!s || n === 'na' || n === 'n/a' || n === '-') ? 'Sin especificar' : s; };
+      marketing = mk.rows.map(r => ({
+        d:    mF ? fechaNum(r[mF]) : null,
+        tot:  mTot ? num(r[mTot]) : null,
+        city: mCity ? lim(r[mCity]) : 'Sin especificar',
+        proy: mProy ? lim(r[mProy]) : 'Sin especificar',
+        como: mComo ? lim(r[mComo]) : 'Sin especificar',
+        lin:  mLin ? lim(r[mLin]) : 'Sin especificar',
+        tl:   mTL ? lim(r[mTL]) : 'Sin especificar',
+        show: mShow ? (txt(r[mShow]) || 'Sin especificar') : 'Sin especificar',
+        hap:  mHap ? limH(r[mHap]) : 'Sin especificar',
+        cli:  mCli ? txt(r[mCli]) : ''
+      })).filter(x => x.d !== null && x.tot !== null);
+    } catch (e) { marketing = []; }
+
+    return res.status(200).json({ ventas: out, marketing: marketing });
   } catch (e) { return res.status(500).json({ error: e.message }); }
 };
