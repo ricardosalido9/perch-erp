@@ -237,6 +237,10 @@
     align-items:center; gap:6px; min-width:0; }
   .chart .cbar .fill { width:100%; background:var(--ink); border-radius:5px 5px 0 0; min-height:2px; }
   .chart .cbar .cl { font-size:10px; color:var(--muted); white-space:nowrap; }
+  .chart .cbar .cmp-bars { width:100%; display:flex; align-items:flex-end; justify-content:center; gap:3px; }
+  .chart .cbar .cmp-bars .fill { width:45%; }
+  .chart .cbar .cmp-bars .fill-prev { background:#a9c3b7; }
+  .chart .cbar:hover .cmp-bars .fill-prev { background:#8fb0a2; }
   .chart .cbar .cv { font-size:9px; color:var(--slate); font-weight:600; white-space:nowrap; font-variant-numeric:tabular-nums; }
   .bar-total { display:flex; justify-content:space-between; align-items:center; gap:10px;
     border-top:1px solid var(--line); margin-top:12px; padding-top:10px;
@@ -1158,6 +1162,26 @@
   function isoInicioAnio() { return new Date().getFullYear() + '-01-01'; }
   // Arranca filtrado del 1 de enero del año en curso a hoy (botón "Ver todo" para quitarlo)
   var dashRange = { from: isoInicioAnio(), to: isoHoy() };
+  var dashCompare = false;   // comparar con el mismo periodo del año anterior
+
+  // Rango del año anterior (mismo periodo, -1 año). d es número AAAAMMDD.
+  function rangoPrev() {
+    if (!dashRange.from || !dashRange.to) return null;
+    var f = isoNum(dashRange.from), t = isoNum(dashRange.to);
+    return { f: f - 10000, t: t - 10000 };   // -1 año
+  }
+  function enRangoPrev(d) {
+    var r = rangoPrev(); if (!r || d == null) return false;
+    return d >= r.f && d <= r.t;
+  }
+  function variacionHTML(actual, previo) {
+    if (!previo) return '<span class="s">sin dato ' + (previo === 0 ? 'año ant.' : '') + '</span>';
+    var pct = ((actual - previo) / Math.abs(previo)) * 100;
+    var up = pct >= 0;
+    var col = up ? 'var(--success)' : 'var(--danger)';
+    return '<span class="s" style="color:' + col + '">' + (up ? '▲' : '▼') + ' ' +
+      Math.abs(pct).toFixed(1) + '% vs año ant. (' + fmtMoneyShort(previo) + ')</span>';
+  }
 
   function fmtNum(n) { return (n || 0).toLocaleString('es-MX'); }
   function fmtMoneyShort(n) {
@@ -1279,10 +1303,40 @@
     rows.forEach(function (r) { var n = r[campo]; if (n !== null && n !== undefined) t += n; });
     return t;
   }
+  function porMesNum(rows, campo) {
+    var o = {}; for (var m = 1; m <= 12; m++) o[m] = 0;
+    rows.forEach(function (r) { if (r.d) { var m = Math.floor(r.d / 100) % 100; if (o[m] != null) o[m] += (r[campo] || 0); } });
+    return o;
+  }
+  function chartCompareHTML(curr, prev) {
+    var max = 1, totC = 0, totP = 0, m;
+    for (m = 1; m <= 12; m++) { if (curr[m] > max) max = curr[m]; if (prev[m] > max) max = prev[m]; }
+    var html = '<div class="chart">';
+    for (m = 1; m <= 12; m++) {
+      var vc = curr[m] || 0, vp = prev[m] || 0; totC += vc; totP += vp;
+      if (vc === 0 && vp === 0) continue;
+      var hc = Math.max(2, Math.round((vc / max) * 128)), hp = Math.max(2, Math.round((vp / max) * 128));
+      var lbl = MESES_CORTO[m - 1];
+      var tip = lbl + ': ' + fmtMoneyShort(vc) + ' vs ' + fmtMoneyShort(vp) + ' (año ant.)';
+      html += '<div class="cbar" title="' + esc(tip) + '">' +
+        '<span class="cv">' + esc(fmtMoneyShort(vc)) + '</span>' +
+        '<span class="cmp-bars"><span class="fill fill-prev" style="height:' + hp + 'px"></span>' +
+        '<span class="fill" style="height:' + hc + 'px"></span></span>' +
+        '<span class="cl">' + esc(lbl) + '</span></div>';
+    }
+    var vpct = totP ? (((totC - totP) / Math.abs(totP)) * 100) : 0;
+    var up = vpct >= 0;
+    html += '</div><div class="bar-total"><span>Actual ' + esc(fmtMoneyShort(totC)) +
+      ' · Año ant. ' + esc(fmtMoneyShort(totP)) + '</span><span class="tv" style="color:' +
+      (up ? 'var(--success)' : 'var(--danger)') + '">' + (up ? '▲' : '▼') + ' ' + Math.abs(vpct).toFixed(1) + '%</span></div>';
+    return html;
+  }
 
   function renderDashboard() {
     var d = dashData; if (!d) return;
     var V = (d.ventas || []).filter(function (r) { return enRango(r.d); });
+    var cmpOn = dashCompare && dashRange.from && dashRange.to;
+    var Vp = cmpOn ? (d.ventas || []).filter(function (r) { return enRangoPrev(r.d); }) : [];
 
     var venta = suma(V, 'venta');
     var util = suma(V, 'util');
@@ -1290,6 +1344,7 @@
     var ops = V.length;
     var ticket = ops ? venta / ops : 0;
     var margen = venta ? (util / venta) : 0;
+    var ventaP = suma(Vp, 'venta'), utilP = suma(Vp, 'util'), uniP = suma(Vp, 'u');
     var h = '';
 
     // --- Filtro de fechas ---
@@ -1301,26 +1356,33 @@
       '<input type="date" id="dTo" value="' + esc(dashRange.to) + '">' +
       '<button type="button" id="dApply" class="primary">Aplicar</button>' +
       (hayFiltro ? '<button type="button" id="dClear">Ver todo</button>' : '') +
+      '<button type="button" id="dCmp" class="' + (dashCompare ? 'primary' : '') + '">' +
+        (dashCompare ? '✓ Comparando año anterior' : 'Comparar con año anterior') + '</button>' +
       '<span class="dash-hint">' +
-        (hayFiltro ? 'Filtrando ventas por periodo' : 'Mostrando todas las ventas') +
+        (cmpOn ? 'Comparando vs mismo periodo del año anterior' :
+          (dashCompare ? 'Elige un periodo (desde/hasta) para comparar' :
+          (hayFiltro ? 'Filtrando ventas por periodo' : 'Mostrando todas las ventas'))) +
       '</span></div>';
 
     // --- KPIs (Total con envío sin impuestos) ---
     h += '<div class="dash-section"><h3>Resumen comercial · Total con envío sin impuestos</h3><div class="kpi-grid">' +
       '<div class="kpi dark"><div class="k">Ventas totales</div><div class="v" title="' + esc(formatMoney(venta)) + '">' +
-        esc(fmtMoneyShort(venta)) + '</div><div class="s">' + fmtNum(ops) + ' registros</div></div>' +
-      '<div class="kpi"><div class="k">Unidades vendidas</div><div class="v">' + fmtNum(unidades) + '</div></div>' +
+        esc(fmtMoneyShort(venta)) + '</div>' +
+        (cmpOn ? variacionHTML(venta, ventaP) : '<div class="s">' + fmtNum(ops) + ' registros</div>') + '</div>' +
+      '<div class="kpi"><div class="k">Unidades vendidas</div><div class="v">' + fmtNum(unidades) + '</div>' +
+        (cmpOn ? variacionHTML(unidades, uniP) : '') + '</div>' +
       '<div class="kpi"><div class="k">Ticket promedio</div><div class="v" title="' + esc(formatMoney(ticket)) + '">' +
         esc(fmtMoneyShort(ticket)) + '</div></div>' +
       '<div class="kpi"><div class="k">Utilidad</div><div class="v" title="' + esc(formatMoney(util)) + '">' +
-        esc(fmtMoneyShort(util)) + '</div></div>' +
+        esc(fmtMoneyShort(util)) + '</div>' + (cmpOn ? variacionHTML(util, utilP) : '') + '</div>' +
       '<div class="kpi"><div class="k">% Utilidad</div><div class="v">' + (margen * 100).toFixed(1) + '%</div></div>' +
       '</div></div>';
 
     // --- Ventas por mes / categoría / vendedor ---
     h += '<div class="dash-section"><h3>Ventas</h3><div class="dash-cols">' +
-      '<div class="panel"><h4>Ventas por mes</h4><div class="panel-body">' +
-        chartHTML(porMesSuma(V, 'venta'), { money: true }) + '</div></div>' +
+      '<div class="panel"><h4>Ventas por mes' + (cmpOn ? ' (verde claro = año anterior)' : '') + '</h4><div class="panel-body">' +
+        (cmpOn ? chartCompareHTML(porMesNum(V, 'venta'), porMesNum(Vp, 'venta'))
+               : chartHTML(porMesSuma(V, 'venta'), { money: true })) + '</div></div>' +
       '<div class="panel"><h4>Ventas por categoría de producto</h4><div class="panel-body">' +
         barsHTML(agruparSuma(V, 'tipo', 'venta'), { money: true, limit: 20 }) + '</div></div>' +
       '<div class="panel"><h4>Ventas por vendedor</h4><div class="panel-body">' +
@@ -1391,7 +1453,13 @@
     });
     var clr = document.getElementById('dClear');
     if (clr) clr.addEventListener('click', function () {
-      dashRange = { from: '', to: '' }; renderDashboard();
+      dashRange = { from: '', to: '' }; dashCompare = false; renderDashboard();
+    });
+    var cmp = document.getElementById('dCmp');
+    if (cmp) cmp.addEventListener('click', function () {
+      dashRange.from = document.getElementById('dFrom').value;
+      dashRange.to = document.getElementById('dTo').value;
+      dashCompare = !dashCompare; renderDashboard();
     });
   }
 
