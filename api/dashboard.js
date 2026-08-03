@@ -76,6 +76,50 @@ function colMonto(H, rows, nombres) {
   return best;
 }
 
+// ===== Funnel de ventas (pestaña "Montse 2026") =====
+// La hoja es una BITÁCORA DE CONTACTOS, no un listado de cotizaciones:
+//   MES · Prioridad · Cliente · Despacho · TIPO CLIENTE · Forma de Contacto · Mail · NOTAS ·
+//   Fecha contacto · Visito Showroom · Cotización · Estatus · Valor Venta · Valor Cotización
+// "Cotización" = qué se le mandó (Información / Cotizacion / Catálogo). "Estatus" = texto libre.
+const F_ETAPA = [
+  { cat: 'cotizacion', re: /cotizacion|enviada/ },      // se le mandó una cotización
+  { cat: 'catalogo',   re: /catalogo|price ?list/ },
+  { cat: 'info',       re: /informacion|por enviar/ }
+];
+const F_RESULT = [
+  { cat: 'perdida', re: /cancelad|decidio otra|no se cerro|no interesad|declin|rebot/ },
+  { cat: 'ganada',  re: /venta cerrada|venta exitosa|cliente exitos|clienta exitos|exitosa|exitoso|pagada|pagado|por pagar|cerrada|cerrado/ },
+  { cat: 'perdida', re: /sin respuesta|sin respuestra|no dio respuesta|no ha dado respuesta|no respondio|sin repuesta/ },
+  { cat: 'abierta', re: /esperando|espera|seguimiento|en proceso|en contacto|pendiente|si responde|nos tendra|nos tiene|revisar|volver a buscar|por visitar|escogimos|va tarde|darle seguimiento|confrimar|confirmar|cita/ }
+];
+function clasifPor(lista, v) {
+  const n = norm(v);
+  if (!n || n === 'na' || n === 'n/a' || n === '-' || n === '--') return null;   // "NA" = sin dato
+  for (const g of lista) if (g.re.test(n)) return g.cat;
+  return 'otro';
+}
+// Fecha: usa "Fecha contacto" en cualquiera de sus formas; si no, el mes de la columna MES.
+function fechaFunnel(v, mesFallback, anio) {
+  const base = fechaNum(v);
+  if (base !== null) return base;
+  const s = norm(v);
+  let m = s.match(/^(\d{1,2})\s*[-\/]\s*(\d{1,2})\s*[-\/]\s*(\d{2})$/);        // 02-03-26
+  if (m) return (2000 + (+m[3])) * 10000 + (+m[2]) * 100 + (+m[1]);
+  m = s.match(/^(\d{1,2})\s*(?:de\s+)?([a-z]+)$/);                             // "13 abril" / "18 de marzo"
+  if (m && MESES[m[2]]) return anio * 10000 + MESES[m[2]] * 100 + (+m[1]);
+  m = s.match(/^([a-z]+)\s*(\d{1,2})$/);                                       // "20 marzo" invertido
+  if (m && MESES[m[1]]) return anio * 10000 + MESES[m[1]] * 100 + (+m[2]);
+  m = s.match(/^([a-z]+)$/);                                                   // "Enero"
+  if (m && MESES[m[1]]) return anio * 10000 + MESES[m[1]] * 100 + 1;
+  if (mesFallback) return anio * 10000 + mesFallback * 100 + 1;
+  return null;
+}
+function mesDeTexto(v) {
+  const s = norm(v);
+  for (const k in MESES) if (s === k || s.indexOf(k + ' ') === 0 || s.indexOf(k) === 0) return MESES[k];
+  return null;
+}
+
 module.exports = async (req, res) => {
   try {
     const { token } = await core.readBody(req);
@@ -185,6 +229,96 @@ module.exports = async (req, res) => {
       cxc.rows = cxc.rows.slice(0, 15);
     } catch (e) { cxc = { facturado: 0, pagado: 0, porCobrar: 0, pedidos: 0, conSaldo: 0, rows: [] }; }
 
-    return res.status(200).json({ ventas: out, marketing: marketing, metas: metas, cxc: cxc });
+    // ===== Funnel de ventas (bitácora de contactos "Montse 2026") =====
+    let funnel = { ok: false, motivo: '', rows: [], cols: {}, headers: [], estatus: [], descartadas: 0 };
+    try {
+      const cfgF = core.SHEETS.funnel;
+      if (!cfgF || !cfgF.id) throw new Error('El área "funnel" no tiene archivo configurado en lib/core.js.');
+      let raw;
+      try { raw = await core.readRange(cfgF.id, cfgF.sheetName); }
+      catch (e) {
+        throw new Error('No se pudo leer "' + cfgF.sheetName + '". Comparte el archivo con la cuenta de servicio ' +
+          'y revisa el nombre de la pestaña. (' + (e.message || e) + ')');
+      }
+      if (!raw || !raw.length) throw new Error('La pestaña "' + cfgF.sheetName + '" está vacía.');
+
+      const hrF = (cfgF.headerRow && cfgF.headerRow > 1) ? (cfgF.headerRow - 1) : 0;
+      const Hf = (raw[hrF] || []).map(h => String(h).trim());
+      const Rf = [];
+      for (let i = hrF + 1; i < raw.length; i++) {
+        const fila = raw[i] || [];
+        if (!Hf.some((_, j) => txt(fila[j]) !== '')) continue;
+        const o = {};
+        Hf.forEach((h, j) => { o[h] = (fila[j] != null) ? fila[j] : ''; });
+        Rf.push(o);
+      }
+
+      // Año de la pestaña ("Montse 2026") para las fechas que solo traen día y mes
+      const mAnio = String(cfgF.sheetName).match(/(20\d{2})/);
+      const anioF = mAnio ? +mAnio[1] : new Date().getFullYear();
+
+      const cMes  = col(Hf, 'MES', 'Mes');
+      const cPrio = col(Hf, 'Prioridad');
+      const cCliF = col(Hf, 'Cliente');
+      const cDesp = col(Hf, 'Despacho');
+      const cTipo = col(Hf, 'TIPO CLIENTE', 'Tipo Cliente', 'Tipo de Cliente');
+      const cVia  = col(Hf, 'Forma de Contacto', 'Forma de contacto');
+      const cFcon = col(Hf, 'Fecha contacto', 'Fecha de contacto', 'Fecha');
+      const cSR   = col(Hf, 'Visito Showroom', 'Visitó Showroom', 'Visito showroom');
+      const cEtap = col(Hf, 'Cotización', 'Cotizacion');
+      const cEst  = col(Hf, 'Estatus', 'Status', 'Estado');
+      const cVV   = col(Hf, 'Valor Venta', 'Valor venta');
+      const cVC   = col(Hf, 'Valor Cotización', 'Valor Cotizacion', 'Valor cotización');
+      if (!cMes || !cCliF) throw new Error('No se encontraron las columnas MES / Cliente. Encabezados leídos: ' + Hf.filter(Boolean).join(' | '));
+
+      const est = {};
+      let descartadas = 0;
+      const rowsF = [];
+      Rf.forEach(r => {
+        const mes = mesDeTexto(r[cMes]);
+        const cli = txt(r[cCliF]);
+        // Filas de sección ("ABRIL (pautas)", "SHOWROOM VISITAS", "JUNIO") y filas incompletas
+        if (!mes || !cli) { descartadas++; return; }
+
+        const lbl  = cEst ? txt(r[cEst]) : '';
+        const prio = cPrio ? txt(r[cPrio]) : '';
+        let res = clasifPor(F_RESULT, lbl) || 'sin';
+        if (res === 'sin' && /no interesad/.test(norm(prio))) res = 'perdida';
+        const etapa = (cEtap ? clasifPor(F_ETAPA, r[cEtap]) : null) || 'sin';
+
+        if (lbl) { if (!est[lbl]) est[lbl] = { lbl: lbl, cat: res, n: 0 }; est[lbl].n++; }
+
+        rowsF.push({
+          d:     fechaFunnel(cFcon ? r[cFcon] : '', mes, anioF),
+          mes:   mes,
+          cli:   cli,
+          desp:  cDesp ? txt(r[cDesp]) : '',
+          tipo:  cTipo ? (txt(r[cTipo]) || 'Sin especificar') : 'Sin especificar',
+          via:   cVia ? (txt(r[cVia]) || 'Sin especificar') : 'Sin especificar',
+          sr:    cSR ? (txt(r[cSR]) || 'Sin especificar') : 'Sin especificar',
+          prio:  prio || 'Sin especificar',
+          etapa: etapa,
+          res:   res,
+          lbl:   lbl || 'Sin estatus',
+          vv:    cVV ? num(r[cVV]) : null,
+          vc:    cVC ? num(r[cVC]) : null
+        });
+      });
+
+      funnel = {
+        ok: true, motivo: '',
+        pestana: cfgF.sheetName, filaEncabezados: hrF + 1, anio: anioF,
+        headers: Hf.filter(Boolean),
+        cols: { mes: cMes, cliente: cCliF, etapa: cEtap || '', estatus: cEst || '',
+                valorVenta: cVV || '', valorCotizacion: cVC || '', fecha: cFcon || '' },
+        descartadas: descartadas,
+        estatus: Object.keys(est).map(k => est[k]).sort((a, b) => b.n - a.n),
+        rows: rowsF
+      };
+    } catch (e) {
+      funnel = { ok: false, motivo: String(e && e.message ? e.message : e), rows: [], cols: {}, headers: [], estatus: [], descartadas: 0 };
+    }
+
+    return res.status(200).json({ ventas: out, marketing: marketing, metas: metas, cxc: cxc, funnel: funnel });
   } catch (e) { return res.status(500).json({ error: e.message }); }
 };

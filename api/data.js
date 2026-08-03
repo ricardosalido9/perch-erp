@@ -7,7 +7,10 @@ module.exports = async (req, res) => {
     if (!cfg) return res.status(200).json({ connected: false, headers: [], rows: [] });
     const values = await core.readRange(cfg.id, cfg.sheetName);
     if (!values.length) return res.status(200).json({ connected: true, headers: [], rows: [] });
-    const headers = values[0].map(String);
+    // Algunas pestañas traen un título en la fila 1 (ej. Funnel): cfg.headerRow indica la fila real.
+    const hr = (cfg.headerRow && cfg.headerRow > 1) ? (cfg.headerRow - 1) : 0;
+    if (values.length <= hr) return res.status(200).json({ connected: true, headers: [], rows: [] });
+    const headers = (values[hr] || []).map(String);
 
     // Columnas calculadas por fórmula: no cuentan para decidir si una fila tiene datos
     const formulaCols = new Set();
@@ -20,7 +23,7 @@ module.exports = async (req, res) => {
     const dataCols = headers.map((_, i) => i).filter(i => !formulaCols.has(i));
 
     const rows = [];
-    for (let i = 1; i < values.length; i++) {
+    for (let i = hr + 1; i < values.length; i++) {
       // Salta filas sin ningún dato real (aunque tengan fórmulas)
       const hasData = dataCols.some(c => values[i][c] != null && String(values[i][c]).trim() !== '');
       if (!hasData) continue;

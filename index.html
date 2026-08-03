@@ -1508,6 +1508,131 @@
         '</div></div>';
     }
 
+    // --- Funnel de ventas (bitácora de contactos · pestaña "Montse 2026") ---
+    var fn = d.funnel;
+    if (fn && !fn.ok && fn.motivo) {
+      h += '<div class="dash-section"><h3>Funnel de ventas</h3><div class="panel"><div class="panel-body">' +
+        '<div class="dash-empty">No se pudo armar el embudo: ' + esc(fn.motivo) + '</div></div></div></div>';
+    }
+    if (fn && fn.ok && fn.rows && fn.rows.length) {
+      var Fc  = fn.rows.filter(function (r) { return enRango(r.d); });
+      var Fpv = cmpOn ? fn.rows.filter(function (r) { return enRangoPrev(r.d); }) : [];
+      var fCmp = cmpOn;
+      var cuenta = function (arr, campo, val) {
+        var n = 0; arr.forEach(function (r) { if (r[campo] === val) n++; }); return n;
+      };
+      var agrupa = function (arr, campo) {
+        var o = {}; arr.forEach(function (r) { var k = r[campo] || 'Sin especificar'; o[k] = (o[k] || 0) + 1; }); return o;
+      };
+      var varNum = function (a, p) {
+        if (!p) return '<span class="s">sin dato año ant.</span>';
+        var pct = ((a - p) / Math.abs(p)) * 100, up = pct >= 0;
+        return '<span class="s" style="color:' + (up ? 'var(--success)' : 'var(--danger)') + '">' +
+          (up ? '▲' : '▼') + ' ' + Math.abs(pct).toFixed(1) + '% vs año ant. (' + fmtNum(p) + ')</span>';
+      };
+
+      var nCon = Fc.length;
+      var nCot = cuenta(Fc, 'etapa', 'cotizacion');
+      var nGan = cuenta(Fc, 'res', 'ganada');
+      var nAbi = cuenta(Fc, 'res', 'abierta');
+      var nPer = cuenta(Fc, 'res', 'perdida');
+      var pCon = Fpv.length, pCot = cuenta(Fpv, 'etapa', 'cotizacion'), pGan = cuenta(Fpv, 'res', 'ganada');
+      var tCot = nCon ? (nCot / nCon) * 100 : 0;      // contacto -> cotización
+      var tVen = nCot ? (nGan / nCot) * 100 : 0;      // cotización -> venta
+
+      h += '<div class="dash-section"><h3>Funnel de ventas · prospección</h3><div class="kpi-grid">' +
+        '<div class="kpi dark"><div class="k">Contactos</div><div class="v">' + fmtNum(nCon) + '</div>' +
+          (fCmp ? varNum(nCon, pCon) : '<div class="s">en el periodo</div>') + '</div>' +
+        '<div class="kpi"><div class="k">Cotizaciones enviadas</div><div class="v">' + fmtNum(nCot) + '</div>' +
+          (fCmp ? varNum(nCot, pCot) : '<div class="s">' + tCot.toFixed(1) + '% de los contactos</div>') + '</div>' +
+        '<div class="kpi"><div class="k">Ventas cerradas</div><div class="v" style="color:var(--success)">' + fmtNum(nGan) + '</div>' +
+          (fCmp ? varNum(nGan, pGan) : '<div class="s">' + tVen.toFixed(1) + '% de las cotizaciones</div>') + '</div>' +
+        '<div class="kpi"><div class="k">Abiertas</div><div class="v">' + fmtNum(nAbi) + '</div>' +
+          '<div class="s">en seguimiento</div></div>' +
+        '<div class="kpi"><div class="k">Sin respuesta / perdidas</div><div class="v" style="color:var(--danger)">' +
+          fmtNum(nPer) + '</div></div>' +
+        '</div>';
+
+      // Embudo: Contactos -> Cotizaciones -> Ventas
+      var etapas = [
+        { k: 'Contactos',    v: nCon, c: 'var(--ink)' },
+        { k: 'Cotizaciones', v: nCot, c: 'var(--primary-600)' },
+        { k: 'Ventas',       v: nGan, c: 'var(--success)' }
+      ];
+      var embudo = '<div style="display:flex;flex-direction:column;gap:10px">';
+      etapas.forEach(function (e) {
+        var w = Math.max(3, Math.round((e.v / (nCon || 1)) * 100));
+        embudo += '<div style="display:flex;align-items:center;gap:10px">' +
+          '<span style="width:92px;flex:none;font-size:12px;color:var(--slate)">' + esc(e.k) + '</span>' +
+          '<span style="flex:1;background:var(--paper);border-radius:999px;height:22px;display:block;overflow:hidden">' +
+            '<span style="display:block;height:22px;width:' + w + '%;background:' + e.c + ';border-radius:999px"></span></span>' +
+          '<span style="width:104px;flex:none;text-align:right;font-size:13px;font-variant-numeric:tabular-nums">' +
+            fmtNum(e.v) + ' · ' + (nCon ? Math.round((e.v / nCon) * 100) : 0) + '%</span></div>';
+      });
+      embudo += '</div>';
+
+      var porRes = { 'Venta cerrada': nGan, 'Abierta / seguimiento': nAbi, 'Sin respuesta / perdida': nPer,
+                     'Sin estatus': cuenta(Fc, 'res', 'sin') + cuenta(Fc, 'res', 'otro') };
+      Object.keys(porRes).forEach(function (k) { if (!porRes[k]) delete porRes[k]; });
+
+      h += '<div class="dash-cols">' +
+        '<div class="panel"><h4>Embudo</h4><div class="panel-body">' +
+          (nCon ? embudo : '<div class="dash-empty">Sin contactos en el periodo.</div>') + '</div></div>' +
+        '<div class="panel"><h4>Resultado de los contactos</h4><div class="panel-body">' +
+          barsHTML(porRes, { limit: 6 }) + '</div></div>' +
+        '</div>';
+
+      h += '<div class="dash-cols" style="margin-top:12px">' +
+        '<div class="panel"><h4>Contactos por forma de contacto</h4><div class="panel-body">' +
+          barsHTML(agrupa(Fc, 'via'), { limit: 8, otros: true }) + '</div></div>' +
+        '<div class="panel"><h4>Contactos por tipo de cliente</h4><div class="panel-body">' +
+          barsHTML(agrupa(Fc, 'tipo'), { limit: 6 }) + '</div></div>' +
+        '</div>';
+
+      h += '<div class="dash-cols" style="margin-top:12px">' +
+        '<div class="panel"><h4>Contactos por prioridad</h4><div class="panel-body">' +
+          barsHTML(agrupa(Fc, 'prio'), { limit: 6 }) + '</div></div>' +
+        '<div class="panel"><h4>Visitó showroom</h4><div class="panel-body">' +
+          barsHTML(agrupa(Fc, 'sr'), { limit: 6 }) + '</div></div>' +
+        '</div>';
+
+      // Valor: cotizado vs vendido (columnas Valor Cotización / Valor Venta)
+      var vCot = 0, vVen = 0;
+      Fc.forEach(function (r) { if (r.vc) vCot += r.vc; if (r.vv) vVen += r.vv; });
+      if (vCot || vVen) {
+        h += '<div class="kpi-grid" style="margin-top:12px">' +
+          '<div class="kpi"><div class="k">Valor cotizado</div><div class="v" title="' + esc(formatMoney(vCot)) + '">' +
+            esc(fmtMoneyShort(vCot)) + '</div></div>' +
+          '<div class="kpi"><div class="k">Valor vendido</div><div class="v" title="' + esc(formatMoney(vVen)) + '">' +
+            esc(fmtMoneyShort(vVen)) + '</div></div>' +
+          '<div class="kpi"><div class="k">% valor convertido</div><div class="v">' +
+            (vCot ? ((vVen / vCot) * 100).toFixed(1) : '0.0') + '%</div></div>' +
+          '</div>';
+      }
+
+      // Cotizaciones abiertas con monto (oportunidades vivas)
+      var abiertas = Fc.filter(function (r) { return r.etapa === 'cotizacion' && (r.res === 'abierta' || r.res === 'sin'); })
+        .sort(function (a, b) { return ((b.vc || b.vv || 0) - (a.vc || a.vv || 0)); }).slice(0, 10);
+      if (abiertas.length) {
+        var aRows = abiertas.map(function (r) {
+          var mto = r.vc || r.vv || 0;
+          return '<tr><td title="' + esc(r.cli) + '">' + esc(r.cli) + '</td><td>' + esc(r.desp || '—') + '</td>' +
+            '<td>' + esc(r.tipo) + '</td><td>' + esc(r.lbl) + '</td>' +
+            '<td class="num">' + esc(mto ? formatMoney(mto) : '') + '</td></tr>';
+        }).join('');
+        h += '<div class="panel" style="margin-top:12px"><h4>Cotizaciones abiertas (mayor monto)</h4><div class="panel-body">' +
+          '<table class="mini-table"><thead><tr><th>Cliente</th><th>Despacho</th><th>Tipo</th><th>Estatus</th>' +
+          '<th style="text-align:right">Valor</th></tr></thead><tbody>' + aRows + '</tbody></table></div></div>';
+      }
+
+      var sinClas = (fn.estatus || []).filter(function (e) { return e.cat === 'otro'; });
+      var pie = [];
+      if (fn.descartadas) pie.push(fmtNum(fn.descartadas) + ' filas ignoradas (títulos de sección o sin cliente)');
+      if (sinClas.length) pie.push('estatus sin clasificar: ' + sinClas.slice(0, 8).map(function (e) { return e.lbl + ' (' + e.n + ')'; }).join(' · '));
+      if (pie.length) h += '<div class="dash-empty" style="margin-top:8px">' + esc(pie.join(' — ')) + '</div>';
+      h += '</div>';
+    }
+
     // --- Cuentas por Cobrar (snapshot global, no depende del filtro de fecha) ---
     var cx = d.cxc;
     if (cx && cx.pedidos) {
