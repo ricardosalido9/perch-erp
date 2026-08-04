@@ -2467,6 +2467,21 @@
   // Un área que no esté acá muestra todas sus columnas.
   // ===== Menús fijos por área (no necesitan pestaña CATEGORIAS) =====
   // Para agregar o quitar una opción, edita la lista y listo.
+  // Campos que aparecen en el formulario aunque la hoja NO tenga esa columna.
+  // Sirven para armar el PDF de la cotización; si la hoja no los tiene, no se guardan.
+  var EXTRA_FIELDS = {
+    ventas_registro: ['Descripción', 'Medidas'],
+    cotizaciones:    ['Descripción', 'Medidas']
+  };
+  function esCampoExtra(h) {
+    return (EXTRA_FIELDS[state.key] || []).some(function (f) { return norm(f) === norm(h); });
+  }
+  // Campos que la cascada rellena pero que SÍ se pueden corregir a mano
+  var FILL_EDITABLE = ['Descripción', 'Medidas'];
+  function esFillEditable(h) {
+    return FILL_EDITABLE.some(function (f) { return norm(f) === norm(h); });
+  }
+
   var FIELD_OPTIONS = {
     fin_cxc: {
       'Factura Si / No':  ['Si', 'No', 'Pendiente'],
@@ -2539,14 +2554,16 @@
     cotizaciones: [
       'Fecha del Cierre', 'Cliente', 'Despacho', 'Vendedor', 'Fecha de entrega acordada',
       'Direccion de envio', 'Telefono', 'Cantidad', 'Producto', 'Material', 'Material Extra',
-      'Tipo de Producto', 'Tela', 'Especificaciones', 'Precio Unitario', '% descuento', 'Descuentos', 'Envio'
+      'Tipo de Producto', 'Tela', 'Descripción', 'Medidas', 'Especificaciones',
+      'Precio Unitario', '% descuento', 'Descuentos', 'Envio'
     ],
     // Ventas: solo estos campos aparecen en "Agregar registro" (en este orden).
     // No. de Referencia y Status se generan solos en el servidor; el resto son fórmulas de la hoja.
     ventas_registro: [
       'Fecha del Cierre', 'Cliente', 'Despacho', 'Vendedor', 'Fecha de entrega acordada',
       'Direccion de envio', 'Telefono', 'Cantidad', 'Producto', 'Material', 'Material Extra',
-      'Tipo de Producto', 'Tela', 'Especificaciones', 'Precio Unitario', '% descuento', 'Descuentos', 'Envio'
+      'Tipo de Producto', 'Tela', 'Descripción', 'Medidas', 'Especificaciones',
+      'Precio Unitario', '% descuento', 'Descuentos', 'Envio'
     ],
     // Funnel de ventas: primero la fecha (de ahí sale el MES), luego el resto.
     funnel: [
@@ -2561,7 +2578,8 @@
   var LINE_ITEMS = {
     cotizaciones: {
       line: ['Producto', 'Material', 'Material Extra', 'Tipo de Producto', 'Tela',
-             'Especificaciones', 'Cantidad', 'Precio Unitario', '% descuento', 'Descuentos'],
+             'Descripción', 'Medidas', 'Especificaciones', 'Cantidad', 'Precio Unitario',
+             '% descuento', 'Descuentos'],
       envioOnce: 'Envio'   // va solo en la primera fila del pedido
     }
   };
@@ -2592,7 +2610,8 @@
     ventas_registro: ['Mes', 'Año1'],
     ventas_registro: {
       line: ['Producto', 'Material', 'Material Extra', 'Tipo de Producto', 'Tela',
-             'Especificaciones', 'Cantidad', 'Precio Unitario', '% descuento', 'Descuentos'],
+             'Descripción', 'Medidas', 'Especificaciones', 'Cantidad', 'Precio Unitario',
+             '% descuento', 'Descuentos'],
       envioOnce: 'Envio'   // va solo en la primera fila del pedido
     }
   };
@@ -2741,8 +2760,8 @@
   function closestFld(el) { while (el && !(el.classList && el.classList.contains('fld'))) el = el.parentNode; return el; }
   function cascElem(level) { return document.querySelector('#formFields [data-casc-level="' + level + '"]'); }
   function cascFillElem(name) {
-    var real = findHeaderByName(name);
-    return real ? document.querySelector('#formFields [data-col="' + real + '"]') : null;
+    var real = findHeaderByName(name) || name;   // puede no existir en la hoja (Descripción, Medidas)
+    return document.querySelector('#formFields [data-col="' + real + '"]');
   }
   function showFld(el, show) { var f = closestFld(el); if (f) f.style.display = show ? '' : 'none'; }
   function fillOptions(sel, opts) {
@@ -3056,7 +3075,7 @@
         // Busca el encabezado real tolerando espacios de más / mayúsculas / acentos
         var actual = state.headers.filter(function (h) { return norm(h) === norm(name); })[0];
         if (actual !== undefined) fields.push(actual);
-        else if (cascadeLevelIndex(name) >= 0) fields.push(name);  // nivel de cascada aunque la hoja no tenga la columna
+        else if (cascadeLevelIndex(name) >= 0 || esCampoExtra(name)) fields.push(name);  // aunque la hoja no tenga la columna
       });
     } else {
       var excl = EXCLUDE_FIELDS[state.key] || [];
@@ -3081,7 +3100,7 @@
         box.appendChild(wrap);
         return;
       }
-      if (isCascadeFill(h)) {
+      if (isCascadeFill(h) && !esFillEditable(h)) {
         var cinp = document.createElement('input');
         cinp.type = 'text'; cinp.readOnly = true; cinp.tabIndex = -1;
         cinp.setAttribute('data-col', h);
@@ -3187,6 +3206,11 @@
       } else {
         var inp = document.createElement('input');
         inp.type = isDateCol(h) ? 'date' : 'text';
+        if (esCampoExtra(h)) {
+          inp.placeholder = (norm(h) === 'medidas')
+            ? 'ej. 45 largo x 58 fondo x 73 altura'
+            : 'ej. Banca en madera Nogal con asiento en tela';
+        }
         if (isReadonlyField(h)) {
           inp.type = 'text';
           inp.readOnly = true;
