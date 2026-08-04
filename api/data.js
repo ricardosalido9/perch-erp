@@ -3,7 +3,7 @@ module.exports = async (req, res) => {
   try {
     const { token, key } = await core.readBody(req);
     if (!core.verifyToken(token)) return res.status(401).json({ error: 'Sesión no válida.' });
-    const cfg = core.SHEETS[key];
+    const cfg = await core.areaCfg(key);   // resuelve la pestaña del año en curso si aplica
     if (!cfg) return res.status(200).json({ connected: false, headers: [], rows: [] });
     const values = await core.readRange(cfg.id, cfg.sheetName);
     if (!values.length) return res.status(200).json({ connected: true, headers: [], rows: [] });

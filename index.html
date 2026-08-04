@@ -988,7 +988,8 @@
     funnel: ['MES', 'Prioridad', 'Cliente', 'Despacho', 'TIPO CLIENTE', 'Forma de Contacto',
              'Visito Showroom', 'Cotización', 'Estatus'],
     ventas_registro: ['Fecha del Cierre', 'Fecha de entrega acordada', 'No. de Referencia', 'Cliente',
-                      'Vendedor', 'Status', 'Tipo de producto', 'Material', 'Material Extra', 'Producto'],
+                      'Vendedor', 'Status', 'Tipo de producto', 'Material', 'Material Extra', 'Producto',
+                      'Cantidad'],
     proyectos_registro: ['Fecha', 'Cliente', 'Tipo', 'Estatus', 'Responsable'],
     prod_ordenes: ['Fecha', 'Estatus', 'Responsable', 'Proyecto'],
     cli_membresias: ['Tipo de membresia'],
@@ -1160,6 +1161,8 @@
   // type:'sum' suma una columna; type:'ratio' = sum(num)/sum(den) (percent:true -> %).
   var SUMMARY_CARDS = {
     ventas_registro: [
+      // Cantidad de piezas de las filas filtradas (20 registros pueden ser 120 piezas)
+      { k: 'Unidades',               type: 'num',   field: ['Cantidad', 'Unidades', 'Piezas'] },
       { k: 'Total con envío',        type: 'sum',   field: 'Total con envío' },
       { k: 'Total con envío s/IVA',  type: 'sum',   field: 'Total con envio sin impuestos' },
       { k: 'Costo total',            type: 'sum',   field: 'Costo total' },
@@ -1268,7 +1271,13 @@
     var custom = SUMMARY_CARDS[state.key];
     if (custom) {
       custom.forEach(function (c) {
-        if (c.type === 'sum') {
+        if (c.type === 'num') {
+          var realN = resolveMoneyCol(rows, c.field);
+          var sumN = 0;
+          rows.forEach(function (r) { var n = parseNumber(realN ? r[realN] : null); if (n !== null) sumN += n; });
+          html += '<div class="sum-card"><div class="k">' + esc(c.k) + '</div><div class="v">' +
+                  esc(sumN.toLocaleString('es-MX')) + '</div></div>';
+        } else if (c.type === 'sum') {
           var real = resolveMoneyCol(rows, c.field);
           var sum = 0;
           rows.forEach(function (r) { var n = parseNumber(real ? r[real] : null); if (n !== null) sum += n; });

@@ -24,15 +24,16 @@ function fechaNum(v) {
   return null;
 }
 async function leer(key) {
-  const cfg = core.SHEETS[key];
+  const cfg = await core.areaCfg(key);
   if (!cfg) return { headers: [], rows: [] };
   let values;
   try { values = await core.readRange(cfg.id, cfg.sheetName); }
   catch (e) { return { headers: [], rows: [] }; }
   if (!values.length) return { headers: [], rows: [] };
-  const headers = values[0].map(h => String(h));
+  const hr = (cfg.headerRow && cfg.headerRow > 1) ? (cfg.headerRow - 1) : 0;
+  const headers = (values[hr] || []).map(h => String(h));
   const rows = [];
-  for (let i = 1; i < values.length; i++) {
+  for (let i = hr + 1; i < values.length; i++) {
     const hasData = headers.some((_, j) => values[i][j] != null && String(values[i][j]).trim() !== '');
     if (!hasData) continue;
     const o = {};
