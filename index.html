@@ -616,7 +616,7 @@
   <div class="modal" id="facModal">
     <div class="modal-card" style="max-width:620px">
       <div class="modal-head">
-        <h3>Paso 2 · Facturación del pedido</h3>
+        <h3>¿Este pedido lleva factura?</h3>
         <button class="modal-x" id="facClose" type="button" aria-label="Cerrar">&times;</button>
       </div>
       <div class="modal-body">
@@ -652,15 +652,26 @@
             </datalist>
           </div>
         </div>
-        <div id="facCsf" style="display:none;margin-top:14px;font-size:13px;color:var(--slate);
-             background:var(--accent-soft);border-radius:10px;padding:12px 14px">
-          Recuerda pedirle la <b>Constancia de Situación Fiscal</b> al cliente. La subida automática a Drive
-          se activa cuando compartas la carpeta con la cuenta de servicio.
+        <div id="facCsf" style="display:none;margin-top:16px">
+          <div class="form-grid">
+            <div class="fld">
+              <label>Constancia de Situación Fiscal</label>
+              <input type="file" id="facArchivo" accept=".pdf,.png,.jpg,.jpeg"
+                     style="font:inherit;border:1px dashed var(--line);border-radius:10px;padding:9px 10px;background:var(--surface)">
+              <div id="facArchivoNota" style="font-size:12px;color:var(--muted);margin-top:4px">
+                PDF o imagen, hasta 4 MB. Se guarda en la carpeta del pedido.
+              </div>
+            </div>
+            <div class="fld">
+              <label>o pega el link de la carpeta</label>
+              <input type="text" id="facLink" placeholder="https://drive.google.com/drive/folders/...">
+            </div>
+          </div>
         </div>
       </div>
       <div class="modal-foot">
-        <button id="facSkip" type="button" class="grow">Ahora no</button>
-        <button class="primary" id="facSave" type="button">Guardar pedido en Cuentas por Cobrar</button>
+        <button id="facSkip" type="button" class="grow">Después lo veo</button>
+        <button class="primary" id="facSave" type="button">Guardar facturación</button>
       </div>
     </div>
   </div>
@@ -3206,42 +3217,21 @@
       state.lineItems = [];
       cerrarModalAlta();
       resumenPedido.folio = (out && out.folio) ? out.folio : '';
-      abrirPasoFactura(resumenPedido);
+      registrarEnCxc(resumenPedido);        // el pedido pasa a Cuentas por Cobrar automáticamente
       loadArea();
     }).catch(fail).then(function () { btn.disabled = false; btn.textContent = 'Guardar registro'; });
   }
 
-  // ===== Paso 2: facturación · escribe el PEDIDO COMPLETO en Cuentas por Cobrar =====
+  // ===== El pedido completo pasa SOLO a Cuentas por Cobrar =====
   var pedidoPendiente = null;
-  function abrirPasoFactura(p) {
-    pedidoPendiente = p;
-    document.getElementById('facResumen').innerHTML =
-      '<b>' + esc(p.folio || 'Pedido') + '</b> · ' + esc(p.cliente || 'Sin cliente') +
-      (p.despacho ? ' · ' + esc(p.despacho) : '') +
-      '<div style="color:var(--muted);margin-top:4px">' + fmtNum(p.piezas) +
-      (p.piezas === 1 ? ' pieza' : ' piezas') + ' · Total con envío ' + esc(formatMoney(p.totalConEnvio)) + '</div>';
-    document.getElementById('facQuiere').value = '';
-    document.getElementById('facUso').value = '';
-    document.getElementById('facMetodo').value = 'PUE';
-    document.getElementById('facEntrega').value = p.entregaISO || '';
-    document.getElementById('facFiscal').style.display = 'none';
-    document.getElementById('facCsf').style.display = 'none';
-    document.getElementById('facModal').classList.add('on');
-  }
-  function cerrarPasoFactura() {
-    document.getElementById('facModal').classList.remove('on');
-    pedidoPendiente = null;
-  }
-  function guardarPedidoCxc() {
-    var p = pedidoPendiente; if (!p) return;
-    var quiere = document.getElementById('facQuiere').value;
-    if (!quiere) { toast('Elegí si el cliente requiere factura.', 'err'); return; }
-    var conFactura = (quiere === 'Si');
-    var entrega = document.getElementById('facEntrega').value;
-    var rec = {
+  var cxcFila = null;        // fila donde quedó el pedido en CxC (para completarla después)
+  var cxcRec = null;         // registro completo, para no borrar nada al actualizar
+
+  function registrarEnCxc(p) {
+    cxcRec = {
       'Fecha del Cierre': p.fechaCierre,
       'Mes': p.mes,
-      'Fecha de Entrega': entrega ? isoToLargo(entrega) : (p.entregaTexto || ''),
+      'Fecha de Entrega': p.entregaTexto || (p.entregaISO ? isoToLargo(p.entregaISO) : ''),
       'No. de Referencia': p.folio,
       'Cliente': p.cliente,
       'Despacho': p.despacho,
@@ -3250,16 +3240,105 @@
       'Envio': p.envio,
       'Total con envío': p.totalConEnvio,
       'Pagado': '',
-      'Factura Si / No': quiere,
-      'PUE/PPD': conFactura ? document.getElementById('facMetodo').value : 'NA',
-      'Comentarios (uso de CFDI)': conFactura ? document.getElementById('facUso').value.trim() : '',
-      'Factura': conFactura ? 'FALSE' : '',
-      'Complemento': conFactura ? 'FALSE' : '',
-      'Complemento 2': conFactura ? 'FALSE' : ''
+      'Link': '',
+      'Factura Si / No': 'Pendiente',
+      'PUE/PPD': '',
+      'FORMA DE PAGO': '',
+      'Comentarios (uso de CFDI)': '',
+      'Factura': '',
+      'Complemento': '',
+      'Complemento 2': ''
     };
+    cxcFila = null;
+    api('add', { token: state.token, key: 'fin_cxc', record: cxcRec }).then(function (out) {
+      cxcFila = (out && out.fila) ? out.fila : null;
+      toast('Pedido ' + (p.folio || '') + ' agregado a Cuentas por Cobrar.', 'ok');
+      abrirPasoFactura(p);                  // ahora solo se pregunta lo de la factura
+    }).catch(function (e) {
+      toast('La venta se guardó, pero no se pudo pasar a CxC: ' + ((e && e.message) || ''), 'err');
+      abrirPasoFactura(p);
+    });
+  }
+  function abrirPasoFactura(p) {
+    pedidoPendiente = p;
+    document.getElementById('facResumen').innerHTML =
+      '<b>' + esc(p.folio || 'Pedido') + '</b> · ' + esc(p.cliente || 'Sin cliente') +
+      (p.despacho ? ' · ' + esc(p.despacho) : '') +
+      '<div style="color:var(--muted);margin-top:4px">' + fmtNum(p.piezas) +
+      (p.piezas === 1 ? ' pieza' : ' piezas') + ' · Total con envío ' + esc(formatMoney(p.totalConEnvio)) +
+      '<br>Ya quedó registrado en Cuentas por Cobrar.</div>';
+    document.getElementById('facQuiere').value = '';
+    document.getElementById('facUso').value = '';
+    document.getElementById('facMetodo').value = 'PUE';
+    document.getElementById('facEntrega').value = p.entregaISO || '';
+    document.getElementById('facFiscal').style.display = 'none';
+    document.getElementById('facCsf').style.display = 'none';
+    document.getElementById('facArchivo').value = '';
+    document.getElementById('facLink').value = '';
+    document.getElementById('facArchivoNota').textContent = 'PDF o imagen, hasta 4 MB. Se guarda en la carpeta del pedido.';
+    document.getElementById('facModal').classList.add('on');
+  }
+  function cerrarPasoFactura() {
+    document.getElementById('facModal').classList.remove('on');
+    pedidoPendiente = null; cxcFila = null; cxcRec = null;
+  }
+  // Lee el archivo elegido y lo convierte a base64 para mandarlo al servidor
+  function leerArchivo(file) {
+    return new Promise(function (resolve, reject) {
+      var r = new FileReader();
+      r.onload = function () { resolve(String(r.result).split(',')[1]); };
+      r.onerror = function () { reject(new Error('No se pudo leer el archivo.')); };
+      r.readAsDataURL(file);
+    });
+  }
+  // Sube la CSF a la carpeta del pedido. Devuelve el link de la carpeta (o '' si no hay archivo).
+  function subirCsf(p) {
+    var inp = document.getElementById('facArchivo');
+    var file = (inp && inp.files && inp.files[0]) ? inp.files[0] : null;
+    if (!file) return Promise.resolve('');
+    if (file.size > 4 * 1024 * 1024) {
+      return Promise.reject(new Error('La CSF pesa más de 4 MB. Comprímela o pega el link de la carpeta.'));
+    }
+    var nota = document.getElementById('facArchivoNota');
+    if (nota) nota.textContent = 'Subiendo ' + file.name + '...';
+    return leerArchivo(file).then(function (b64) {
+      return api('upload', {
+        token: state.token, folio: p.folio, cliente: p.cliente,
+        nombre: file.name, mime: file.type || 'application/pdf', data: b64
+      });
+    }).then(function (out) {
+      if (nota) nota.textContent = 'Listo: ' + (out.nombre || file.name) + ' guardada en Drive.';
+      return out.carpeta || out.archivo || '';
+    });
+  }
+
+  function guardarPedidoCxc() {
+    var p = pedidoPendiente; if (!p) return;
+    var quiere = document.getElementById('facQuiere').value;
+    if (!quiere) { toast('Elegí si el cliente requiere factura.', 'err'); return; }
+    var conFactura = (quiere === 'Si');
+    var entrega = document.getElementById('facEntrega').value;
+    var rec = {};
+    Object.keys(cxcRec || {}).forEach(function (k) { rec[k] = cxcRec[k]; });   // parte de lo ya guardado
+    if (entrega) rec['Fecha de Entrega'] = isoToLargo(entrega);
+    rec['Factura Si / No'] = quiere;
+    rec['PUE/PPD'] = conFactura ? document.getElementById('facMetodo').value : 'NA';
+    rec['Comentarios (uso de CFDI)'] = conFactura ? document.getElementById('facUso').value.trim() : '';
+    rec['Factura'] = conFactura ? 'FALSE' : '';
+    rec['Complemento'] = conFactura ? 'FALSE' : '';
+    rec['Complemento 2'] = conFactura ? 'FALSE' : '';
     var btn = document.getElementById('facSave'); btn.disabled = true; btn.textContent = 'Guardando...';
-    api('add', { token: state.token, key: 'fin_cxc', record: rec }).then(function () {
-      toast('Pedido ' + p.folio + ' registrado en Cuentas por Cobrar.', 'ok');
+    var linkManual = (document.getElementById('facLink').value || '').trim();
+    subirCsf(p).catch(function (e) {
+      // Si Drive no está listo, se avisa pero la venta no se pierde: se sigue con el link manual
+      toast((e && e.message) || 'No se pudo subir la CSF.', 'err');
+      return linkManual;
+    }).then(function (link) {
+      rec['Link'] = link || linkManual || '';
+      if (cxcFila) return api('update', { token: state.token, key: 'fin_cxc', row: cxcFila, record: rec });
+      return api('add', { token: state.token, key: 'fin_cxc', record: rec });   // respaldo si no se supo la fila
+    }).then(function () {
+      toast('Facturación guardada en el pedido ' + p.folio + '.', 'ok');
       cerrarPasoFactura();
     }).catch(fail).then(function () {
       btn.disabled = false; btn.textContent = 'Guardar pedido en Cuentas por Cobrar';

@@ -9,7 +9,7 @@ module.exports = async (req, res) => {
       const out = await core.addRecordsBatch(key, records);
       return res.status(200).json(out);
     }
-    await core.addRecord(key, record || {});
-    return res.status(200).json({ ok: true });
+    const out = await core.addRecord(key, record || {});
+    return res.status(200).json(out || { ok: true });
   } catch (e) { return res.status(500).json({ error: e.message }); }
 };
