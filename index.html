@@ -497,6 +497,15 @@
   .modal-foot .grow { margin-right:auto; }
   @media (max-width:640px) { .modal { padding:12px; } .modal-card { max-height:calc(100vh - 24px); } }
 
+  /* ---------- Resumen del Funnel ---------- */
+  .mes-chips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px; }
+  .mes-chip { background:var(--surface); border:1px solid var(--line); color:var(--slate);
+    border-radius:999px; padding:6px 14px; font-size:13px; font-weight:500; }
+  .mes-chip:hover { border-color:var(--accent); color:var(--ink); }
+  .mes-chip.on { background:var(--accent-soft); border-color:var(--accent-soft); color:var(--accent-ink); font-weight:600; }
+  .summary-cards { display:flex; flex-wrap:wrap; gap:12px; }
+  .summary-cards .sum-card { min-width:130px; }
+
   /* ---------- Detalles heredados ---------- */
   #lineItemsBox .li-row .li-n { background:var(--primary); color:#fff; }
   #lineItemsBox .li-add { border-color:var(--accent); color:var(--accent-ink); border-radius:10px; }
@@ -976,6 +985,8 @@
 
   // Columnas filtrables por área. Si un área no está aquí, se pueden filtrar todas.
   var FILTER_FIELDS = {
+    funnel: ['MES', 'Prioridad', 'Cliente', 'Despacho', 'TIPO CLIENTE', 'Forma de Contacto',
+             'Visito Showroom', 'Cotización', 'Estatus'],
     ventas_registro: ['Fecha del Cierre', 'Fecha de entrega acordada', 'No. de Referencia', 'Cliente',
                       'Vendedor', 'Status', 'Tipo de producto', 'Material', 'Material Extra', 'Producto'],
     proyectos_registro: ['Fecha', 'Cliente', 'Tipo', 'Estatus', 'Responsable'],
@@ -1177,9 +1188,79 @@
     });
     return best;
   }
+  // ===== Resumen del Funnel de ventas =====
+  // Cada mes equivale a su rango de fechas (Enero = 01/01 a 31/01, etc.); el ERP lo maneja
+  // internamente y en la hoja se sigue escribiendo el mes como lo hacen ellas.
+  var F_GANADA  = /venta cerrada|venta exitosa|cliente exitos|clienta exitos|exitosa|exitoso|pagada|pagado|por pagar|cerrada|cerrado/;
+  var F_PERDIDA = /cancelad|decidio otra|no se cerro|declin|sin respuesta|sin respuestra|no dio respuesta|no ha dado respuesta|no respondio/;
+  var F_ABIERTA = /esperando|espera|seguimiento|en proceso|en contacto|pendiente|si responde|nos tendra|nos tiene|revisar|volver a buscar|escogimos|cita/;
+  var F_COTIZA  = /^(cotizacion|enviada)$/;
+  function mesDeFila(r) {
+    var c = findHeaderByName('MES'); if (!c) return '';
+    var v = norm(r[c]);
+    for (var i = 0; i < MESES_ES.length; i++) if (v.indexOf(norm(MESES_ES[i])) === 0) return MESES_ES[i];
+    return '';
+  }
+  function mesActivoFunnel() {
+    var c = findHeaderByName('MES'); if (!c) return '';
+    var f = filters.filter(function (x) { return x.col === c && x.type === 'values' && x.values.length === 1; })[0];
+    return f ? f.values[0] : '';
+  }
+  function filtrarMesFunnel(mes) {
+    var c = findHeaderByName('MES'); if (!c) return;
+    filters = filters.filter(function (x) { return x.col !== c; });
+    if (mes) filters.push({ col: c, type: 'values', values: [mes] });
+    renderFilterBar(); renderTable();
+  }
+  function resumenFunnel(rows) {
+    var cPri = findHeaderByName('Prioridad'), cCot = findHeaderByName('Cotización') || findHeaderByName('Cotizacion');
+    var cEst = findHeaderByName('Estatus'), cVV = findHeaderByName('Valor Venta'), cVC = findHeaderByName('Valor Cotización');
+    var n = { total: rows.length, verde: 0, tibio: 0, nope: 0, cot: 0, ganada: 0, abierta: 0, vv: 0, vc: 0 };
+    rows.forEach(function (r) {
+      var pri = norm(cPri ? r[cPri] : '');
+      if (pri.indexOf('verde') === 0) n.verde++;
+      else if (pri.indexOf('tibio') === 0) n.tibio++;
+      else if (pri.indexOf('no interesad') === 0) n.nope++;
+      if (cCot && F_COTIZA.test(norm(r[cCot]))) n.cot++;
+      var est = norm(cEst ? r[cEst] : '');
+      if (est && F_GANADA.test(est) && !/cancelad/.test(est)) n.ganada++;
+      else if (est && F_ABIERTA.test(est) && !F_PERDIDA.test(est)) n.abierta++;
+      var a = parseNumber(cVV ? r[cVV] : null); if (a !== null) n.vv += a;
+      var b = parseNumber(cVC ? r[cVC] : null); if (b !== null) n.vc += b;
+    });
+    // Meses presentes en la hoja, en orden de calendario
+    var pres = {};
+    (state.rows || []).forEach(function (r) { var m = mesDeFila(r); if (m) pres[m] = 1; });
+    var activo = mesActivoFunnel();
+    var chips = '<button type="button" class="mes-chip' + (activo ? '' : ' on') + '" data-mes="">Todo el año</button>';
+    MESES_ES.forEach(function (m) {
+      if (!pres[m]) return;
+      chips += '<button type="button" class="mes-chip' + (activo === m ? ' on' : '') + '" data-mes="' + m + '">' + m + '</button>';
+    });
+    var tasa = n.cot ? ((n.ganada / n.cot) * 100).toFixed(1) + '%' : '—';
+    function card(k, v, extra) {
+      return '<div class="sum-card"><div class="k">' + esc(k) + '</div><div class="v">' + v + '</div>' +
+             (extra ? '<div class="k" style="text-transform:none;letter-spacing:0;margin-top:2px">' + extra + '</div>' : '') + '</div>';
+    }
+    var html = '<div class="mes-chips" id="mesChips">' + chips + '</div><div class="summary-cards">' +
+      card('Contactos', fmtNum(n.total), activo ? esc(activo) : 'todo el periodo') +
+      card('Verde', fmtNum(n.verde)) +
+      card('Tibio', fmtNum(n.tibio)) +
+      card('No interesado', fmtNum(n.nope)) +
+      card('Cotizaciones', fmtNum(n.cot)) +
+      card('Ventas cerradas', fmtNum(n.ganada), 'cierre ' + tasa) +
+      card('En seguimiento', fmtNum(n.abierta)) +
+      card('Valor cotizado', esc(formatMoney(n.vc))) +
+      card('Valor vendido', esc(formatMoney(n.vv))) +
+      '</div>';
+    return html;
+  }
+
   function renderSummary(rows) {
     var box = document.getElementById('summary');
     if (!state.headers.length) { box.innerHTML = ''; return; }
+    if (state.key === 'funnel') { box.style.display = 'block'; box.innerHTML = resumenFunnel(rows); return; }
+    box.style.display = 'flex';
     var html = '<div class="sum-card"><div class="k">Registros</div><div class="v">' +
                rows.length.toLocaleString('es-MX') + '</div></div>';
 
@@ -2025,7 +2106,20 @@
         var cls = (isMoneyCol(h) || isRightCol(h)) ? ' class="ta-right"' : (isCenterCol(h) ? ' class="ta-center"' : '');
         var w = colWidth(h); var ws = w ? ' style="width:' + w + 'px"' : '';
         if (editing) {
-          html += '<td' + cls + ws + '><input class="row-input" data-col="' + esc(h) + '" value="' + esc(r[h]).replace(/"/g, '&quot;') + '"></td>';
+          var eOpts = optionsFor(h);
+          if (eOpts) {
+            // Columnas con menú (Prioridad, Cotización, etc.): se cambian desde el ERP sin escribir
+            var cur = String(r[h] == null ? '' : r[h]).trim();
+            var oh = '<option value=""></option>', hayCur = false;
+            eOpts.forEach(function (o) {
+              var es = (norm(o) === norm(cur)); if (es) hayCur = true;
+              oh += '<option' + (es ? ' selected' : '') + '>' + esc(o) + '</option>';
+            });
+            if (cur && !hayCur) oh += '<option selected>' + esc(cur) + '</option>';  // conserva un valor viejo
+            html += '<td' + cls + ws + '><select class="row-input" data-col="' + esc(h) + '">' + oh + '</select></td>';
+          } else {
+            html += '<td' + cls + ws + '><input class="row-input" data-col="' + esc(h) + '" value="' + esc(r[h]).replace(/"/g, '&quot;') + '"></td>';
+          }
         } else {
           var raw = r[h];
           var shown = isMoneyCol(h) ? formatMoney(raw)
@@ -2065,6 +2159,66 @@
 
   // Campos visibles en "Agregar registro" por área (en orden).
   // Un área que no esté acá muestra todas sus columnas.
+  // ===== Menús fijos por área (no necesitan pestaña CATEGORIAS) =====
+  // Para agregar o quitar una opción, edita la lista y listo.
+  var FIELD_OPTIONS = {
+    funnel: {
+      'Prioridad':          ['Verde', 'Tibio', 'No interesado'],
+      'TIPO CLIENTE':       ['B2B', 'B2C', 'VIP'],
+      'Forma de Contacto':  ['Whatsapp', 'Instagram', 'Pautas', 'Recomendacion', 'Showroom',
+                             'Calendly', 'Reach out', 'Seguimiento', 'Cliente recurrente',
+                             'Despacho recurrente', 'Carrito Abandonado', 'ICFF NY'],
+      'Visito Showroom':    ['Si', 'No', 'Por visitar'],
+      'Cotización':         ['Información', 'Cotizacion', 'Enviada', 'Por enviar',
+                             'Precio enviado', 'Catálogo', 'Llamada']
+    }
+  };
+  function optionsFor(h) {
+    var m = FIELD_OPTIONS[state.key]; if (!m) return null;
+    var k = Object.keys(m).filter(function (x) { return norm(x) === norm(h); })[0];
+    return k ? m[k] : null;
+  }
+  // Campos "combo": se eligen de una lista pero también se puede escribir uno nuevo.
+  var COMBO_FIELDS = {
+    funnel: ['Cliente', 'Despacho', 'Estatus']
+  };
+  function isComboField(h) {
+    return (COMBO_FIELDS[state.key] || []).some(function (f) { return norm(f) === norm(h); });
+  }
+  // Sugerencias del combo: lo que ya existe en la hoja + (para Cliente) la Lista de Clientes.
+  function comboOptionsFor(h) {
+    var vistos = {}, out = [];
+    var lk = lookupFor(h);
+    if (lk && lk.options) lk.options.forEach(function (o) {
+      var v = String(o).trim(); if (v && !vistos[v]) { vistos[v] = 1; out.push(v); }
+    });
+    (state.rows || []).forEach(function (r) {
+      var v = String(r[h] == null ? '' : r[h]).trim();
+      if (v && !vistos[v]) { vistos[v] = 1; out.push(v); }
+    });
+    out.sort(function (a, b) { return a.localeCompare(b, 'es'); });
+    return out;
+  }
+  // El MES se calcula solo a partir de la fecha (así el mes queda siempre bien escrito).
+  var MESES_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto',
+                  'Septiembre','Octubre','Noviembre','Diciembre'];
+  var AUTO_MONTH = { funnel: { from: 'Fecha contacto', to: 'MES' } };
+  function aplicarMesAuto() {
+    var cfg = AUTO_MONTH[state.key]; if (!cfg) return;
+    var cf = findHeaderByName(cfg.from), cm = findHeaderByName(cfg.to);
+    if (!cf || !cm) return;
+    var fe = document.querySelector('#formFields [data-col="' + cf + '"]');
+    var me = document.querySelector('#formFields [data-col="' + cm + '"]');
+    if (!fe || !me) return;
+    function set() {
+      var m = /^(\d{4})-(\d{2})-/.exec(fe.value || '');
+      me.value = m ? MESES_ES[parseInt(m[2], 10) - 1] : '';
+    }
+    fe.addEventListener('change', set);
+    fe.addEventListener('input', set);
+    set();
+  }
+
   var FORM_FIELDS = {
     // Vacío = cada área muestra todas sus columnas (en el orden de la hoja).
     // Ventas: solo estos campos aparecen en "Agregar registro" (en este orden).
@@ -2073,6 +2227,12 @@
       'Fecha del Cierre', 'Cliente', 'Despacho', 'Vendedor', 'Fecha de entrega acordada',
       'Direccion de envio', 'Telefono', 'Cantidad', 'Producto', 'Material', 'Material Extra',
       'Tipo de Producto', 'Tela', 'Especificaciones', 'Precio Unitario', '% descuento', 'Descuentos', 'Envio'
+    ],
+    // Funnel de ventas: primero la fecha (de ahí sale el MES), luego el resto.
+    funnel: [
+      'Fecha contacto', 'MES', 'Prioridad', 'Cliente', 'Despacho', 'TIPO CLIENTE',
+      'Forma de Contacto', 'Mail', 'NOTAS', 'Visito Showroom', 'Cotización', 'Estatus',
+      'Valor Cotización', 'Valor Venta'
     ]
   };
   // ===== Ventas con varios productos: campos "por producto" (line) vs "de la orden" =====
@@ -2108,7 +2268,8 @@
     // Ventas: los autocompletados (Despacho, Dirección, Teléfono, Material, Tipo de Producto,
     // Precio) se activan al conectar los lookups de Clientes/Catálogo.
     ventas_registro: [],
-    compras_registro: ['Producto', 'Total USD', 'Costo Total USD']
+    compras_registro: ['Producto', 'Total USD', 'Costo Total USD'],
+    funnel: ['MES']
   };
   // Campos calculados (solo lectura). Se recalculan en orden por dependencias.
   // op: 'sub' a-b, 'add' a+b, 'mul' a*b, 'div' a/b. format:'percent' muestra %.
@@ -2162,7 +2323,9 @@
     ventas_clientes: ['Nombre/Razón Social'],
     compras_registro: ['Fecha', 'Proveedor', 'Marca', 'Canal de Compra', 'Unidades', 'Total',
                        'Moneda', 'Tipo de Cambio', 'Proveedor de Pago', 'Comision Compra',
-                       'Otros Gastos', 'Status', 'Método de Pago']
+                       'Otros Gastos', 'Status', 'Método de Pago'],
+    funnel: ['Fecha contacto', 'Prioridad', 'Cliente', 'TIPO CLIENTE', 'Forma de Contacto',
+             'Cotización', 'Valor Venta']
   };
   // Campos que se autocompletan con el siguiente número disponible (editables).
   var AUTONUM_FIELDS = ['No. Identificación', 'No. de Identificación', 'No. de Cliente'];
@@ -2603,6 +2766,36 @@
         return;
       }
       if (isDiscValField(h)) { return; }   // se maneja junto con "% descuento"
+      // --- Combo: se elige de la lista o se escribe uno nuevo (Cliente, Despacho, Estatus) ---
+      if (isComboField(h) && !isReadonlyField(h)) {
+        var cinp2 = document.createElement('input');
+        cinp2.type = 'text';
+        cinp2.setAttribute('data-col', h);
+        cinp2.setAttribute('list', 'dl-' + norm(h).replace(/[^a-z0-9]+/g, '-'));
+        cinp2.placeholder = 'Elegí de la lista o escribí uno nuevo';
+        var dl = document.createElement('datalist');
+        dl.id = cinp2.getAttribute('list');
+        comboOptionsFor(h).forEach(function (o) {
+          var op = document.createElement('option'); op.value = o; dl.appendChild(op);
+        });
+        var lkc = lookupFor(h);
+        if (lkc) cinp2.addEventListener('change', function () { applyLookup(lkc, cinp2.value); });
+        wrap.appendChild(cinp2); wrap.appendChild(dl);
+        box.appendChild(wrap);
+        return;
+      }
+      // --- Menú fijo definido en FIELD_OPTIONS ---
+      var fixedOpts = isReadonlyField(h) ? null : optionsFor(h);
+      if (fixedOpts) {
+        var fsel = document.createElement('select'); fsel.setAttribute('data-col', h);
+        var fhtml = '<option value="">— elegir —</option>';
+        fixedOpts.forEach(function (o) { fhtml += '<option>' + esc(o) + '</option>'; });
+        fsel.innerHTML = fhtml;
+        fsel.addEventListener('change', recalcComputed);
+        wrap.appendChild(fsel);
+        box.appendChild(wrap);
+        return;
+      }
       var cat = isReadonlyField(h) ? null : categoryFor(h);  // solo lectura gana sobre desplegable
       var lkf = lookupFor(h);
       if (lkf) {
@@ -2633,6 +2826,8 @@
         }
         inp.setAttribute('data-col', h);   // se envía; el backend ignora las columnas con fórmula
         if (isAutoNumField(h)) inp.value = nextAvailableId(h);
+        if (state.key === 'funnel' && norm(h) === 'valor venta') inp.placeholder = 'Monto, o NA si no dio respuesta';
+        if (state.key === 'funnel' && norm(h) === 'valor cotizacion') inp.placeholder = 'Monto cotizado (o NA)';
         if (!inp.readOnly) inp.addEventListener('input', recalcComputed);
         wrap.appendChild(inp);
       }
@@ -2647,6 +2842,7 @@
       applyCurrencyRule();
     }
     initCascade();
+    aplicarMesAuto();
     recalcComputed();
     renderLineList();
     // Diagnóstico temporal de la cascada (para depurar Material Extra)
@@ -2808,6 +3004,10 @@
   document.getElementById('logoutBtn').addEventListener('click', doLogout);
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   document.getElementById('openAddBtn').addEventListener('click', abrirModalAlta);
+  document.getElementById('summary').addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('.mes-chip') : null;
+    if (b) filtrarMesFunnel(b.getAttribute('data-mes') || '');
+  });
   document.getElementById('addModalClose').addEventListener('click', cerrarModalAlta);
   document.getElementById('addModal').addEventListener('click', function (e) {
     if (e.target === this) cerrarModalAlta();          // clic fuera de la tarjeta
