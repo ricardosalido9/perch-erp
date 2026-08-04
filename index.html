@@ -2324,8 +2324,13 @@
     api('dashboard', { token: state.token })
       .then(function (d) { dashData = d; renderDashboard(); })
       .catch(function (e) {
+        var msg = (e && e.message) ? e.message : 'Error desconocido';
         document.getElementById('dashView').innerHTML =
-          '<div class="state" style="padding:60px 0">No se pudieron cargar los indicadores.</div>';
+          '<div class="state" style="padding:60px 0">No se pudieron cargar los indicadores.' +
+          '<div style="margin-top:10px;font-size:13px;color:var(--danger)">' + esc(msg) + '</div>' +
+          '<div style="margin-top:14px"><button type="button" id="dashRetry">Reintentar</button></div></div>';
+        var rb = document.getElementById('dashRetry');
+        if (rb) rb.addEventListener('click', loadDashboard);
         fail(e);
       });
   }

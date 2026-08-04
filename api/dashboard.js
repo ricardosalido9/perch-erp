@@ -27,7 +27,8 @@ function fechaNum(v) {
   return null;
 }
 async function leer(key) {
-  const cfg = await core.areaCfg(key);
+  // Si core.js quedara desactualizado (sin areaCfg), se usa la config directa
+  const cfg = core.areaCfg ? await core.areaCfg(key) : core.SHEETS[key];
   if (!cfg) return { headers: [], rows: [] };
   let values;
   try { values = await core.readRange(cfg.id, cfg.sheetName); }
@@ -308,7 +309,7 @@ module.exports = async (req, res) => {
     // ===== Funnel de ventas (bitácora de contactos "Montse 2026") =====
     let funnel = { ok: false, motivo: '', rows: [], cols: {}, headers: [], estatus: [], descartadas: 0 };
     try {
-      const cfgF = await core.areaCfg('funnel');
+      const cfgF = core.areaCfg ? await core.areaCfg('funnel') : core.SHEETS.funnel;
       if (!cfgF || !cfgF.id) throw new Error('El área "funnel" no tiene archivo configurado en lib/core.js.');
       let raw;
       try { raw = await core.readRange(cfgF.id, cfgF.sheetName); }

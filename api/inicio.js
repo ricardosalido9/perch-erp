@@ -24,7 +24,7 @@ function fechaNum(v) {
   return null;
 }
 async function leer(key) {
-  const cfg = await core.areaCfg(key);
+  const cfg = core.areaCfg ? await core.areaCfg(key) : core.SHEETS[key];
   if (!cfg) return { headers: [], rows: [] };
   let values;
   try { values = await core.readRange(cfg.id, cfg.sheetName); }
