@@ -2198,7 +2198,7 @@
     if (cx && cx.ok && cx.rows && cx.rows.length) {
       var P  = cx.rows.filter(function (r) { return enRango(r.d); });          // pedidos del periodo
       var Pp = cmpOn ? cx.rows.filter(function (r) { return enRangoPrev(r.d); }) : [];
-      var suma = function (arr, campo) { var t = 0; arr.forEach(function (r) { t += (r[campo] || 0); }); return t; };
+      // (se usa la función global suma(rows, campo))
       var agrupaMonto = function (arr, campo, valor) {
         var o = {};
         arr.forEach(function (r) { var k = r[campo] || 'Sin especificar'; o[k] = (o[k] || 0) + (r[valor] || 0); });
