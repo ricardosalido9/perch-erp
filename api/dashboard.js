@@ -117,6 +117,8 @@ function fechaFunnel(v, mesFallback, anio) {
 }
 function mesDeTexto(v) {
   const s = norm(v);
+  const n = parseInt(s, 10);                       // CxC guarda el mes como número (1..12)
+  if (!isNaN(n) && n >= 1 && n <= 12 && /^\d+$/.test(s)) return n;
   for (const k in MESES) if (s === k || s.indexOf(k + ' ') === 0 || s.indexOf(k) === 0) return MESES[k];
   return null;
 }
@@ -202,33 +204,93 @@ module.exports = async (req, res) => {
       }).filter(x => x.anio && x.mes && (x.mv || x.mu));
     } catch (e) { metas = []; }
 
-    // ===== Cuentas por Cobrar (por pedido) =====
-    let cxc = { facturado: 0, pagado: 0, porCobrar: 0, pedidos: 0, conSaldo: 0, rows: [] };
+    // ===== Cuentas por Cobrar — el PEDIDO completo (pestaña CxC) =====
+    // Aquí cada fila es un pedido entero (en VENTAS cada fila es un producto).
+    // Se mandan las filas con fecha para que el dashboard respete el filtro de periodo.
+    let cxc = { ok: false, motivo: '', cols: {}, headers: [], rows: [] };
     try {
       const cx = await leer('fin_cxc');
       const Hc = cx.headers;
-      const numPos = (v) => { const s = String(v == null ? '' : v).replace(/[^0-9.]/g, ''); const n = parseFloat(s); return isNaN(n) ? 0 : n; };
-      const cRef = col(Hc, 'No. de Referencia', 'No de Referencia', 'Referencia');
-      const cCli = col(Hc, 'Cliente');
-      const cTot = col(Hc, 'Total con envío', 'Total con envio', 'Total Pedido');
-      const cPag = col(Hc, 'Pagado');
-      const cPC  = col(Hc, 'Por cobrar', 'Por Cobrar');
-      const cF   = col(Hc, 'Fecha del Cierre', 'Fecha');
+      if (!Hc.length) throw new Error('No se pudo leer la pestaña CxC (¿compartida con la cuenta de servicio?).');
+
+      // Los montos vienen como  -$ 1,234.00-  ; los sobrepagos como  -$ -930.00-
+      const numCx = (v) => {
+        let t = String(v == null ? '' : v).replace(/[$\s]/g, '');
+        if (t.charAt(0) === '-') t = t.slice(1);
+        if (t.charAt(t.length - 1) === '-') t = t.slice(0, -1);
+        const neg = t.charAt(0) === '-';
+        const n = parseFloat(t.replace(/[^0-9.]/g, ''));
+        return isNaN(n) ? 0 : (neg ? -n : n);
+      };
+      const cRef  = col(Hc, 'No. de Referencia', 'No de Referencia', 'Referencia', 'Folio');
+      const cCli  = col(Hc, 'Cliente');
+      const cDesp = col(Hc, 'Despacho');
+      const cProd = col(Hc, 'Productos', 'Producto');
+      const cTot  = col(Hc, 'Total con envío', 'Total con envio') || col(Hc, 'Total Pedido', 'Total');
+      const cPzs  = col(Hc, 'Productos', 'Piezas', 'Cantidad');       // número de piezas del pedido
+      const cComo = col(Hc, 'Cómo entró la venta', 'Como entro la venta', 'Cómo Llegó');
+      const cEnv  = col(Hc, 'Envio', 'Envío');
+      const cPag  = col(Hc, 'Pagado');
+      const cPC   = col(Hc, 'Por cobrar', 'Por Cobrar', 'Saldo');
+      const cAnt  = col(Hc, 'Anticipo');
+      const cFin  = col(Hc, 'Finiquito');
+      const cFac  = col(Hc, 'Factura Si/No', 'Factura', 'Factura Si / No');
+      const cFP   = col(Hc, 'Forma de pago', 'Forma de Pago', 'Método de pago');
+      const cF    = col(Hc, 'Fecha del Cierre', 'Fecha');
+      const cFE   = col(Hc, 'Fecha de Entrega', 'Fecha de entrega');
+      const cMes  = col(Hc, 'Mes', 'MES');
+      if (!cTot) throw new Error('No se encontró la columna de total del pedido. Encabezados: ' + Hc.filter(Boolean).join(' | '));
+
+      const anioCx = new Date().getFullYear();
+      const rows = [];
+      let cancelados = 0;
       cx.rows.forEach(r => {
         const ref = cRef ? txt(r[cRef]) : '';
-        if (!ref) return;
-        const tot = cTot ? numPos(r[cTot]) : 0;
-        const pag = cPag ? numPos(r[cPag]) : 0;
-        const pc  = cPC ? numPos(r[cPC]) : Math.max(0, tot - pag);
-        cxc.facturado += tot; cxc.pagado += pag; cxc.porCobrar += pc; cxc.pedidos++;
-        if (pc > 0.5) {
-          cxc.conSaldo++;
-          cxc.rows.push({ ref: ref, cli: cCli ? txt(r[cCli]) : '', tot: tot, pag: pag, pc: pc, f: cF ? txt(r[cF]) : '' });
+        const tot = numCx(r[cTot]);
+        if (!ref && !tot) return;                        // fila vacía o de relleno
+        // Pedidos cancelados: se cuentan aparte, no suman a facturado ni a cobranza
+        const marca = norm((cPC ? txt(r[cPC]) : '') + ' ' + (cFE ? txt(r[cFE]) : ''));
+        if (/cancelad/.test(marca)) { cancelados++; return; }
+        const pag = cPag ? numCx(r[cPag]) : 0;
+        const pc  = cPC ? numCx(r[cPC]) : (tot - pag);
+        let d = cF ? fechaNum(r[cF]) : null;
+        if (d === null && cMes) {                        // sin fecha: se usa el mes (día 1)
+          const m = mesDeTexto(r[cMes]);
+          if (m) d = anioCx * 10000 + m * 100 + 1;
         }
+        rows.push({
+          d: d,
+          f:    cF ? txt(r[cF]) : '',
+          fe:   cFE ? txt(r[cFE]) : '',
+          ref:  ref,
+          cli:  cCli ? txt(r[cCli]) : '',
+          desp: cDesp ? txt(r[cDesp]) : '',
+          prod: cProd ? txt(r[cProd]) : '',
+          tot:  tot,
+          env:  cEnv ? numCx(r[cEnv]) : 0,
+          pzs:  cPzs ? (parseInt(String(r[cPzs]).replace(/[^0-9]/g, ''), 10) || 0) : 0,
+          pag:  pag,
+          pc:   pc,
+          ant:  cAnt ? numCx(r[cAnt]) : 0,
+          fin:  cFin ? numCx(r[cFin]) : 0,
+          como: cComo ? (txt(r[cComo]) || 'Sin especificar') : 'Sin especificar',
+          fac:  cFac ? (txt(r[cFac]) || 'Sin especificar') : 'Sin especificar',
+          fp:   cFP ? (txt(r[cFP]) || 'Sin especificar') : 'Sin especificar'
+        });
       });
-      cxc.rows.sort((a, b) => b.pc - a.pc);
-      cxc.rows = cxc.rows.slice(0, 15);
-    } catch (e) { cxc = { facturado: 0, pagado: 0, porCobrar: 0, pedidos: 0, conSaldo: 0, rows: [] }; }
+
+      cxc = {
+        ok: true, motivo: '',
+        cols: { ref: cRef || '', total: cTot, pagado: cPag || '', porCobrar: cPC || '',
+                fecha: cF || '', mes: cMes || '', piezas: cPzs || '', como: cComo || '' },
+        headers: Hc.filter(Boolean),
+        cancelados: cancelados,
+        conFecha: rows.filter(x => x.d !== null).length,
+        rows: rows
+      };
+    } catch (e) {
+      cxc = { ok: false, motivo: String(e && e.message ? e.message : e), cols: {}, headers: [], rows: [] };
+    }
 
     // ===== Funnel de ventas (bitácora de contactos "Montse 2026") =====
     let funnel = { ok: false, motivo: '', rows: [], cols: {}, headers: [], estatus: [], descartadas: 0 };

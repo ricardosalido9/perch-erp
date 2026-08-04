@@ -985,6 +985,8 @@
 
   // Columnas filtrables por área. Si un área no está aquí, se pueden filtrar todas.
   var FILTER_FIELDS = {
+    fin_cxc: ['Fecha del Cierre', 'Fecha de Entrega', 'No. de Referencia', 'Cliente', 'Despacho',
+              'Factura Si / No', 'PUE/PPD', 'FORMA DE PAGO', 'Cómo entró la venta'],
     funnel: ['MES', 'Prioridad', 'Cliente', 'Despacho', 'TIPO CLIENTE', 'Forma de Contacto',
              'Visito Showroom', 'Cotización', 'Estatus'],
     ventas_registro: ['Fecha del Cierre', 'Fecha de entrega acordada', 'No. de Referencia', 'Cliente',
@@ -1361,7 +1363,9 @@
   // Columnas que NO se muestran en la tabla de registros. Por área.
   var HIDE_COLUMNS = {
     ventas_registro: ['Mes', 'Año1'],
-    compras_registro: ['Mes']
+    compras_registro: ['Mes'],
+    // CxC: se ocultan las columnas de control interno (links, complementos, notas de facturación)
+    fin_cxc: ['Mes', 'Link', 'Comentarios (uso de CFDI)', 'Factura', 'Complemento', 'Complemento 2', 'Comentarios']
   };
   function visibleHeaders() {
     var hide = HIDE_COLUMNS[state.key] || [];
@@ -1374,7 +1378,6 @@
   // ===================== INICIO =====================
   var ACCESOS = [
     { key:'ventas_registro',     label:'Ventas',      icon:'tag',    sub:'Registrar una venta' },
-    { key:'proyectos_registro',  label:'Proyectos',   icon:'layers', sub:'Diseño y a medida' },
     { key:'ventas_clientes',     label:'Clientes',    icon:'users',  sub:'Directorio' },
     { key:'prod_ordenes',        label:'Producción',  icon:'tool',   sub:'Órdenes de taller' },
     { key:'compras_registro',    label:'Compras',     icon:'cart',   sub:'Registrar una compra' },
@@ -1968,28 +1971,96 @@
       h += '</div>';
     }
 
-    // --- Cuentas por Cobrar (snapshot global, no depende del filtro de fecha) ---
+    // --- Cuentas por Cobrar · el pedido completo (pestaña CxC) ---
     var cx = d.cxc;
-    if (cx && cx.pedidos) {
-      h += '<div class="dash-section"><h3>Cuentas por Cobrar · saldo actual</h3><div class="kpi-grid">' +
-        '<div class="kpi"><div class="k">Facturado (con envío)</div><div class="v" title="' + esc(formatMoney(cx.facturado)) + '">' +
-          esc(fmtMoneyShort(cx.facturado)) + '</div><div class="s">' + fmtNum(cx.pedidos) + ' pedidos</div></div>' +
-        '<div class="kpi"><div class="k">Cobrado</div><div class="v" title="' + esc(formatMoney(cx.pagado)) + '">' +
-          esc(fmtMoneyShort(cx.pagado)) + '</div></div>' +
-        '<div class="kpi dark"><div class="k">Por cobrar</div><div class="v" title="' + esc(formatMoney(cx.porCobrar)) + '">' +
-          esc(fmtMoneyShort(cx.porCobrar)) + '</div><div class="s">' + fmtNum(cx.conSaldo) + ' pedidos con saldo</div></div>' +
-        '<div class="kpi"><div class="k">% Cobrado</div><div class="v">' +
-          (cx.facturado ? ((cx.pagado / cx.facturado) * 100).toFixed(0) : 0) + '%</div></div>' +
+    if (cx && !cx.ok && cx.motivo) {
+      h += '<div class="dash-section"><h3>Cuentas por Cobrar</h3><div class="panel"><div class="panel-body">' +
+        '<div class="dash-empty">No se pudo leer CxC: ' + esc(cx.motivo) + '</div></div></div></div>';
+    }
+    if (cx && cx.ok && cx.rows && cx.rows.length) {
+      var P  = cx.rows.filter(function (r) { return enRango(r.d); });          // pedidos del periodo
+      var Pp = cmpOn ? cx.rows.filter(function (r) { return enRangoPrev(r.d); }) : [];
+      var suma = function (arr, campo) { var t = 0; arr.forEach(function (r) { t += (r[campo] || 0); }); return t; };
+      var agrupaMonto = function (arr, campo, valor) {
+        var o = {};
+        arr.forEach(function (r) { var k = r[campo] || 'Sin especificar'; o[k] = (o[k] || 0) + (r[valor] || 0); });
+        return o;
+      };
+      var facturado = suma(P, 'tot'), cobrado = suma(P, 'pag'), porCobrar = suma(P, 'pc');
+      var piezas = suma(P, 'pzs');
+      var pedidos = P.length;
+      var ticket = pedidos ? facturado / pedidos : 0;
+      var pctCobrado = facturado ? (cobrado / facturado) * 100 : 0;
+
+      h += '<div class="dash-section"><h3>Pedidos y cobranza · pestaña CxC (un renglón = un pedido)</h3><div class="kpi-grid">' +
+        '<div class="kpi dark"><div class="k">Pedidos</div><div class="v">' + fmtNum(pedidos) + '</div>' +
+          (cmpOn ? variacionHTML(pedidos, Pp.length) : '<div class="s">en el periodo</div>') + '</div>' +
+        '<div class="kpi"><div class="k">Facturado (con envío)</div><div class="v" title="' + esc(formatMoney(facturado)) + '">' +
+          esc(fmtMoneyShort(facturado)) + '</div>' + (cmpOn ? variacionHTML(facturado, suma(Pp, 'tot')) : '') + '</div>' +
+        '<div class="kpi"><div class="k">Ticket por pedido</div><div class="v" title="' + esc(formatMoney(ticket)) + '">' +
+          esc(fmtMoneyShort(ticket)) + '</div><div class="s">promedio del pedido completo</div></div>' +
+        '<div class="kpi"><div class="k">Piezas</div><div class="v">' + fmtNum(piezas) + '</div>' +
+          (cmpOn ? variacionHTML(piezas, suma(Pp, 'pzs')) : '<div class="s">en ' + fmtNum(pedidos) + ' pedidos</div>') + '</div>' +
+        '<div class="kpi"><div class="k">Cobrado</div><div class="v" title="' + esc(formatMoney(cobrado)) + '">' +
+          esc(fmtMoneyShort(cobrado)) + '</div><div class="s">' + pctCobrado.toFixed(0) + '% de lo facturado</div></div>' +
+        '<div class="kpi"><div class="k">Por cobrar</div><div class="v" style="color:var(--danger)" title="' + esc(formatMoney(porCobrar)) + '">' +
+          esc(fmtMoneyShort(porCobrar)) + '</div><div class="s">' +
+          fmtNum(P.filter(function (r) { return r.pc > 0.5; }).length) + ' pedidos con saldo</div></div>' +
         '</div>';
-      var cxRows = (cx.rows || []).map(function (r) {
-        return '<tr><td>' + esc(r.ref) + '</td><td title="' + esc(r.cli) + '">' + esc(r.cli) + '</td>' +
-          '<td class="num">' + esc(formatMoney(r.tot)) + '</td><td class="num">' + esc(formatMoney(r.pag)) + '</td>' +
-          '<td class="num" style="font-weight:700">' + esc(formatMoney(r.pc)) + '</td></tr>';
-      }).join('');
-      h += '<div class="panel"><h4>Pedidos con saldo pendiente (mayores)</h4><div class="panel-body">' +
-        (cxRows ? '<table class="mini-table"><thead><tr><th>Pedido</th><th>Cliente</th>' +
-          '<th style="text-align:right">Total</th><th style="text-align:right">Pagado</th><th style="text-align:right">Por cobrar</th></tr></thead><tbody>' +
-          cxRows + '</tbody></table>' : '<div class="dash-empty">Sin saldos pendientes.</div>') + '</div></div></div>';
+
+      // Pedidos facturados por mes
+      var porMesCx = {};
+      P.forEach(function (r) {
+        if (r.d == null) return;
+        var k = String(Math.floor(r.d / 10000)) + '-' + String(Math.floor(r.d / 100) % 100).padStart(2, '0');
+        porMesCx[k] = (porMesCx[k] || 0) + (r.tot || 0);
+      });
+      h += '<div class="dash-cols">' +
+        '<div class="panel"><h4>Facturado por mes</h4><div class="panel-body">' +
+          chartHTML(porMesCx, { money: true }) + '</div></div>' +
+        '<div class="panel"><h4>Facturado por cómo entró la venta</h4><div class="panel-body">' +
+          barsHTML(agrupaMonto(P, 'como', 'tot'), { money: true, limit: 8, otros: true }) + '</div></div>' +
+        '</div>';
+
+      h += '<div class="dash-cols" style="margin-top:12px">' +
+        '<div class="panel"><h4>Facturado por forma de pago</h4><div class="panel-body">' +
+          barsHTML(agrupaMonto(P, 'fp', 'tot'), { money: true, limit: 8, otros: true }) + '</div></div>' +
+        '<div class="panel"><h4>Clientes que más facturan (top 10)</h4><div class="panel-body">' +
+          barsHTML(agrupaMonto(P, 'cli', 'tot'), { money: true, limit: 10, otros: true }) + '</div></div>' +
+        '</div>';
+
+      var anticipos = suma(P, 'ant'), finiquitos = suma(P, 'fin');
+      if (anticipos || finiquitos) {
+        h += '<div class="dash-cols" style="margin-top:12px">' +
+          '<div class="panel"><h4>Anticipos vs finiquitos</h4><div class="panel-body">' +
+            barsHTML({ 'Anticipos': anticipos, 'Finiquitos': finiquitos }, { money: true }) + '</div></div>' +
+          '<div class="panel"><h4>Facturado por requiere factura</h4><div class="panel-body">' +
+            barsHTML(agrupaMonto(P, 'fac', 'tot'), { money: true, limit: 6 }) + '</div></div>' +
+          '</div>';
+      }
+
+      // Saldos vivos: se miran SIEMPRE completos, no solo los del periodo
+      var conSaldo = cx.rows.filter(function (r) { return r.pc > 0.5; })
+        .sort(function (a, b) { return b.pc - a.pc; });
+      var saldoTotal = 0; conSaldo.forEach(function (r) { saldoTotal += r.pc; });
+      if (conSaldo.length) {
+        var cxRows = conSaldo.slice(0, 15).map(function (r) {
+          return '<tr><td>' + esc(r.ref || '—') + '</td><td title="' + esc(r.cli) + '">' + esc(r.cli) + '</td>' +
+            '<td>' + esc(r.f ? formatDateCell(r.f) : '') + '</td>' +
+            '<td class="num">' + esc(formatMoney(r.tot)) + '</td><td class="num">' + esc(formatMoney(r.pag)) + '</td>' +
+            '<td class="num" style="font-weight:700">' + esc(formatMoney(r.pc)) + '</td></tr>';
+        }).join('');
+        h += '<div class="panel" style="margin-top:12px"><h4>Saldo pendiente hoy · ' + fmtNum(conSaldo.length) +
+          ' pedidos por ' + esc(formatMoney(saldoTotal)) + ' (todos los periodos)</h4><div class="panel-body">' +
+          '<table class="mini-table"><thead><tr><th>Pedido</th><th>Cliente</th><th>Fecha</th>' +
+          '<th style="text-align:right">Total</th><th style="text-align:right">Pagado</th>' +
+          '<th style="text-align:right">Por cobrar</th></tr></thead><tbody>' + cxRows + '</tbody></table></div></div>';
+      }
+      if (cx.cancelados) {
+        h += '<div class="dash-empty" style="margin-top:8px">' + fmtNum(cx.cancelados) +
+          ' pedidos cancelados excluidos del total.</div>';
+      }
+      h += '</div>';
     }
 
     // --- Ventas recientes ---
