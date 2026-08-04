@@ -20,15 +20,25 @@ module.exports = async (req, res) => {
     const cfg = core.SHEETS[area] || {};
     const id = q.id || cfg.id;
     const tab = q.tab || cfg.sheetName;
-    if (!id || !tab) return res.status(400).json({ ok: false, error: 'Falta id o pestaña para el área "' + area + '".' });
+    if (!id || !tab) {
+      return res.status(400).json({
+        ok: false,
+        error: 'El servidor no conoce el área "' + area + '".',
+        areas_configuradas: Object.keys(core.SHEETS || {}),
+        pista: 'Si el área que buscas no aparece en la lista, lib/core.js no está actualizado en Vercel.'
+      });
+    }
 
     let values;
     try { values = await core.readRange(id, tab); }
     catch (e) {
+      let pestanas = null;
+      try { pestanas = await core.listTabs(id); } catch (e2) { pestanas = null; }
       return res.status(500).json({
-        ok: false, area: area, id: id, pestana: tab,
+        ok: false, area: area, id: id, pestana_buscada: tab,
+        pestanas_del_archivo: pestanas,
         error: e.message || String(e),
-        pista: 'Revisa que el archivo esté compartido con la cuenta de servicio y que el nombre de la pestaña sea exacto.'
+        pista: 'Revisa que la pestaña exista con ese nombre y que el archivo esté compartido con la cuenta de servicio.'
       });
     }
     if (!values.length) return res.status(200).json({ ok: true, area: area, pestana: tab, aviso: 'La pestaña está vacía.' });

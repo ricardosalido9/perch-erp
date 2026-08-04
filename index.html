@@ -683,6 +683,8 @@
         <button class="modal-x" id="addModalClose" type="button" aria-label="Cerrar">&times;</button>
       </div>
       <div class="modal-body">
+        <div id="altaError" style="display:none;margin-bottom:16px;padding:12px 14px;border-radius:10px;
+             background:var(--danger-bg);border:1px solid var(--danger);color:var(--danger);font-size:13px"></div>
         <div class="form-grid" id="formFields"></div>
         <div id="lineItemsBox" style="display:none"></div>
       </div>
@@ -753,11 +755,31 @@
   function abrirModalAlta() {
     var m = document.getElementById('addModal');
     document.getElementById('addModalTitle').textContent = 'Agregar en ' + (state.label || 'esta área');
+    document.getElementById('altaError').style.display = 'none';
     m.classList.add('on');
     var primero = m.querySelector('input, select');
     if (primero) setTimeout(function(){ primero.focus(); }, 40);
   }
-  function cerrarModalAlta() { document.getElementById('addModal').classList.remove('on'); }
+  function cerrarModalAlta() {
+    document.getElementById('addModal').classList.remove('on');
+    document.getElementById('altaError').style.display = 'none';
+  }
+  // Deja el error a la vista (con pista de qué revisar) en vez de un toast que se va
+  function mostrarErrorAlta(e, area) {
+    var msg = (e && e.message) ? e.message : 'Error desconocido';
+    var pista = '';
+    if (/no está conectada/i.test(msg)) {
+      pista = 'El servidor no conoce el área "' + area + '". Suele ser que lib/core.js no se subió o Vercel ' +
+              'no ha terminado de desplegar.';
+    } else if (/Unable to parse range|not found|no se pudo leer/i.test(msg)) {
+      pista = 'No encuentra la pestaña. Revisa que exista y que el archivo esté compartido con la cuenta de servicio.';
+    } else if (/solo lectura/i.test(msg)) {
+      pista = 'Tu usuario no tiene permiso de escritura.';
+    }
+    var box = document.getElementById('altaError');
+    box.innerHTML = '<b>No se guardó.</b> ' + esc(msg) + (pista ? '<div style="margin-top:6px">' + esc(pista) + '</div>' : '');
+    box.style.display = 'block';
+  }
   function modalAltaAbierto() { return document.getElementById('addModal').classList.contains('on'); }
   // Muestra u oculta el botón "+ Agregar" del encabezado
   function mostrarAlta(puede) {
@@ -3278,7 +3300,7 @@
     api('add', { token: state.token, key: state.key, record: record }).then(function () {
       toast('Registro agregado.', 'ok');
       els.forEach(function (i) { i.value = ''; }); cerrarModalAlta(); loadArea();
-    }).catch(fail).then(function () { btn.disabled = false; btn.textContent = 'Guardar registro'; });
+    }).catch(function (e) { mostrarErrorAlta(e, state.key); fail(e); }).then(function () { btn.disabled = false; btn.textContent = 'Guardar registro'; });
   }
 
   // Guarda una venta con 1..N productos: cada producto = una fila, mismo folio y datos del cliente.
@@ -3363,7 +3385,10 @@
         registrarEnCxc(resumenPedido);
       }
       loadArea();
-    }).catch(fail).then(function () { btn.disabled = false; btn.textContent = 'Guardar registro'; });
+    }).catch(function (e) {
+      mostrarErrorAlta(e, areaDestino);
+      fail(e);
+    }).then(function () { btn.disabled = false; btn.textContent = etiqueta; });
   }
 
   // ===== El pedido completo pasa SOLO a Cuentas por Cobrar =====
