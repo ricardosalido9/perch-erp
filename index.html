@@ -497,6 +497,28 @@
   .modal-foot .grow { margin-right:auto; }
   @media (max-width:640px) { .modal { padding:12px; } .modal-card { max-height:calc(100vh - 24px); } }
 
+  /* ---------- Catálogo por producto ---------- */
+  .cat-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:14px; padding:4px; }
+  .cat-card { background:var(--surface); border:1px solid var(--line); border-radius:16px;
+    box-shadow:var(--shadow-sm); overflow:hidden; }
+  .cat-card.open { grid-column:1 / -1; }
+  .cat-head { display:flex; align-items:center; gap:14px; width:100%; background:transparent;
+    border:0; padding:12px; text-align:left; cursor:pointer; }
+  .cat-head:hover { background:var(--paper); border-color:transparent; }
+  .cat-head img { width:110px; height:110px; object-fit:cover; border-radius:12px; flex:none;
+    background:var(--paper); }
+  .cat-nofoto { width:110px; height:110px; border-radius:12px; flex:none; background:var(--paper);
+    display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:12px; }
+  .cat-info { flex:1; min-width:0; }
+  .cat-nombre { font-size:16px; font-weight:600; color:var(--ink); line-height:1.25; }
+  .cat-sub { font-size:13px; color:var(--muted); margin-top:4px; }
+  .cat-chev { color:var(--muted); font-size:12px; flex:none; }
+  .cat-body { border-top:1px solid var(--line); padding:14px 16px; background:var(--paper); }
+  .cat-body .mini-table { background:var(--surface); border-radius:10px; }
+  .cat-edit { border-bottom:0; }
+  .cat-edit .form-grid { grid-template-columns:1fr 1fr; gap:12px; }
+  @media (max-width:640px) { .cat-edit .form-grid { grid-template-columns:1fr; } }
+
   /* ---------- Resumen del Funnel ---------- */
   .mes-chips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px; }
   .mes-chip { background:var(--surface); border:1px solid var(--line); color:var(--slate);
@@ -600,6 +622,8 @@
         <input type="search" id="search" placeholder="Buscar en la tabla..." style="min-width:220px">
         <button id="filterBtn" type="button">Añadir filtro</button>
         <button id="refreshBtn" type="button">Actualizar</button>
+        <button id="openSheetBtn" type="button" title="Abrir la pestaña en Google Sheets">Abrir hoja</button>
+        <button id="catViewBtn" type="button" style="display:none">Ver como tabla</button>
         <button id="downloadBtn" type="button">Descargar</button>
         <span class="count" id="count"></span>
       </div>
@@ -918,6 +942,10 @@
       var data = r[0]; state.categories = r[1] || {};
       var lk = r[2]; state.lookups = (lk && lk.lookups) ? lk.lookups : [];
       state.headers = data.headers || []; state.rows = data.rows || [];
+      state.fileId = data.fileId || ''; state.sheetName = data.sheetName || '';
+      var cvb = document.getElementById('catViewBtn');
+      cvb.style.display = (state.key === 'inventario') ? '' : 'none';
+      cvb.textContent = catalogoAgrupado ? 'Ver como tabla' : 'Ver por producto';
       if (!data.connected) {
         document.getElementById('tableWrap').innerHTML =
           '<div class="state">Esta área todavía no está conectada. Agregá su hoja en SHEETS (lib/core.js).</div>';
@@ -2404,11 +2432,113 @@
     return out;
   }
 
+  // ===== Catálogo: una tarjeta por producto; al tocarla se abren sus variantes =====
+  var catalogoAgrupado = true;      // vista por defecto del área Catálogo
+  var catalogoAbierto = {};         // qué productos están desplegados
+  function colCatalogo(nombres) {
+    for (var i = 0; i < nombres.length; i++) {
+      var h = state.headers.filter(function (x) { return norm(x) === norm(nombres[i]); })[0];
+      if (h) return h;
+    }
+    return null;
+  }
+  function renderCatalogo(rows) {
+    var cProd = colCatalogo(['Productos', 'Producto']);
+    var cFoto = colCatalogo(['Fotos', 'Foto']);
+    if (!cProd) { return null; }    // sin columna de producto no se puede agrupar
+    var cMat  = colCatalogo(['Material']);
+    var cExt  = colCatalogo(['Material Extra']);
+    var cTipo = colCatalogo(['Tipo de Producto', 'Tipo de producto']);
+    var cPrec = colCatalogo(['Precio de Venta', 'Precio Venta', 'Precio', 'Precio Unitario']);
+    var cCost = colCatalogo(['Costos Total', 'Costo Total', 'Costo']);
+
+    var grupos = {}, orden = [];
+    rows.forEach(function (r) {
+      var k = String(r[cProd] == null ? '' : r[cProd]).trim() || 'Sin nombre';
+      if (!grupos[k]) { grupos[k] = []; orden.push(k); }
+      grupos[k].push(r);
+    });
+
+    var h = '<div class="cat-grid">';
+    orden.forEach(function (k) {
+      var g = grupos[k];
+      var foto = '';
+      for (var i = 0; i < g.length && !foto; i++) foto = urlImagen(cFoto ? g[i][cFoto] : '');
+      // rango de precios entre las variantes
+      var min = null, max = null;
+      g.forEach(function (r) {
+        var v = parseNumber(cPrec ? r[cPrec] : null);
+        if (v === null) return;
+        if (min === null || v < min) min = v;
+        if (max === null || v > max) max = v;
+      });
+      var precio = (min === null) ? '' :
+        (min === max ? formatMoney(min) : formatMoney(min) + ' – ' + formatMoney(max));
+      var abierto = !!catalogoAbierto[k];
+      h += '<div class="cat-card' + (abierto ? ' open' : '') + '">' +
+        '<button type="button" class="cat-head" data-prod="' + esc(k).replace(/"/g, '&quot;') + '">' +
+          (foto ? '<img src="' + esc(foto) + '" alt="" loading="lazy">'
+                : '<div class="cat-nofoto">sin foto</div>') +
+          '<div class="cat-info">' +
+            '<div class="cat-nombre">' + esc(k) + '</div>' +
+            '<div class="cat-sub">' + fmtNum(g.length) + (g.length === 1 ? ' opción' : ' opciones') +
+              (precio ? ' · ' + esc(precio) : '') + '</div>' +
+          '</div>' +
+          '<span class="cat-chev">' + (abierto ? '▲' : '▼') + '</span>' +
+        '</button>';
+      if (abierto) {
+        var cDesc = colCatalogo(['Descripción', 'Descripcion']);
+        var cMed  = colCatalogo(['Medidas', 'Dimensiones']);
+        if (cDesc || cMed) {
+          var dv = '', mv = '';
+          g.forEach(function (r) {
+            if (!dv && cDesc && String(r[cDesc] || '').trim()) dv = String(r[cDesc]).trim();
+            if (!mv && cMed && String(r[cMed] || '').trim()) mv = String(r[cMed]).trim();
+          });
+          h += '<div class="cat-body cat-edit" data-prod="' + esc(k).replace(/"/g, '&quot;') + '">' +
+            '<div class="form-grid">' +
+              (cDesc ? '<div class="fld"><label>Descripción (para la cotización)</label>' +
+                '<input type="text" class="cat-desc" value="' + esc(dv).replace(/"/g, '&quot;') +
+                '" placeholder="ej. Banca en madera Nogal con asiento en tela"></div>' : '') +
+              (cMed ? '<div class="fld"><label>Medidas</label>' +
+                '<input type="text" class="cat-med" value="' + esc(mv).replace(/"/g, '&quot;') +
+                '" placeholder="ej. 45 largo x 58 fondo x 73 altura"></div>' : '') +
+            '</div>' +
+            '<button type="button" class="primary cat-save" style="margin-top:10px">Aplicar a las ' +
+              fmtNum(g.length) + (g.length === 1 ? ' opción' : ' opciones') + '</button>' +
+            '</div>';
+        }
+        h += '<div class="cat-body"><table class="mini-table"><thead><tr>' +
+          (cMat ? '<th>Material</th>' : '') + (cExt ? '<th>Material Extra</th>' : '') +
+          (cTipo ? '<th>Tipo</th>' : '') +
+          (cCost ? '<th style="text-align:right">Costo</th>' : '') +
+          (cPrec ? '<th style="text-align:right">Precio</th>' : '') +
+          '</tr></thead><tbody>';
+        g.forEach(function (r) {
+          h += '<tr>' +
+            (cMat ? '<td>' + esc(r[cMat] || '—') + '</td>' : '') +
+            (cExt ? '<td>' + esc(r[cExt] || '—') + '</td>' : '') +
+            (cTipo ? '<td>' + esc(r[cTipo] || '—') + '</td>' : '') +
+            (cCost ? '<td class="num">' + esc(r[cCost] || '') + '</td>' : '') +
+            (cPrec ? '<td class="num">' + esc(r[cPrec] || '') + '</td>' : '') +
+            '</tr>';
+        });
+        h += '</tbody></table></div>';
+      }
+      h += '</div>';
+    });
+    return h + '</div>';
+  }
+
   function renderTable() {
     var rows = sortRows(filteredRows());
     renderSummary(rows);
     document.getElementById('count').textContent = rows.length + (rows.length === 1 ? ' registro' : ' registros');
     if (!rows.length) { document.getElementById('tableWrap').innerHTML = '<div class="state">Sin registros.</div>'; return; }
+    if (state.key === 'inventario' && catalogoAgrupado) {
+      var hc = renderCatalogo(rows);
+      if (hc) { document.getElementById('tableWrap').innerHTML = hc; return; }
+    }
     var cols = visibleHeaders();
     var pillCols = columnasConPill(rows, cols);
     var conAcciones = !esSoloLectura(state.key);
@@ -2468,7 +2598,8 @@
         html += '<td class="actions"><button class="save-btn primary" data-row="' + r._row + '">Guardar</button>' +
                 '<button class="cancel-btn" data-row="' + r._row + '">Cancelar</button></td>';
       } else {
-        html += '<td class="actions"><button class="edit-btn" data-row="' + r._row + '">Editar</button></td>';
+        html += '<td class="actions"><button class="edit-btn" data-row="' + r._row +
+                  '" title="Está en la fila ' + r._row + ' de la hoja">Editar</button></td>';
       }
       html += '</tr>';
     });
@@ -3581,6 +3712,41 @@
     closeNav();
   });
   document.getElementById('search').addEventListener('input', renderTable);
+  document.getElementById('catViewBtn').addEventListener('click', function () {
+    catalogoAgrupado = !catalogoAgrupado;
+    this.textContent = catalogoAgrupado ? 'Ver como tabla' : 'Ver por producto';
+    renderTable();
+  });
+  document.getElementById('tableWrap').addEventListener('click', function (e) {
+    if (!e.target.closest) return;
+    var sv = e.target.closest('.cat-save');
+    if (sv) {
+      var caja = sv.closest('.cat-edit');
+      var prod = caja.getAttribute('data-prod');
+      var di = caja.querySelector('.cat-desc'), mi = caja.querySelector('.cat-med');
+      var set = {};
+      if (di) set['Descripción'] = di.value.trim();
+      if (mi) set['Medidas'] = mi.value.trim();
+      sv.disabled = true; sv.textContent = 'Guardando...';
+      api('fill', { token: state.token, key: state.key,
+                    match: { col: 'Productos', value: prod }, set: set })
+        .then(function (out) {
+          toast('Actualizado en ' + (out.filas || 0) + (out.filas === 1 ? ' opción' : ' opciones') + '.', 'ok');
+          loadArea();
+        })
+        .catch(function (err) { fail(err); sv.disabled = false; sv.textContent = 'Aplicar'; });
+      return;
+    }
+    var b = e.target.closest('.cat-head');
+    if (!b) return;
+    var k = b.getAttribute('data-prod');
+    catalogoAbierto[k] = !catalogoAbierto[k];
+    renderTable();
+  });
+  document.getElementById('openSheetBtn').addEventListener('click', function () {
+    if (!state.fileId) { toast('Todavía no sé de qué archivo viene esta área.', 'err'); return; }
+    window.open('https://docs.google.com/spreadsheets/d/' + state.fileId + '/edit', '_blank');
+  });
   document.getElementById('refreshBtn').addEventListener('click', function () {
     if (state.key === 'dashboard') loadDashboard();
     else if (state.key === 'inicio') loadHome();
