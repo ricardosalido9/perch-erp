@@ -2451,8 +2451,8 @@
     var cMat  = colCatalogo(['Material']);
     var cExt  = colCatalogo(['Material Extra']);
     var cTipo = colCatalogo(['Tipo de Producto', 'Tipo de producto']);
-    var cPrec = colCatalogo(['Precio de Venta', 'Precio Venta', 'Precio', 'Precio Unitario']);
-    var cCost = colCatalogo(['Costos Total', 'Costo Total', 'Costo']);
+    var cPrec = colCatalogo(['Precio Unitario', 'Precio de Venta', 'Precio Venta', 'Precio']);   // el precio es "Precio Unitario"
+    var cCost = colCatalogo(['Costos Total', 'Costo Unitario', 'Costo Total', 'Costo']);
 
     var grupos = {}, orden = [];
     rows.forEach(function (r) {
@@ -2514,7 +2514,7 @@
           (cMat ? '<th>Material</th>' : '') + (cExt ? '<th>Material Extra</th>' : '') +
           (cTipo ? '<th>Tipo</th>' : '') +
           (cCost ? '<th style="text-align:right">Costo</th>' : '') +
-          (cPrec ? '<th style="text-align:right">Precio</th>' : '') +
+          (cPrec ? '<th style="text-align:right">Precio Unitario</th>' : '') +
           '</tr></thead><tbody>';
         g.forEach(function (r) {
           h += '<tr>' +
