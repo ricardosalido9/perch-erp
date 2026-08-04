@@ -744,10 +744,12 @@
   function chev(){ return '<svg class="chev" viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18"/></svg>'; }
 
   // Llama a una función serverless en /api/*
+  // Todo pasa por /api/erp; la acción va en el cuerpo (Vercel Hobby solo permite 12 funciones)
   async function api(path, body) {
-    const res = await fetch('/api/' + path, {
+    const payload = Object.assign({ action: path }, body || {});
+    const res = await fetch('/api/erp', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body || {})
+      body: JSON.stringify(payload)
     });
     const data = await res.json().catch(function(){ return {}; });
     if (!res.ok) throw new Error(data.error || ('Error ' + res.status));
