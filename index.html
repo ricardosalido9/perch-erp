@@ -613,6 +613,58 @@
     </div>
   </div>
 
+  <div class="modal" id="facModal">
+    <div class="modal-card" style="max-width:620px">
+      <div class="modal-head">
+        <h3>Paso 2 · Facturación del pedido</h3>
+        <button class="modal-x" id="facClose" type="button" aria-label="Cerrar">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="facResumen" style="background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:18px;font-size:14px"></div>
+        <div class="form-grid">
+          <div class="fld">
+            <label>¿El cliente requiere factura? <span style="color:var(--danger)">*</span></label>
+            <select id="facQuiere">
+              <option value="">— elegir —</option>
+              <option value="Si">Sí, requiere factura</option>
+              <option value="No">No requiere</option>
+              <option value="Pendiente">Todavía no sabe</option>
+            </select>
+          </div>
+          <div class="fld"><label>Fecha de entrega acordada</label><input type="date" id="facEntrega"></div>
+        </div>
+        <div class="form-grid" id="facFiscal" style="display:none;margin-top:14px">
+          <div class="fld">
+            <label>Método de pago (PUE / PPD)</label>
+            <select id="facMetodo">
+              <option value="PUE">PUE · pago en una sola exhibición</option>
+              <option value="PPD">PPD · pago en parcialidades</option>
+            </select>
+          </div>
+          <div class="fld">
+            <label>Uso de CFDI</label>
+            <input type="text" id="facUso" list="dl-uso-cfdi" placeholder="Elegí o escribí">
+            <datalist id="dl-uso-cfdi">
+              <option value="Gastos en general"></option>
+              <option value="Adquisición de mercancías"></option>
+              <option value="Mobiliario y equipo de oficina por inversiones"></option>
+              <option value="Publico General"></option>
+            </datalist>
+          </div>
+        </div>
+        <div id="facCsf" style="display:none;margin-top:14px;font-size:13px;color:var(--slate);
+             background:var(--accent-soft);border-radius:10px;padding:12px 14px">
+          Recuerda pedirle la <b>Constancia de Situación Fiscal</b> al cliente. La subida automática a Drive
+          se activa cuando compartas la carpeta con la cuenta de servicio.
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button id="facSkip" type="button" class="grow">Ahora no</button>
+        <button class="primary" id="facSave" type="button">Guardar pedido en Cuentas por Cobrar</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal" id="addModal">
     <div class="modal-card">
       <div class="modal-head">
@@ -856,6 +908,12 @@
   function parseNumber(v) {
     var s = String(v == null ? '' : v).trim();
     if (s === '') return null;
+    // Formato de las hojas de Perch:  -$ 1,234.00-  Los guiones de los extremos son formato.
+    // Un sobrepago real se ve así:    -$ -930.00-   (ese sí es negativo)
+    if (/^-\s*\$/.test(s)) {
+      s = s.replace(/^-\s*/, '');
+      s = s.replace(/-\s*$/, '');
+    }
     s = s.replace(/[^0-9.,\-]/g, '').replace(/,/g, '');
     if (s === '' || s === '-' || s === '.') return null;
     var n = parseFloat(s);
@@ -1030,6 +1088,7 @@
       if (f.type === 'values') {
         return f.values.indexOf(String(v == null ? '' : v).trim()) !== -1;
       }
+      if (f.type === 'gt0') { var nn = parseNumber(v); return nn !== null && nn > 0.5; }
       var d = parseDate(v);
       if (d === null) return false;
       if (f.from) { var df = parseInt(f.from.replace(/-/g, ''), 10); if (d < df) return false; }
@@ -1045,7 +1104,8 @@
     if (!filters.length) { bar.innerHTML = '<span class="nofilters">No hay filtros seleccionados</span>'; return; }
     var html = '';
     filters.forEach(function (f, i) {
-      var desc = (f.type === 'values')
+      var desc = (f.type === 'gt0') ? 'con saldo'
+        : (f.type === 'values')
         ? (f.values.length > 2 ? f.values.length + ' seleccionados' : f.values.join(', '))
         : ((f.from ? isoToLargo(f.from) : '…') + ' → ' + (f.to ? isoToLargo(f.to) : '…'));
       html += '<span class="chip"><b>' + esc(String(f.col).trim()) + ':</b> ' + esc(desc) +
@@ -1261,9 +1321,87 @@
     return html;
   }
 
+  // ===== Resumen de CxC: cobranza + control de facturación =====
+  function colCxc(nombres) {
+    for (var i = 0; i < nombres.length; i++) {
+      var h = state.headers.filter(function (x) { return norm(x) === norm(nombres[i]); })[0];
+      if (h) return h;
+    }
+    return null;
+  }
+  function esVerdadero(v) { var n = norm(v); return n === 'true' || n === 'si' || n === 'sí' || n === 'x'; }
+  function filtroRapidoCxc(cual) {
+    var cQuiere = colCxc(['Factura Si / No', 'Factura Si/No']);
+    var cHecha  = colCxc(['Factura']);
+    var cComp   = colCxc(['Complemento']);
+    var cPC     = colCxc(['Por cobrar']);
+    // Se limpian solo los filtros de esta barra; los de fecha/cliente se respetan
+    filters = filters.filter(function (f) {
+      return [cQuiere, cHecha, cComp].indexOf(f.col) === -1 && !(f.col === cPC && f.type === 'gt0');
+    });
+    if (cual === 'deben' && cPC) filters.push({ col: cPC, type: 'gt0' });
+    if (cual === 'piden' && cQuiere) filters.push({ col: cQuiere, type: 'values', values: ['Si'] });
+    if (cual === 'pendientes') {
+      if (cQuiere) filters.push({ col: cQuiere, type: 'values', values: ['Si'] });
+      if (cHecha)  filters.push({ col: cHecha,  type: 'values', values: ['FALSE', ''] });
+    }
+    if (cual === 'complemento') {
+      if (cQuiere) filters.push({ col: cQuiere, type: 'values', values: ['Si'] });
+      if (cComp)   filters.push({ col: cComp,   type: 'values', values: ['FALSE', ''] });
+    }
+    renderFilterBar(); renderTable();
+  }
+  function resumenCxc(rows) {
+    var cTot = colCxc(['Total con envío', 'Total con envio']) || colCxc(['Total Pedido']);
+    var cPag = colCxc(['Pagado']), cPC = colCxc(['Por cobrar']);
+    var cQuiere = colCxc(['Factura Si / No', 'Factura Si/No']);
+    var cHecha = colCxc(['Factura']), cComp = colCxc(['Complemento']);
+    var n = { tot: 0, pag: 0, pc: 0, piden: 0, hechas: 0, sinComp: 0, deben: 0, debenMonto: 0 };
+    rows.forEach(function (r) {
+      var a = parseNumber(cTot ? r[cTot] : null); if (a !== null) n.tot += a;
+      var b = parseNumber(cPag ? r[cPag] : null); if (b !== null) n.pag += b;
+      var c = parseNumber(cPC ? r[cPC] : null);   if (c !== null) n.pc += c;
+      if (c !== null && c > 0.5) { n.deben++; n.debenMonto += c; }
+      var quiere = cQuiere && norm(r[cQuiere]) === 'si';
+      if (!quiere) return;
+      n.piden++;
+      if (cHecha && esVerdadero(r[cHecha])) n.hechas++;
+      if (cComp && !esVerdadero(r[cComp])) n.sinComp++;
+    });
+    var pend = n.piden - n.hechas;
+    var cPC2 = colCxc(['Por cobrar']);
+    var activo = '';
+    if (cPC2 && filters.some(function (f) { return f.col === cPC2 && f.type === 'gt0'; })) activo = 'deben';
+    else if (cQuiere && filters.some(function (f) { return f.col === cQuiere; })) {
+      activo = filters.some(function (f) { return f.col === cHecha; }) ? 'pendientes'
+             : (filters.some(function (f) { return f.col === cComp; }) ? 'complemento' : 'piden');
+    }
+    var chip = function (k, txt) {
+      return '<button type="button" class="mes-chip' + (activo === k ? ' on' : '') + '" data-cxc="' + k + '">' + txt + '</button>';
+    };
+    var card = function (k, v, extra) {
+      return '<div class="sum-card"><div class="k">' + esc(k) + '</div><div class="v">' + v + '</div>' +
+        (extra ? '<div class="k" style="text-transform:none;letter-spacing:0;margin-top:2px">' + extra + '</div>' : '') + '</div>';
+    };
+    return '<div class="mes-chips">' + chip('', 'Todos los pedidos') + chip('deben', '💰 Me deben') +
+        chip('piden', 'Piden factura') +
+        chip('pendientes', 'Pendientes de facturar') + chip('complemento', 'Falta complemento') +
+      '</div><div class="summary-cards">' +
+      card('Pedidos', fmtNum(rows.length)) +
+      card('Facturado', esc(formatMoney(n.tot))) +
+      card('Cobrado', esc(formatMoney(n.pag)), n.tot ? Math.round((n.pag / n.tot) * 100) + '% cobrado' : '') +
+      card('Me deben', esc(formatMoney(n.debenMonto)), fmtNum(n.deben) + ' pedidos con saldo') +
+      card('Piden factura', fmtNum(n.piden), n.piden ? Math.round((n.piden / rows.length) * 100) + '% de los pedidos' : '') +
+      card('Ya facturados', fmtNum(n.hechas)) +
+      card('Pendientes de facturar', fmtNum(pend > 0 ? pend : 0)) +
+      card('Falta complemento', fmtNum(n.sinComp)) +
+      '</div>';
+  }
+
   function renderSummary(rows) {
     var box = document.getElementById('summary');
     if (!state.headers.length) { box.innerHTML = ''; return; }
+    if (state.key === 'fin_cxc') { box.style.display = 'block'; box.innerHTML = resumenCxc(rows); return; }
     if (state.key === 'funnel') { box.style.display = 'block'; box.innerHTML = resumenFunnel(rows); return; }
     box.style.display = 'flex';
     var html = '<div class="sum-card"><div class="k">Registros</div><div class="v">' +
@@ -1365,7 +1503,9 @@
     ventas_registro: ['Mes', 'Año1'],
     compras_registro: ['Mes'],
     // CxC: se ocultan las columnas de control interno (links, complementos, notas de facturación)
-    fin_cxc: ['Mes', 'Link', 'Comentarios (uso de CFDI)', 'Factura', 'Complemento', 'Complemento 2', 'Comentarios']
+    // En CxC se ocultan solo los enlaces y notas sueltas; las columnas de facturación SÍ se ven,
+    // porque son las que tu equipo marca cuando ya emitió la factura.
+    fin_cxc: ['Mes', 'Link', 'Comentarios']
   };
   function visibleHeaders() {
     var hide = HIDE_COLUMNS[state.key] || [];
@@ -2043,16 +2183,37 @@
       var conSaldo = cx.rows.filter(function (r) { return r.pc > 0.5; })
         .sort(function (a, b) { return b.pc - a.pc; });
       var saldoTotal = 0; conSaldo.forEach(function (r) { saldoTotal += r.pc; });
+
+      if (conSaldo.length) {
+        // Seguimiento de cobranza: quién debe y desde hace cuánto
+        var porCli = {}, porEdad = { 'Menos de 30 días': 0, '30 a 60 días': 0, '60 a 90 días': 0, 'Más de 90 días': 0 };
+        conSaldo.forEach(function (r) {
+          var k = r.cli || r.desp || 'Sin cliente';
+          porCli[k] = (porCli[k] || 0) + r.pc;
+          var dd = (r.dias == null) ? 999 : r.dias;
+          var b = dd < 30 ? 'Menos de 30 días' : (dd < 60 ? '30 a 60 días' : (dd < 90 ? '60 a 90 días' : 'Más de 90 días'));
+          porEdad[b] += r.pc;
+        });
+        Object.keys(porEdad).forEach(function (k) { if (!porEdad[k]) delete porEdad[k]; });
+        h += '<div class="dash-cols" style="margin-top:12px">' +
+          '<div class="panel"><h4>Quién me debe (top 10)</h4><div class="panel-body">' +
+            barsHTML(porCli, { money: true, limit: 10, otros: true }) + '</div></div>' +
+          '<div class="panel"><h4>Antigüedad del saldo</h4><div class="panel-body">' +
+            barsHTML(porEdad, { money: true, limit: 4 }) + '</div></div>' +
+          '</div>';
+      }
       if (conSaldo.length) {
         var cxRows = conSaldo.slice(0, 15).map(function (r) {
           return '<tr><td>' + esc(r.ref || '—') + '</td><td title="' + esc(r.cli) + '">' + esc(r.cli) + '</td>' +
             '<td>' + esc(r.f ? formatDateCell(r.f) : '') + '</td>' +
+            '<td class="num">' + (r.dias == null ? '' : fmtNum(r.dias) + ' d') + '</td>' +
             '<td class="num">' + esc(formatMoney(r.tot)) + '</td><td class="num">' + esc(formatMoney(r.pag)) + '</td>' +
             '<td class="num" style="font-weight:700">' + esc(formatMoney(r.pc)) + '</td></tr>';
         }).join('');
         h += '<div class="panel" style="margin-top:12px"><h4>Saldo pendiente hoy · ' + fmtNum(conSaldo.length) +
           ' pedidos por ' + esc(formatMoney(saldoTotal)) + ' (todos los periodos)</h4><div class="panel-body">' +
           '<table class="mini-table"><thead><tr><th>Pedido</th><th>Cliente</th><th>Fecha</th>' +
+          '<th style="text-align:right">Antigüedad</th>' +
           '<th style="text-align:right">Total</th><th style="text-align:right">Pagado</th>' +
           '<th style="text-align:right">Por cobrar</th></tr></thead><tbody>' + cxRows + '</tbody></table></div></div>';
       }
@@ -2242,6 +2403,13 @@
   // ===== Menús fijos por área (no necesitan pestaña CATEGORIAS) =====
   // Para agregar o quitar una opción, edita la lista y listo.
   var FIELD_OPTIONS = {
+    fin_cxc: {
+      'Factura Si / No':  ['Si', 'No', 'Pendiente'],
+      'PUE/PPD':          ['PUE', 'PPD', 'NA'],
+      'Factura':          ['TRUE', 'FALSE'],
+      'Complemento':      ['TRUE', 'FALSE'],
+      'Complemento 2':    ['TRUE', 'FALSE']
+    },
     funnel: {
       'Prioridad':          ['Verde', 'Tibio', 'No interesado'],
       'TIPO CLIENTE':       ['B2B', 'B2C', 'VIP'],
@@ -2260,7 +2428,8 @@
   }
   // Campos "combo": se eligen de una lista pero también se puede escribir uno nuevo.
   var COMBO_FIELDS = {
-    funnel: ['Cliente', 'Despacho', 'Estatus']
+    funnel: ['Cliente', 'Despacho', 'Estatus'],
+    fin_cxc: ['Cliente', 'Despacho', 'FORMA DE PAGO', 'Comentarios (uso de CFDI)']
   };
   function isComboField(h) {
     return (COMBO_FIELDS[state.key] || []).some(function (f) { return norm(f) === norm(h); });
@@ -3004,6 +3173,31 @@
       return rec;
     });
 
+    // Resumen del pedido completo, para el paso 2 (Cuentas por Cobrar)
+    var envioNum = toNum(fieldEl('Envio') ? fieldEl('Envio').value : 0);
+    var subtotal = 0, piezas = 0;
+    lines.forEach(function (ln) {
+      subtotal += lineTotal(ln);
+      piezas += toNum(ln[findHeaderByName('Cantidad')] || 0);
+    });
+    var fCierre = order[findHeaderByName('Fecha del Cierre')] || '';
+    var elCierre = fieldEl('Fecha del Cierre');
+    var mesNum = '';
+    if (elCierre && /^\d{4}-(\d{2})-/.test(elCierre.value)) mesNum = parseInt(elCierre.value.slice(5, 7), 10);
+    var elEnt = fieldEl('Fecha de entrega acordada');
+    var resumenPedido = {
+      cliente:  order[findHeaderByName('Cliente')] || '',
+      despacho: order[findHeaderByName('Despacho')] || '',
+      fechaCierre: fCierre,
+      mes: mesNum,
+      entregaISO: (elEnt && elEnt.value) ? elEnt.value : '',
+      entregaTexto: order[findHeaderByName('Fecha de entrega acordada')] || '',
+      piezas: piezas,
+      envio: envioNum,
+      totalPedido: subtotal,
+      totalConEnvio: subtotal + envioNum
+    };
+
     var btn = document.getElementById('saveBtn'); btn.disabled = true; btn.textContent = 'Guardando...';
     api('add', { token: state.token, key: state.key, records: records }).then(function (out) {
       var n = (out && out.filas) || records.length;
@@ -3011,8 +3205,65 @@
       toast('Venta guardada: ' + n + (n === 1 ? ' producto' : ' productos') + folio + '.', 'ok');
       state.lineItems = [];
       cerrarModalAlta();
+      resumenPedido.folio = (out && out.folio) ? out.folio : '';
+      abrirPasoFactura(resumenPedido);
       loadArea();
     }).catch(fail).then(function () { btn.disabled = false; btn.textContent = 'Guardar registro'; });
+  }
+
+  // ===== Paso 2: facturación · escribe el PEDIDO COMPLETO en Cuentas por Cobrar =====
+  var pedidoPendiente = null;
+  function abrirPasoFactura(p) {
+    pedidoPendiente = p;
+    document.getElementById('facResumen').innerHTML =
+      '<b>' + esc(p.folio || 'Pedido') + '</b> · ' + esc(p.cliente || 'Sin cliente') +
+      (p.despacho ? ' · ' + esc(p.despacho) : '') +
+      '<div style="color:var(--muted);margin-top:4px">' + fmtNum(p.piezas) +
+      (p.piezas === 1 ? ' pieza' : ' piezas') + ' · Total con envío ' + esc(formatMoney(p.totalConEnvio)) + '</div>';
+    document.getElementById('facQuiere').value = '';
+    document.getElementById('facUso').value = '';
+    document.getElementById('facMetodo').value = 'PUE';
+    document.getElementById('facEntrega').value = p.entregaISO || '';
+    document.getElementById('facFiscal').style.display = 'none';
+    document.getElementById('facCsf').style.display = 'none';
+    document.getElementById('facModal').classList.add('on');
+  }
+  function cerrarPasoFactura() {
+    document.getElementById('facModal').classList.remove('on');
+    pedidoPendiente = null;
+  }
+  function guardarPedidoCxc() {
+    var p = pedidoPendiente; if (!p) return;
+    var quiere = document.getElementById('facQuiere').value;
+    if (!quiere) { toast('Elegí si el cliente requiere factura.', 'err'); return; }
+    var conFactura = (quiere === 'Si');
+    var entrega = document.getElementById('facEntrega').value;
+    var rec = {
+      'Fecha del Cierre': p.fechaCierre,
+      'Mes': p.mes,
+      'Fecha de Entrega': entrega ? isoToLargo(entrega) : (p.entregaTexto || ''),
+      'No. de Referencia': p.folio,
+      'Cliente': p.cliente,
+      'Despacho': p.despacho,
+      'Productos': p.piezas,
+      'Total Pedido': p.totalPedido,
+      'Envio': p.envio,
+      'Total con envío': p.totalConEnvio,
+      'Pagado': '',
+      'Factura Si / No': quiere,
+      'PUE/PPD': conFactura ? document.getElementById('facMetodo').value : 'NA',
+      'Comentarios (uso de CFDI)': conFactura ? document.getElementById('facUso').value.trim() : '',
+      'Factura': conFactura ? 'FALSE' : '',
+      'Complemento': conFactura ? 'FALSE' : '',
+      'Complemento 2': conFactura ? 'FALSE' : ''
+    };
+    var btn = document.getElementById('facSave'); btn.disabled = true; btn.textContent = 'Guardando...';
+    api('add', { token: state.token, key: 'fin_cxc', record: rec }).then(function () {
+      toast('Pedido ' + p.folio + ' registrado en Cuentas por Cobrar.', 'ok');
+      cerrarPasoFactura();
+    }).catch(fail).then(function () {
+      btn.disabled = false; btn.textContent = 'Guardar pedido en Cuentas por Cobrar';
+    });
   }
 
   function fail(err) { toast((err && err.message) || 'Ocurrió un error.', 'err'); }
@@ -3086,9 +3337,19 @@
   document.getElementById('openAddBtn').addEventListener('click', abrirModalAlta);
   document.getElementById('summary').addEventListener('click', function (e) {
     var b = e.target.closest ? e.target.closest('.mes-chip') : null;
-    if (b) filtrarMesFunnel(b.getAttribute('data-mes') || '');
+    if (!b) return;
+    if (b.hasAttribute('data-cxc')) filtroRapidoCxc(b.getAttribute('data-cxc'));
+    else filtrarMesFunnel(b.getAttribute('data-mes') || '');
   });
   document.getElementById('addModalClose').addEventListener('click', cerrarModalAlta);
+  document.getElementById('facClose').addEventListener('click', cerrarPasoFactura);
+  document.getElementById('facSkip').addEventListener('click', cerrarPasoFactura);
+  document.getElementById('facSave').addEventListener('click', guardarPedidoCxc);
+  document.getElementById('facQuiere').addEventListener('change', function () {
+    var si = (this.value === 'Si');
+    document.getElementById('facFiscal').style.display = si ? 'grid' : 'none';
+    document.getElementById('facCsf').style.display = si ? 'block' : 'none';
+  });
   document.getElementById('addModal').addEventListener('click', function (e) {
     if (e.target === this) cerrarModalAlta();          // clic fuera de la tarjeta
   });
@@ -3097,6 +3358,7 @@
   document.getElementById('backdrop').addEventListener('click', closeNav);
   document.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape') return;
+    if (document.getElementById('facModal').classList.contains('on')) { cerrarPasoFactura(); return; }
     if (modalAltaAbierto()) { cerrarModalAlta(); return; }   // primero cierra el modal
     closeNav();
   });

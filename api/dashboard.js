@@ -5,7 +5,10 @@ function norm(s) {
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 function num(v) {
-  const s = String(v == null ? '' : v).replace(/[^0-9.,\-]/g, '').replace(/,/g, '');
+  let t = String(v == null ? '' : v).trim();
+  // Formato contable de las hojas:  -$ 1,234.00-  (los guiones de los extremos son formato)
+  if (/^-\s*\$/.test(t)) { t = t.replace(/^-\s*/, '').replace(/-\s*$/, ''); }
+  const s = t.replace(/[^0-9.,\-]/g, '').replace(/,/g, '');
   if (!s || s === '-' || s === '.') return null;
   const n = parseFloat(s);
   return isNaN(n) ? null : n;
@@ -75,6 +78,15 @@ function colMonto(H, rows, nombres) {
     if (s > bestSum) { bestSum = s; best = h; }
   });
   return best;
+}
+
+// Días transcurridos desde una fecha AAAAMMDD
+function _diasDesde(d) {
+  const a = Math.floor(d / 10000), m = Math.floor(d / 100) % 100, dd = d % 100;
+  const t = Date.UTC(a, m - 1, dd);
+  const hoy = new Date();
+  const h = Date.UTC(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
+  return Math.round((h - t) / 86400000);
 }
 
 // ===== Funnel de ventas (pestaña "Montse 2026") =====
@@ -260,6 +272,7 @@ module.exports = async (req, res) => {
         }
         rows.push({
           d: d,
+          dias: d !== null ? _diasDesde(d) : null,
           f:    cF ? txt(r[cF]) : '',
           fe:   cFE ? txt(r[cFE]) : '',
           ref:  ref,
