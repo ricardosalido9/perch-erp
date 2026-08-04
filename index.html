@@ -689,6 +689,7 @@
       <div class="modal-foot">
         <button id="addLineBtn" type="button" class="grow" style="display:none">＋ Agregar producto al pedido</button>
         <button id="clearBtn" type="button">Limpiar</button>
+        <button id="saveQuoteBtn" type="button" style="display:none">Guardar como cotización</button>
         <button class="primary" id="saveBtn" type="button">Guardar registro</button>
       </div>
     </div>
@@ -947,7 +948,7 @@
                        'unidades': 150, 'moneda': 150, 'tipo de cambio': 150, '% de comision': 150,
                        'no. de cliente': 150, 'canal de compra': 150, 'comision compra': 150,
                        'otros gastos': 150 };
-  function colWidth(h) { return WIDTH_FIELDS[norm(h)] || null; }
+  function colWidth(h) { if (esColumnaFoto(h)) return 90; return WIDTH_FIELDS[norm(h)] || null; }
   // Columnas que se muestran centradas (por nombre; tolera espacios/acentos/mayúsculas).
   var CENTER_FIELDS = ['Status', 'No. Identificación', 'No. de Identificación', 'Fecha',
                        'RFC', 'Código Postal', 'Banco', 'Dias de Crédito', 'Días de Crédito',
@@ -1032,6 +1033,7 @@
 
   // Áreas que arrancan con filtro de fecha del año en curso (columna a usar).
   var AUTO_DATE_FILTER = {
+    cotizaciones: 'Fecha',
     ventas_registro: 'Fecha',
     compras_registro: 'Fecha',
     rrhh_incidencias: 'Fecha',
@@ -1058,6 +1060,9 @@
               'Factura Si / No', 'PUE/PPD', 'FORMA DE PAGO', 'Cómo entró la venta'],
     funnel: ['MES', 'Prioridad', 'Cliente', 'Despacho', 'TIPO CLIENTE', 'Forma de Contacto',
              'Visito Showroom', 'Cotización', 'Estatus'],
+    cotizaciones: ['Fecha del Cierre', 'Fecha de entrega acordada', 'No. de Referencia', 'Cliente',
+                      'Vendedor', 'Status', 'Tipo de producto', 'Material', 'Material Extra', 'Producto',
+                      'Cantidad'],
     ventas_registro: ['Fecha del Cierre', 'Fecha de entrega acordada', 'No. de Referencia', 'Cliente',
                       'Vendedor', 'Status', 'Tipo de producto', 'Material', 'Material Extra', 'Producto',
                       'Cantidad'],
@@ -1233,6 +1238,17 @@
   // Registros + estas tarjetas (en vez del auto-resumen de columnas de dinero).
   // type:'sum' suma una columna; type:'ratio' = sum(num)/sum(den) (percent:true -> %).
   var SUMMARY_CARDS = {
+    cotizaciones: [
+      // Cantidad de piezas de las filas filtradas (20 registros pueden ser 120 piezas)
+      { k: 'Unidades',               type: 'num',   field: ['Cantidad', 'Unidades', 'Piezas'] },
+      { k: 'Total con envío',        type: 'sum',   field: 'Total con envío' },
+      { k: 'Total con envío s/IVA',  type: 'sum',   field: 'Total con envio sin impuestos' },
+      { k: 'Costo total',            type: 'sum',   field: 'Costo total' },
+      { k: 'Costo envío',            type: 'sum',   field: 'Costo Envío' },
+      { k: 'Utilidad',               type: 'sum',   field: ['Utilidad', 'Utilidad Final', 'Utilidad Bruta'] },
+      // % Utilidad = suma de Utilidad ÷ suma de Total con envío sin impuestos
+      { k: '% Utilidad',             type: 'ratio', num: ['Utilidad', 'Utilidad Final', 'Utilidad Bruta'], den: 'Total con envio sin impuestos', percent: true }
+    ],
     ventas_registro: [
       // Cantidad de piezas de las filas filtradas (20 registros pueden ser 120 piezas)
       { k: 'Unidades',               type: 'num',   field: ['Cantidad', 'Unidades', 'Piezas'] },
@@ -1511,6 +1527,7 @@
 
   // Columnas que NO se muestran en la tabla de registros. Por área.
   var HIDE_COLUMNS = {
+    cotizaciones: ['Mes', 'Año1'],
     ventas_registro: ['Mes', 'Año1'],
     compras_registro: ['Mes'],
     // CxC: se ocultan las columnas de control interno (links, complementos, notas de facturación)
@@ -1518,12 +1535,40 @@
     // porque son las que tu equipo marca cuando ya emitió la factura.
     fin_cxc: ['Mes', 'Link', 'Comentarios']
   };
+  // Columnas que van primero en cada área
+  var COLUMN_ORDER = { inventario: ['Fotos', 'Foto'] };
   function visibleHeaders() {
     var hide = HIDE_COLUMNS[state.key] || [];
-    if (!hide.length) return state.headers;
-    return state.headers.filter(function (h) {
+    var cols = !hide.length ? state.headers.slice() : state.headers.filter(function (h) {
       return !hide.some(function (x) { return norm(x) === norm(h); });
     });
+    var pri = COLUMN_ORDER[state.key];
+    if (pri) {
+      var frente = [];
+      pri.forEach(function (n) {
+        cols = cols.filter(function (h) {
+          if (norm(h) === norm(n)) { frente.push(h); return false; }
+          return true;
+        });
+      });
+      cols = frente.concat(cols);
+    }
+    return cols;
+  }
+  // ¿La columna guarda una foto?
+  function esColumnaFoto(h) {
+    var n = norm(h);
+    return n === 'foto' || n === 'fotos' || n === 'imagen' || n === 'imagenes';
+  }
+  // Convierte links de Drive en una URL que sí se puede mostrar como imagen
+  function urlImagen(v) {
+    var u = String(v == null ? '' : v).trim();
+    if (!/^https?:\/\//i.test(u)) return '';
+    var m = u.match(/drive\.google\.com\/file\/d\/([^/]+)/) ||
+            u.match(/drive\.google\.com\/.*[?&]id=([^&]+)/) ||
+            u.match(/drive\.google\.com\/open\?id=([^&]+)/);
+    if (m) return 'https://drive.google.com/thumbnail?id=' + m[1] + '&sz=w400';
+    return u;
   }
 
   // ===================== INICIO =====================
@@ -2315,7 +2360,7 @@
   function columnasConPill(rows, cols) {
     var out = {};
     cols.forEach(function (h) {
-      if (isMoneyCol(h) || isDateCol(h)) return;
+      if (isMoneyCol(h) || isDateCol(h) || esColumnaFoto(h)) return;
       var deCatalogo = !!(state.categories && state.categories[h] && state.categories[h].length);
       var vistos = {}, n = 0, largo = 0, llenas = 0;
       for (var i = 0; i < rows.length; i++) {
@@ -2377,7 +2422,16 @@
           var shown = isMoneyCol(h) ? formatMoney(raw)
                     : (isDateCol(h) ? formatDateCell(raw) : (raw == null ? '' : raw));
           var e = esc(shown);
-          var cuerpo = (pillCols[h] && String(shown).trim() !== '') ? pillHTML(shown) : e;
+          var cuerpo;
+          if (esColumnaFoto(h)) {
+            var iu = urlImagen(raw);
+            cuerpo = iu ? '<a href="' + esc(iu) + '" target="_blank" rel="noopener">' +
+                          '<img src="' + esc(iu) + '" alt="" loading="lazy" ' +
+                          'style="height:56px;width:56px;object-fit:cover;border-radius:8px;border:1px solid var(--line);display:block"></a>'
+                        : '<span style="color:var(--muted)">—</span>';
+          } else {
+            cuerpo = (pillCols[h] && String(shown).trim() !== '') ? pillHTML(shown) : e;
+          }
           html += '<td' + cls + ws + ' title="' + e.replace(/"/g, '&quot;') + '">' + cuerpo + '</td>';
         }
       });
@@ -2481,6 +2535,12 @@
 
   var FORM_FIELDS = {
     // Vacío = cada área muestra todas sus columnas (en el orden de la hoja).
+    // Cotizaciones: mismos campos que una venta (se guarda en la pestaña COTIZACIONES)
+    cotizaciones: [
+      'Fecha del Cierre', 'Cliente', 'Despacho', 'Vendedor', 'Fecha de entrega acordada',
+      'Direccion de envio', 'Telefono', 'Cantidad', 'Producto', 'Material', 'Material Extra',
+      'Tipo de Producto', 'Tela', 'Especificaciones', 'Precio Unitario', '% descuento', 'Descuentos', 'Envio'
+    ],
     // Ventas: solo estos campos aparecen en "Agregar registro" (en este orden).
     // No. de Referencia y Status se generan solos en el servidor; el resto son fórmulas de la hoja.
     ventas_registro: [
@@ -2499,6 +2559,37 @@
   // Los demás campos de FORM_FIELDS se capturan una sola vez (nivel de orden).
   // 'Envio' es de la orden y se escribe SOLO en la primera fila del pedido.
   var LINE_ITEMS = {
+    cotizaciones: {
+      line: ['Producto', 'Material', 'Material Extra', 'Tipo de Producto', 'Tela',
+             'Especificaciones', 'Cantidad', 'Precio Unitario', '% descuento', 'Descuentos'],
+      envioOnce: 'Envio'   // va solo en la primera fila del pedido
+    }
+  };
+  function lineCfg() { return LINE_ITEMS[state.key] || null; }
+  function isLineField(h) {
+    var c = lineCfg(); if (!c) return false;
+    return c.line.some(function (f) { return norm(f) === norm(h); });
+  }
+  // Campos especiales de Ventas: Tela (Sí/No + nombre) y Descuento (% o valor).
+  var SPECIAL_FIELDS = {
+    cotizaciones: { tela: 'Tela', descuento: { pct: '% descuento', val: 'Descuentos' } }
+  };
+  function specialCfg() { return SPECIAL_FIELDS[state.key] || null; }
+  function isTelaField(h) { var s = specialCfg(); return !!(s && s.tela && norm(s.tela) === norm(h)); }
+  function isDiscPctField(h) { var s = specialCfg(); return !!(s && s.descuento && norm(s.descuento.pct) === norm(h)); }
+  function isDiscValField(h) { var s = specialCfg(); return !!(s && s.descuento && norm(s.descuento.val) === norm(h)); }
+  // Campos que NO se muestran en "Agregar registro" (el resto sí). Por área.
+  var EXCLUDE_FIELDS = {
+    ventas_registro: ['Mes', 'Año1'],
+    ventas_registro: { tela: 'Tela', descuento: { pct: '% descuento', val: 'Descuentos' } }
+  };
+  function specialCfg() { return SPECIAL_FIELDS[state.key] || null; }
+  function isTelaField(h) { var s = specialCfg(); return !!(s && s.tela && norm(s.tela) === norm(h)); }
+  function isDiscPctField(h) { var s = specialCfg(); return !!(s && s.descuento && norm(s.descuento.pct) === norm(h)); }
+  function isDiscValField(h) { var s = specialCfg(); return !!(s && s.descuento && norm(s.descuento.val) === norm(h)); }
+  // Campos que NO se muestran en "Agregar registro" (el resto sí). Por área.
+  var EXCLUDE_FIELDS = {
+    ventas_registro: ['Mes', 'Año1'],
     ventas_registro: {
       line: ['Producto', 'Material', 'Material Extra', 'Tipo de Producto', 'Tela',
              'Especificaciones', 'Cantidad', 'Precio Unitario', '% descuento', 'Descuentos'],
@@ -2578,6 +2669,8 @@
   }
   // Campos obligatorios por área (por nombre; tolera espacios/acentos/mayúsculas).
   var REQUIRED_FIELDS = {
+    cotizaciones: ['Fecha del Cierre', 'Cliente', 'Vendedor', 'Fecha de entrega acordada',
+                      'Cantidad', 'Producto', 'Material', 'Material Extra'],
     ventas_registro: ['Fecha del Cierre', 'Cliente', 'Vendedor', 'Fecha de entrega acordada',
                       'Cantidad', 'Producto', 'Material', 'Material Extra'],
     ventas_clientes: ['Nombre/Razón Social'],
@@ -2814,10 +2907,25 @@
   }
   function renderLineList() {
     var addBtn = document.getElementById('addLineBtn');
+    var qBtn = document.getElementById('saveQuoteBtn');
+    var sBtn = document.getElementById('saveBtn');
     var box = document.getElementById('lineItemsBox');
     var c = lineCfg();
-    if (!c) { if (addBtn) addBtn.style.display = 'none'; box.style.display = 'none'; box.innerHTML = ''; return; }
+    if (!c) {
+      if (addBtn) addBtn.style.display = 'none';
+      if (qBtn) qBtn.style.display = 'none';
+      if (sBtn) sBtn.textContent = 'Guardar registro';
+      box.style.display = 'none'; box.innerHTML = ''; return;
+    }
     if (addBtn) addBtn.style.display = '';
+    // En Ventas y en Cotizaciones se puede guardar en cualquiera de las dos
+    if (qBtn && sBtn) {
+      var enCot = (state.key === 'cotizaciones');
+      qBtn.style.display = '';
+      qBtn.textContent = enCot ? 'Guardar como venta' : 'Guardar como cotización';
+      qBtn.setAttribute('data-destino', enCot ? 'ventas_registro' : 'cotizaciones');
+      sBtn.textContent = enCot ? 'Guardar cotización' : 'Guardar venta';
+    }
     box.style.display = '';
     var items = state.lineItems || [];
     var html = '<div class="li-head"><span class="li-title">Productos del pedido</span></div>';
@@ -3120,9 +3228,9 @@
     }
   }
 
-  function save() {
+  function save(destino) {
     var lc = lineCfg();
-    if (lc) { return saveOrder(lc); }   // ventas: una fila por producto
+    if (lc) { return saveOrder(lc, destino); }   // ventas: una fila por producto
     var record = {}; var els = document.querySelectorAll('#formFields [data-col]'); var has = false;
     els.forEach(function (i) {
       var v = (i.value || '').trim();
@@ -3145,7 +3253,8 @@
   }
 
   // Guarda una venta con 1..N productos: cada producto = una fila, mismo folio y datos del cliente.
-  function saveOrder(lc) {
+  function saveOrder(lc, destino) {
+    var areaDestino = destino || state.key;
     // 1) Datos de la orden (todo lo que NO es campo de producto)
     var order = {};
     document.querySelectorAll('#formFields [data-col]').forEach(function (i) {
@@ -3209,15 +3318,21 @@
       totalConEnvio: subtotal + envioNum
     };
 
-    var btn = document.getElementById('saveBtn'); btn.disabled = true; btn.textContent = 'Guardando...';
-    api('add', { token: state.token, key: state.key, records: records }).then(function (out) {
+    var esCotiza = (areaDestino === 'cotizaciones');
+    var btn = document.getElementById(esCotiza ? 'saveQuoteBtn' : 'saveBtn');
+    var etiqueta = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Guardando...';
+    api('add', { token: state.token, key: areaDestino, records: records }).then(function (out) {
       var n = (out && out.filas) || records.length;
       var folio = (out && out.folio) ? (' · Folio ' + out.folio) : '';
-      toast('Venta guardada: ' + n + (n === 1 ? ' producto' : ' productos') + folio + '.', 'ok');
+      toast((esCotiza ? 'Cotización guardada: ' : 'Venta guardada: ') + n +
+            (n === 1 ? ' producto' : ' productos') + folio + '.', 'ok');
       state.lineItems = [];
       cerrarModalAlta();
-      resumenPedido.folio = (out && out.folio) ? out.folio : '';
-      registrarEnCxc(resumenPedido);        // el pedido pasa a Cuentas por Cobrar automáticamente
+      if (!esCotiza) {                      // una cotización todavía no es cuenta por cobrar
+        resumenPedido.folio = (out && out.folio) ? out.folio : '';
+        registrarEnCxc(resumenPedido);
+      }
       loadArea();
     }).catch(fail).then(function () { btn.disabled = false; btn.textContent = 'Guardar registro'; });
   }
@@ -3475,7 +3590,10 @@
       saveEdit(parseInt(t.getAttribute('data-row'), 10), t);
     }
   });
-  document.getElementById('saveBtn').addEventListener('click', save);
+  document.getElementById('saveBtn').addEventListener('click', function () { save(); });
+  document.getElementById('saveQuoteBtn').addEventListener('click', function () {
+    save(this.getAttribute('data-destino') || 'cotizaciones');
+  });
   document.getElementById('clearBtn').addEventListener('click', clearForm);
   document.getElementById('addLineBtn').addEventListener('click', addProductLine);
   // Total del pedido en vivo al escribir cantidad/precio/descuento/envío
