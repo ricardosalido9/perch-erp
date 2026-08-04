@@ -28,9 +28,15 @@ module.exports = async (req, res) => {
     try { body = await core.readBody(req); } catch (e) { body = {}; }
     req._body = body || {};                       // para que el handler no relea el stream
 
-    const accion = String(
+    // La acción puede venir en el cuerpo, en la query, o en la ruta (/api/data -> "data").
+    // Lo último permite que un navegador con el index.html viejo en caché siga funcionando.
+    let accion = String(
       (req.query && req.query.action) || (req._body && req._body.action) || ''
     ).trim();
+    if (!accion && req.url) {
+      const m = String(req.url).split('?')[0].match(/\/api\/([^/]+)$/);
+      if (m && m[1] !== 'erp') accion = decodeURIComponent(m[1]).replace(/\.js$/, '');
+    }
 
     if (!accion) {
       return res.status(400).json({
