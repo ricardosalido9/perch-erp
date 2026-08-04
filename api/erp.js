@@ -18,6 +18,7 @@ const RUTAS = {
   lookup:         require('../lib/handlers/lookup'),
   fill:           require('../lib/handlers/fill'),
   quote:          require('../lib/handlers/quote'),
+  'quote-pdf':    require('../lib/handlers/quote-pdf'),
   upload:         require('../lib/handlers/upload'),
   'funnel-debug': require('../lib/handlers/funnel-debug')
 };

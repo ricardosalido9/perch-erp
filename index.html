@@ -582,7 +582,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.04-7</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.04-8</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -3490,8 +3490,13 @@
             (n === 1 ? ' producto' : ' productos') + folio + '.', 'ok');
       state.lineItems = [];
       cerrarModalAlta();
+      var folioNuevo = (out && out.folio) ? out.folio : '';
+      if (folioNuevo) {
+        // El PDF se arma y se guarda en Drive automáticamente
+        generarPdfCotizacion(folioNuevo, !esCotiza, true).catch(function () {});
+      }
       if (!esCotiza) {                      // una cotización todavía no es cuenta por cobrar
-        resumenPedido.folio = (out && out.folio) ? out.folio : '';
+        resumenPedido.folio = folioNuevo;
         registrarEnCxc(resumenPedido);
       }
       loadArea();
@@ -3517,6 +3522,28 @@
     var m = Math.floor(d / 100) % 100, a = Math.floor(d / 10000);
     return (MESES_ES[m - 1] || '') + ' ' + a;
   }
+  // Genera el PDF en el servidor y lo guarda en Drive. Si Drive no está listo, lo descarga.
+  function generarPdfCotizacion(folio, esVenta, silencioso) {
+    if (!silencioso) toast('Generando el PDF...', 'ok');
+    return api('quote-pdf', { token: state.token, key: state.key, folio: folio, venta: !!esVenta })
+      .then(function (out) {
+        if (out.pdf) {                      // no se pudo guardar en Drive: se descarga
+          var bin = atob(out.pdf), arr = new Uint8Array(bin.length);
+          for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+          var url = URL.createObjectURL(new Blob([arr], { type: 'application/pdf' }));
+          var a = document.createElement('a');
+          a.href = url; a.download = out.nombre; a.click();
+          setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+          toast(out.aviso || 'PDF descargado (no se guardó en Drive).', 'err');
+        } else {
+          toast('PDF guardado en Drive · ' + out.destino + ' · ' + out.nombre, 'ok');
+          if (!silencioso && out.archivo) window.open(out.archivo, '_blank');
+        }
+        return out;
+      })
+      .catch(function (e) { fail(e); throw e; });
+  }
+
   function abrirCotizacion(folio) {
     var w = window.open('', '_blank');
     if (w) w.document.write('<p style="font-family:sans-serif;padding:40px">Preparando la cotización ' + esc(folio) + '...</p>');
@@ -3825,7 +3852,10 @@
   document.getElementById('tableWrap').addEventListener('click', function (e) {
     if (!e.target.closest) return;
     var pb = e.target.closest('.pdf-btn');
-    if (pb) { abrirCotizacion(pb.getAttribute('data-folio')); return; }
+    if (pb) {
+      generarPdfCotizacion(pb.getAttribute('data-folio'), state.key === 'ventas_registro', false);
+      return;
+    }
     var sv = e.target.closest('.cat-save');
     if (sv) {
       var caja = sv.closest('.cat-edit');
