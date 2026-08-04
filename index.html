@@ -2599,25 +2599,25 @@
       'Valor Cotización', 'Valor Venta'
     ]
   };
-  // ===== Ventas con varios productos: campos "por producto" (line) vs "de la orden" =====
+  // ===== Ventas y Cotizaciones con varios productos: campos "por producto" vs "de la orden" =====
   // Los demás campos de FORM_FIELDS se capturan una sola vez (nivel de orden).
   // 'Envio' es de la orden y se escribe SOLO en la primera fila del pedido.
+  var LINEA_PRODUCTO = ['Producto', 'Material', 'Material Extra', 'Tipo de Producto', 'Tela',
+                        'Descripción', 'Medidas', 'Especificaciones', 'Cantidad', 'Precio Unitario',
+                        '% descuento', 'Descuentos'];
   var LINE_ITEMS = {
-    cotizaciones: {
-      line: ['Producto', 'Material', 'Material Extra', 'Tipo de Producto', 'Tela',
-             'Descripción', 'Medidas', 'Especificaciones', 'Cantidad', 'Precio Unitario',
-             '% descuento', 'Descuentos'],
-      envioOnce: 'Envio'   // va solo en la primera fila del pedido
-    }
+    ventas_registro: { line: LINEA_PRODUCTO, envioOnce: 'Envio' },
+    cotizaciones:    { line: LINEA_PRODUCTO, envioOnce: 'Envio' }
   };
   function lineCfg() { return LINE_ITEMS[state.key] || null; }
   function isLineField(h) {
     var c = lineCfg(); if (!c) return false;
     return c.line.some(function (f) { return norm(f) === norm(h); });
   }
-  // Campos especiales de Ventas: Tela (Sí/No + nombre) y Descuento (% o valor).
+  // Campos especiales: Tela (Sí/No + nombre) y Descuento (% o valor). Iguales en Ventas y Cotizaciones.
   var SPECIAL_FIELDS = {
-    cotizaciones: { tela: 'Tela', descuento: { pct: '% descuento', val: 'Descuentos' } }
+    ventas_registro: { tela: 'Tela', descuento: { pct: '% descuento', val: 'Descuentos' } },
+    cotizaciones:    { tela: 'Tela', descuento: { pct: '% descuento', val: 'Descuentos' } }
   };
   function specialCfg() { return SPECIAL_FIELDS[state.key] || null; }
   function isTelaField(h) { var s = specialCfg(); return !!(s && s.tela && norm(s.tela) === norm(h)); }
@@ -2625,39 +2625,8 @@
   function isDiscValField(h) { var s = specialCfg(); return !!(s && s.descuento && norm(s.descuento.val) === norm(h)); }
   // Campos que NO se muestran en "Agregar registro" (el resto sí). Por área.
   var EXCLUDE_FIELDS = {
-    ventas_registro: ['Mes', 'Año1'],
-    ventas_registro: { tela: 'Tela', descuento: { pct: '% descuento', val: 'Descuentos' } }
-  };
-  function specialCfg() { return SPECIAL_FIELDS[state.key] || null; }
-  function isTelaField(h) { var s = specialCfg(); return !!(s && s.tela && norm(s.tela) === norm(h)); }
-  function isDiscPctField(h) { var s = specialCfg(); return !!(s && s.descuento && norm(s.descuento.pct) === norm(h)); }
-  function isDiscValField(h) { var s = specialCfg(); return !!(s && s.descuento && norm(s.descuento.val) === norm(h)); }
-  // Campos que NO se muestran en "Agregar registro" (el resto sí). Por área.
-  var EXCLUDE_FIELDS = {
-    ventas_registro: ['Mes', 'Año1'],
-    ventas_registro: {
-      line: ['Producto', 'Material', 'Material Extra', 'Tipo de Producto', 'Tela',
-             'Descripción', 'Medidas', 'Especificaciones', 'Cantidad', 'Precio Unitario',
-             '% descuento', 'Descuentos'],
-      envioOnce: 'Envio'   // va solo en la primera fila del pedido
-    }
-  };
-  function lineCfg() { return LINE_ITEMS[state.key] || null; }
-  function isLineField(h) {
-    var c = lineCfg(); if (!c) return false;
-    return c.line.some(function (f) { return norm(f) === norm(h); });
-  }
-  // Campos especiales de Ventas: Tela (Sí/No + nombre) y Descuento (% o valor).
-  var SPECIAL_FIELDS = {
-    ventas_registro: { tela: 'Tela', descuento: { pct: '% descuento', val: 'Descuentos' } }
-  };
-  function specialCfg() { return SPECIAL_FIELDS[state.key] || null; }
-  function isTelaField(h) { var s = specialCfg(); return !!(s && s.tela && norm(s.tela) === norm(h)); }
-  function isDiscPctField(h) { var s = specialCfg(); return !!(s && s.descuento && norm(s.descuento.pct) === norm(h)); }
-  function isDiscValField(h) { var s = specialCfg(); return !!(s && s.descuento && norm(s.descuento.val) === norm(h)); }
-  // Campos que NO se muestran en "Agregar registro" (el resto sí). Por área.
-  var EXCLUDE_FIELDS = {
-    ventas_registro: ['Mes', 'Año1'],
+    ventas_registro:  ['Mes', 'Año1'],
+    cotizaciones:     ['Mes', 'Año1'],
     compras_registro: ['Mes']
   };
   // Campos que se muestran solo como referencia (no editables, no se guardan: los calcula la hoja).
@@ -2665,6 +2634,7 @@
     // Ventas: los autocompletados (Despacho, Dirección, Teléfono, Material, Tipo de Producto,
     // Precio) se activan al conectar los lookups de Clientes/Catálogo.
     ventas_registro: [],
+    cotizaciones: [],
     compras_registro: ['Producto', 'Total USD', 'Costo Total USD'],
     funnel: ['MES']
   };
