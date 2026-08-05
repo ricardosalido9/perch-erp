@@ -540,6 +540,19 @@
   .quick-card:hover { border-color:var(--accent); }
   .quick-card svg { color:var(--accent-ink); }
 
+  /* ---------- Aviso que se queda hasta que lo cierres ---------- */
+  .aviso-fijo { display:none; position:fixed; left:50%; transform:translateX(-50%); bottom:24px;
+    z-index:120; max-width:640px; width:calc(100% - 32px); background:var(--surface);
+    border:1px solid var(--danger); border-left:4px solid var(--danger); border-radius:12px;
+    box-shadow:var(--shadow); padding:16px 44px 16px 18px; font-size:13.5px; line-height:1.55; color:var(--ink); }
+  .aviso-fijo.on { display:block; }
+  .aviso-fijo b { color:var(--danger); }
+  .aviso-fijo code { background:var(--paper); padding:1px 5px; border-radius:5px; font-size:12px;
+    word-break:break-all; }
+  .aviso-fijo button { position:absolute; top:8px; right:10px; background:transparent; border:0;
+    color:var(--muted); font-size:22px; line-height:1; cursor:pointer; padding:2px 6px; }
+  .af-cuerpo { max-height:40vh; overflow-y:auto; }
+
   /* ---------- Toast ---------- */
   .toast { border-radius:12px; box-shadow:var(--shadow); font-weight:500; }
 </style>
@@ -583,7 +596,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.04-10</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.04-11</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -722,6 +735,11 @@
       </div>
     </div>
   </div>
+</div>
+
+<div class="aviso-fijo" id="avisoFijo">
+  <div class="af-cuerpo"><div id="avisoTexto"></div></div>
+  <button type="button" id="avisoCerrar" aria-label="Cerrar">&times;</button>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -3535,7 +3553,15 @@
           var a = document.createElement('a');
           a.href = url; a.download = out.nombre; a.click();
           setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
-          toast(out.aviso || 'PDF descargado (no se guardó en Drive).', 'err');
+          avisoFijo('<b>El PDF se descargó, pero no se guardó en Drive.</b><br>' +
+            (out.causa ? esc(out.causa) + '<br>' : '') +
+            (out.arreglo ? '<div style="margin-top:6px">' + esc(out.arreglo) + '</div>' : '') +
+            (out.cuenta ? '<div style="margin-top:8px;color:var(--slate)">Cuenta de servicio: <code>' +
+                esc(out.cuenta) + '</code></div>' : '') +
+            (out.carpetaMadre ? '<div style="color:var(--slate)">Carpeta madre: <code>' +
+                esc(out.carpetaMadre) + '</code></div>' : '') +
+            (out.detalle ? '<div style="margin-top:8px;color:var(--muted);font-size:12px">' +
+                esc(out.detalle) + '</div>' : ''));
         } else {
           toast('PDF guardado en Drive · ' + out.destino + ' · ' + out.nombre, 'ok');
           if (!silencioso && out.archivo) window.open(out.archivo, '_blank');
@@ -3750,6 +3776,12 @@
 
   function fail(err) { toast((err && err.message) || 'Ocurrió un error.', 'err'); }
 
+  // Aviso que se queda en pantalla hasta que el usuario lo cierra
+  function avisoFijo(html) {
+    document.getElementById('avisoTexto').innerHTML = html;
+    document.getElementById('avisoFijo').classList.add('on');
+  }
+
   function clearForm() {
     state.lineItems = [];
     renderForm(); // vacía todo y vuelve a sugerir el número disponible
@@ -3816,6 +3848,9 @@
   });
   document.getElementById('logoutBtn').addEventListener('click', doLogout);
   document.getElementById('logoutSide').addEventListener('click', doLogout);
+  document.getElementById('avisoCerrar').addEventListener('click', function () {
+    document.getElementById('avisoFijo').classList.remove('on');
+  });
   document.getElementById('openAddBtn').addEventListener('click', abrirModalAlta);
   document.getElementById('summary').addEventListener('click', function (e) {
     var b = e.target.closest ? e.target.closest('.mes-chip') : null;
