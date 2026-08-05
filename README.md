@@ -1,143 +1,74 @@
-# Grupo CFA — Control de Pendientes
+# Perch Diseño y Mobiliario — Panel de datos (Vercel + Google Sheets)
 
-Panel web para dar seguimiento a los pendientes de la empresa. Los datos viven en **Google Sheets**
-(la hoja sigue siendo editable a mano) y el panel corre en **Vercel** como sitio estático + funciones
-serverless. No hay base de datos ni servidor que mantener.
+Panel web conectado a Google Sheets. Frontend estático + funciones serverless en Vercel.
+Conexión vía API de Google Sheets con una cuenta de servicio.
 
-**Qué resuelve**
-- Quién debe qué, para cuándo y en qué va.
-- Avisos automáticos de vencidos, los que vencen hoy y los de la semana.
-- Indicadores: cumplimiento en fecha, días promedio de cierre, carga por responsable.
+Cada **área** del menú se conecta a una hoja (o pestaña). Las columnas de la **fila 1**
+se convierten en la tabla y el formulario. Incluye página de **Inicio** (avisos),
+**Dashboard** (métricas), **roles** de escritura/lectura, **categorías** (desplegables por área),
+**lookups** (autocompletado) y **campos calculados** por fórmula.
+
+## Áreas
+- **Ventas** → Ventas, Clientes
+- **Proyectos** → Proyectos, Partidas (diseño de interiores y mobiliario a medida)
+- **Producción** → Órdenes de Taller, Materiales
+- **Compras** → Compras, Proveedores
+- **Catálogo** → catálogo de mobiliario / inventario disponible
+- **Finanzas** → Bancos, CxC, CxP, Ingresos, Egresos (por conectar)
 
 ## Estructura
-
 ```
-index.html                    Interfaz completa (login, menú, inicio, dashboard, tablas, alta y edición)
-logo.png / favicon.png        Marca
-plantilla-google-sheets.xlsx  Plantilla del archivo de datos (súbela a Drive)
-/api/login.js                 Login contra la pestaña Usuarios
-/api/menu.js                  Menú de módulos
-/api/data.js                  Lee una pestaña
-/api/add.js                   Agrega un registro
-/api/update.js                Edita un registro
-/api/categories.js            Listas desplegables (pestaña CATEGORIAS)
-/api/lookup.js                Autocompletado desde el Directorio
-/api/inicio.js                Avisos y resumen de la pantalla de Inicio
-/api/dashboard.js             Datos del Dashboard
-/lib/core.js                  Configuración (SHEET_ID, MENU, SHEETS), API de Sheets y sesiones
-/lib/util.js                  Lectura y normalización de los pendientes
+index.html          Interfaz (login, inicio, dashboard, tablas, carga)
+/api/login.js       Login (hoja "Usuarios ERP")
+/api/menu.js        Menú de áreas
+/api/inicio.js      Datos de la página de Inicio (avisos)
+/api/dashboard.js   Métricas del Dashboard
+/api/data.js        Lee una hoja
+/api/add.js         Alta de registro (respeta columnas calculadas)
+/api/update.js      Edición de registro
+/api/categories.js  Listas para desplegables (pestaña CATEGORIAS del archivo)
+/api/lookup.js      Autocompletado por área
+/lib/core.js        Config (MENU, SHEETS, USERS_SHEET, roles, lookups...), Sheets API, sesiones
 ```
 
----
+## Roles
+La columna `rol` de "Usuarios ERP" controla permisos. `lector`/`viewer`/`lectura` = solo lectura
+(no puede agregar/editar). Cualquier otro rol (p. ej. `admin`) puede escribir.
 
-## 1) Preparar las hojas de datos
+## Conectar un área
+En `lib/core.js` -> `SHEETS`, completá `id` (lo que está entre `/d/` y `/edit` de la URL) y
+`sheetName` (nombre exacto de la pestaña), y compartí esa hoja como **Editor** con la cuenta de
+servicio. Las áreas sin `id` aparecen como "por conectar" en el menú.
 
-Son **dos archivos** de Google Sheets:
+## Campos sugeridos por área
+Son solo una guía: el panel toma **las columnas reales de la fila 1** de cada hoja. Podés
+usar los nombres que quieras; estos ayudan a que Dashboard, autocompletados y filtros funcionen.
 
-**Archivo de datos** (con la plantilla `plantilla-google-sheets.xlsx`):
+- **Catálogo**: `Producto`, `Categoría`, `Colección`, `Material`, `Acabado`, `Medidas`,
+  `Costo Total USD`, `Disponible` (1 = disponible, 0 = vendido/agotado).
+- **Ventas**: `Fecha`, `Cliente`, `Producto`, `Categoría`, `Colección`, `Unidades`,
+  `Canal de Venta`, `Método de Pago`, `Vendedor`, `Total USD`, `Costo Total USD`,
+  `Utilidad Bruta`, `Mes` (fórmula).
+- **Proyectos**: `Fecha`, `Cliente`, `Proyecto`, `Tipo`, `Responsable`, `Estatus`,
+  `Presupuesto`, `Anticipo`, `Saldo`, `Avance` (fórmula), `Mes` (fórmula).
+- **Producción**: `Fecha`, `Proyecto`, `Estatus`, `Responsable`, `Materiales`, `Mes` (fórmula).
+- **Compras**: `Fecha`, `Proveedor`, `Concepto`, `Costo Total USD`, `Mes` (fórmula).
 
-1. Súbelo a Google Drive y ábrelo con Google Sheets (**Archivo → Guardar como Hoja de cálculo de Google**).
-2. Borra las filas de ejemplo (en gris cursiva) y captura tus áreas y personas.
-3. Guarda su **ID** (lo que va en la URL entre `/d/` y `/edit`): ese es `SHEET_ID`.
+## Desplegables y autocompletado
+- **Categorías** (desplegables): pestaña por área nombrada en `CATEGORIES_SHEETS`
+  (`CATEGORIAS-VENTAS`, `CATEGORIAS-PROYECTOS`, etc.). Cada encabezado de esa pestaña es el
+  campo del formulario que se vuelve desplegable.
+- **Lookups** (autocompletado): en `LOOKUPS`. Ej.: al elegir un `Producto` en Ventas se
+  autocompletan `Categoría`, `Colección`, `Material`, `Acabado`, `Medidas` y `Costo Total USD`
+  desde el Catálogo (solo piezas con `Disponible > 0`). Si el archivo de origen es distinto al
+  del área, agregá `id:` en ese lookup.
 
-La pestaña **LÉEME** dentro del archivo explica qué hace cada hoja.
-
-**Archivo de usuarios** (ya lo tienes): la pestaña se llama `Usuarios ERP` y sus columnas van en este
-orden — `usuario | contraseña | nombre | rol`. Su ID ya está puesto en `lib/core.js`
-(`USERS_SHEET_ID`), así que no necesitas hacer nada más con él salvo compartirlo (paso 2).
-Mantenerlo aparte te permite compartir el archivo de usuarios solo con quien administra las contraseñas.
-
-## 2) Cuenta de servicio de Google
-
-1. En **console.cloud.google.com**, crea un proyecto.
-2. **APIs y servicios → Biblioteca →** habilita **Google Sheets API**.
-3. **APIs y servicios → Credenciales → Crear credenciales → Cuenta de servicio**.
-4. Entra a la cuenta creada → **Claves → Agregar clave → JSON**. Se descarga un archivo con
-   `client_email` y `private_key`.
-5. En cada hoja de Google (la de **datos** y la de **usuarios**), botón **Compartir** → agrega el
-   `client_email` como **Editor**. Sin este paso el panel no puede leerlas. Son dos archivos: ambos
-   deben quedar compartidos.
-
-## 3) Subir el proyecto a GitHub
-
-Sin comandos: en **github.com → New repository** (privado) y con *"uploading an existing file"*
-arrastra todo el contenido de esta carpeta.
-
-Con consola:
-
-```
-git init && git add . && git commit -m "Panel Grupo CFA"
-git branch -M main
-git remote add origin https://github.com/TU_USUARIO/grupocfa-erp.git
-git push -u origin main
-```
-
-## 4) Desplegar en Vercel
-
-1. **vercel.com → Add New → Project**, importa el repo. Framework preset: **Other**. Deploy.
-2. **Settings → Environment Variables**, carga estas cuatro:
-
-| Variable | Valor |
-|---|---|
-| `SHEET_ID` | ID de la hoja de datos (Pendientes 2026_grupocfa). Ya viene puesto en `lib/core.js`. |
-| `USERS_SHEET_ID` | el ID del archivo de usuarios (opcional: ya viene puesto en `lib/core.js`) |
-| `GOOGLE_SERVICE_ACCOUNT_EMAIL` | el `client_email` del JSON |
-| `GOOGLE_PRIVATE_KEY` | la `private_key` del JSON (pégala tal cual, con los `\n`) |
-| `SESSION_SECRET` | una frase larga y aleatoria inventada por ti |
-
-3. **Deployments → ⋯ → Redeploy** para que tome las variables.
-4. Abre la URL: ese es el panel. Entra con un usuario de la pestaña **Usuarios**.
-
----
-
-## Cómo funciona el día a día
-
-- **Inicio**: saludo, indicadores del momento, avisos de lo que requiere atención y las tablas de
-  vencidos y próximos a vencer. Cada aviso tiene un botón **Ver** que lleva al listado filtrado.
-- **Pendientes → Abiertos**: todo lo que no está Completado ni Cancelado. Es la vista de trabajo.
-- **Pendientes → Todos / Cerrados**: histórico y consulta.
-- **Proyectos**: lo mismo pero para trabajos largos, con porcentaje de avance.
-- **Directorio**: quién puede recibir pendientes. Al elegir un Responsable en el formulario, su
-  **Área** se completa sola desde aquí.
-- **Dashboard**: filtro por periodo, cumplimiento en fecha, días promedio de cierre, distribución por
-  estatus, responsable, área y prioridad, y evolución mensual.
-
-En cualquier tabla puedes buscar, filtrar por columna, ordenar, editar una fila con **Editar**,
-agregar registros con **Agregar** y descargar a CSV o PDF.
-
-## Reglas de negocio (dónde se cambian)
-
-Todo está en `lib/core.js`:
-
-- `ESTATUS_CERRADOS` — qué valores de *Estatus* cuentan como cerrado. Hoy: `Completado` y `Cancelado`.
-- `AREA_ROW_FILTERS` — qué muestra cada módulo (Abiertos = todo lo que no está cerrado).
-- `MENU` y `SHEETS` — los módulos del menú y la pestaña de la que lee cada uno.
-- `LOOKUPS` — qué columna se autocompleta al elegir un Responsable.
-
-## Agregar un módulo nuevo
-
-1. Crea la pestaña en la misma hoja de Google, con los encabezados en la fila 1.
-2. En `lib/core.js` agrega el módulo a `MENU` y una línea a `SHEETS`
-   (por ejemplo `clientes: { id: ARCHIVO, sheetName: 'Clientes' }`).
-3. `git push`. Vercel vuelve a desplegar solo.
-
-Las columnas se leen de la fila 1: si agregas una columna a la hoja, aparece en la tabla y en el
-formulario sin tocar código.
+## Variables de entorno en Vercel
+`GOOGLE_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_PRIVATE_KEY`, `SESSION_SECRET` y, opcionalmente,
+`GOOGLE_USERS_SHEET_ID` (id del archivo con la pestaña "Usuarios ERP").
+Alternativa: pegar el JSON completo de la cuenta de servicio en `GOOGLE_CREDENTIALS`.
 
 ## Notas
-
-- Los secretos viven solo en las variables de entorno de Vercel, nunca en GitHub.
-- Sesión firmada (HMAC) de 6 horas.
-- La contraseña distingue mayúsculas y minúsculas; el usuario no.
-- Un usuario con rol `lector` puede consultar todo pero no capturar ni editar.
-- Las contraseñas están en texto plano dentro de la hoja: es cómodo para administrarlas, así que
-  mantén la hoja compartida solo con quien deba verla.
-- Las fechas se leen en `dd/mm/aaaa`, `aaaa-mm-dd` o `15 de enero de 2026`.
-
-
-## Bitácora de tiempo
-La pestaña **Bitácora** se crea sola en tu hoja de Pendientes la primera vez que registres tiempo (columnas: Fecha, Colaborador, Cliente, Pendiente, Actividad, Horas, Registrado por). Desde el panel se registra con el botón "Registrar tiempo" o al marcar un pendiente como Terminado.
-
-
-## Recurrentes
-La pestaña **Recurrentes** se crea sola (ya precargada con tus casos, todos en Activo=FALSE). Actívalos (Activo=TRUE) y el panel genera los pendientes del mes solo (o con el botón "Generar del mes"). Reglas: dia:N, habil:N, habil:ultimo, semana:miercoles, quincena, separadas por "|". Opcional: pestaña **Feriados** (una fecha por fila) para que los días hábiles la respeten.
+- Secretos solo en Vercel, nunca en GitHub. Sesión firmada (HMAC) de 6 horas.
+- Contraseña sensible a mayúsculas; usuario no.
+- Inicio y Dashboard traen métricas; se afinan a los datos de cada área conectada.
