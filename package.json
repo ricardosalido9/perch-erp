@@ -1,13 +1,10 @@
 {
-  "name": "perch-erp",
+  "name": "grupocfa-erp",
   "version": "1.0.0",
   "private": true,
-  "description": "Perch Diseño y Mobiliario — Panel de datos (Vercel + Google Sheets)",
-  "engines": {
-    "node": ">=18"
-  },
+  "description": "Grupo CFA — Control de pendientes (Vercel + Google Sheets)",
+  "engines": { "node": ">=18" },
   "dependencies": {
-    "googleapis": "^144.0.0",
-    "pdf-lib": "^1.17.1"
+    "googleapis": "^144.0.0"
   }
 }
