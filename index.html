@@ -615,7 +615,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.07-25</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.07-26</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -3267,7 +3267,8 @@
       'Precio sin IVA':   { op: 'div',  a: 'Precio', b: 1.16 },
       'Utilidad bruta':   { op: 'sub',  a: 'Precio', b: 'Costos Total' },
       'Margen en $':      { op: 'sub',  a: 'Precio', b: 'Costos Total' },
-      'Margen':           { op: 'margen', precio: 'Precio', costo: 'Costos Total' },
+      // "Margen" va junto a "Descuento 15%": es el margen que queda a ESE precio
+      'Margen':           { op: 'margen', precio: 'Precio', costo: 'Costos Total', factor: 0.85 },
       'Margen bruto':     { op: 'margen', precio: 'Precio', costo: 'Costos Total' },
       'Margen en %':      { op: 'margen', precio: 'Precio', costo: 'Costos Total' },
       'Markup':           { op: 'markup', precio: 'Precio', costo: 'Costos Total' },
@@ -3698,7 +3699,7 @@
       }
       if (d.op === 'copy') { el.value = String(fieldValue(d.a) == null ? '' : fieldValue(d.a)).trim(); return; }
       if (d.op === 'margen' || d.op === 'markup') {
-        var pr = toNum(fieldValue(d.precio)), co = toNum(fieldValue(d.costo));
+        var pr = toNum(fieldValue(d.precio)) * (d.factor || 1), co = toNum(fieldValue(d.costo));
         if (!pr || String(fieldValue(d.costo)).trim() === '') { el.value = ''; return; }
         var v = (d.op === 'margen') ? ((pr - co) / pr) * 100 : (co ? ((pr - co) / co) * 100 : 0);
         el.value = (Math.round(v * 10) / 10).toFixed(1) + '%';
