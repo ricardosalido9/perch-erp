@@ -520,6 +520,22 @@
   .cat-edit .form-grid { grid-template-columns:1fr 1fr; gap:12px; }
   @media (max-width:640px) { .cat-edit .form-grid { grid-template-columns:1fr; } }
 
+  /* ---------- Cotizaciones agrupadas ---------- */
+  .cot-grid { display:flex; flex-direction:column; gap:10px; padding:4px; }
+  .cot-card { background:var(--surface); border:1px solid var(--line); border-radius:16px;
+    box-shadow:var(--shadow-sm); overflow:hidden; }
+  .cot-head { display:flex; align-items:center; gap:14px; width:100%; background:transparent;
+    border:0; padding:16px 18px; text-align:left; cursor:pointer; }
+  .cot-head:hover { background:var(--paper); border-color:transparent; }
+  .cot-info { flex:1; min-width:0; }
+  .cot-folio { font-size:15px; font-weight:600; color:var(--ink); display:flex; align-items:center; gap:8px; }
+  .cot-cli { font-size:14px; color:var(--slate); margin-top:3px; }
+  .cot-sub { font-size:12.5px; color:var(--muted); margin-top:2px; }
+  .cot-total { font-size:17px; font-weight:600; color:var(--ink); white-space:nowrap; }
+  .cot-body { border-top:1px solid var(--line); padding:14px 18px; background:var(--paper); }
+  .cot-body .mini-table { background:var(--surface); border-radius:10px; }
+  .cot-acciones { display:flex; gap:10px; align-items:center; margin-top:12px; }
+
   /* ---------- Resumen del Funnel ---------- */
   .mes-chips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px; }
   .mes-chip { background:var(--surface); border:1px solid var(--line); color:var(--slate);
@@ -596,7 +612,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.04-13</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.05-16</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -648,6 +664,39 @@
         <div class="card-head">Registros</div>
         <div id="tableWrap" class="table-scroll"><div class="state">Cargando...</div></div>
       </section>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="ventaModal">
+    <div class="modal-card" style="max-width:560px">
+      <div class="modal-head">
+        <h3>Convertir en venta</h3>
+        <button class="modal-x" id="ventaClose" type="button" aria-label="Cerrar">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="ventaResumen" style="background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:18px;font-size:14px"></div>
+        <div class="form-grid">
+          <div class="fld">
+            <label>¿Ya hay fecha de entrega acordada?</label>
+            <select id="ventaSabeFecha">
+              <option value="no">Todavía no · estimar 8 semanas</option>
+              <option value="si">Sí, ya la acordamos</option>
+            </select>
+          </div>
+          <div class="fld">
+            <label>Fecha de entrega</label>
+            <input type="date" id="ventaFecha">
+          </div>
+        </div>
+        <div style="font-size:12.5px;color:var(--muted);margin-top:10px">
+          Se copian todos los productos de la cotización a Ventas con un folio nuevo, y la cotización
+          queda marcada como vendida. Después se te pregunta lo de la factura.
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button id="ventaCancel" type="button" class="grow">Cancelar</button>
+        <button class="primary" id="ventaOk" type="button">Convertir en venta</button>
       </div>
     </div>
   </div>
@@ -966,7 +1015,7 @@
       state.headers = data.headers || []; state.rows = data.rows || [];
       state.fileId = data.fileId || ''; state.sheetName = data.sheetName || '';
       var cvb = document.getElementById('catViewBtn');
-      cvb.style.display = (state.key === 'inventario') ? '' : 'none';
+      cvb.style.display = (state.key === 'inventario' || state.key === 'cotizaciones') ? '' : 'none';
       cvb.textContent = catalogoAgrupado ? 'Ver como tabla' : 'Ver por producto';
       if (!data.connected) {
         document.getElementById('tableWrap').innerHTML =
@@ -1497,13 +1546,46 @@
       '</div>';
   }
 
+  // Filtro rápido por status (Ventas)
+  function filtroStatus(valores) {
+    var c = findHeaderByName('Status');
+    if (!c) return;
+    filters = filters.filter(function (f) { return f.col !== c; });
+    if (valores && valores.length) filters.push({ col: c, type: 'values', values: valores });
+    renderFilterBar(); renderTable();
+  }
+  function chipsStatus() {
+    var c = findHeaderByName('Status');
+    if (!c) return '';
+    var opts = optionsFor(c) || [];
+    var pendientes = opts.filter(function (o) { return !/entregado|cancelad/i.test(o); });
+    var f = filters.filter(function (x) { return x.col === c; })[0];
+    var activo = '';
+    if (f) activo = (f.values.length === 1 && /entregado/i.test(f.values[0])) ? 'entregadas' : 'pendientes';
+    var chip = function (k, txt) {
+      return '<button type="button" class="mes-chip' + (activo === k ? ' on' : '') + '" data-st="' + k + '">' + txt + '</button>';
+    };
+    // Cuántas hay de cada lado (sobre TODO el área, no solo lo filtrado)
+    var nPend = 0, nEnt = 0;
+    (state.rows || []).forEach(function (r) {
+      var v = String(r[c] || '');
+      if (/entregado/i.test(v)) nEnt++;
+      else if (!/cancelad/i.test(v)) nPend++;
+    });
+    return '<div class="mes-chips">' + chip('', 'Todas') +
+      chip('pendientes', 'Sin entregar (' + fmtNum(nPend) + ')') +
+      chip('entregadas', 'Entregadas (' + fmtNum(nEnt) + ')') + '</div>';
+  }
+
   function renderSummary(rows) {
     var box = document.getElementById('summary');
     if (!state.headers.length) { box.innerHTML = ''; return; }
     if (state.key === 'fin_cxc') { box.style.display = 'block'; box.innerHTML = resumenCxc(rows); return; }
     if (state.key === 'funnel') { box.style.display = 'block'; box.innerHTML = resumenFunnel(rows); return; }
-    box.style.display = 'flex';
-    var html = '<div class="sum-card"><div class="k">Registros</div><div class="v">' +
+    var chipsSt = (state.key === 'ventas_registro') ? chipsStatus() : '';
+    box.style.display = chipsSt ? 'block' : 'flex';
+    var html = (chipsSt ? chipsSt + '<div class="summary-cards">' : '') +
+               '<div class="sum-card"><div class="k">Registros</div><div class="v">' +
                rows.length.toLocaleString('es-MX') + '</div></div>';
 
     // Config de tarjetas por área (si existe, manda)
@@ -1578,7 +1660,7 @@
       html += '<div class="sum-card"><div class="k">' + titulo +
               '</div><div class="v">' + esc(formatMoney(sum)) + '</div></div>';
     });
-    box.innerHTML = html;
+    box.innerHTML = html + (chipsSt ? '</div>' : '');
   }
 
   var MESES_NOM = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
@@ -2566,6 +2648,80 @@
     return h + '</div>';
   }
 
+  // ===== Cotizaciones: una tarjeta por FOLIO, con sus piezas adentro =====
+  var cotAbierta = {};
+  function renderCotizaciones(rows) {
+    var cRef = findHeaderByName('No. de Referencia') || findHeaderByName('Folio');
+    if (!cRef) return null;
+    var cCli = findHeaderByName('Cliente'), cDesp = findHeaderByName('Despacho');
+    var cFec = findHeaderByName('Fecha del Cierre'), cSt = findHeaderByName('Status');
+    var cProd = findHeaderByName('Producto'), cMat = findHeaderByName('Material');
+    var cCant = findHeaderByName('Cantidad'), cPU = findHeaderByName('Precio Unitario');
+    var cEnv = findHeaderByName('Envio') || findHeaderByName('Envío');
+
+    var g = {}, orden = [];
+    rows.forEach(function (r) {
+      var k = String(r[cRef] || '').trim() || '(sin folio)';
+      if (!g[k]) { g[k] = []; orden.push(k); }
+      g[k].push(r);
+    });
+
+    var h = '<div class="cot-grid">';
+    orden.forEach(function (k) {
+      var items = g[k], r0 = items[0];
+      var piezas = 0, total = 0, envio = 0;
+      items.forEach(function (r) {
+        var c = parseNumber(cCant ? r[cCant] : null) || 0;
+        var p = parseNumber(cPU ? r[cPU] : null) || 0;
+        piezas += c; total += c * p;
+        var e = parseNumber(cEnv ? r[cEnv] : null); if (e) envio += e;
+      });
+      total += envio;
+      var st = cSt ? String(r0[cSt] || '').trim() : '';
+      var vendida = /vendida/i.test(st);
+      var abierta = !!cotAbierta[k];
+      h += '<div class="cot-card' + (abierta ? ' open' : '') + '">' +
+        '<button type="button" class="cot-head" data-folio="' + esc(k).replace(/"/g, '&quot;') + '">' +
+          '<div class="cot-info">' +
+            '<div class="cot-folio">' + esc(k) + (st ? ' ' + pillHTML(st) : '') + '</div>' +
+            '<div class="cot-cli">' + esc(r0[cCli] || 'Sin cliente') +
+              (cDesp && r0[cDesp] ? ' · ' + esc(r0[cDesp]) : '') + '</div>' +
+            '<div class="cot-sub">' + fmtNum(items.length) + (items.length === 1 ? ' producto' : ' productos') +
+              ' · ' + fmtNum(piezas) + (piezas === 1 ? ' pieza' : ' piezas') +
+              (cFec && r0[cFec] ? ' · ' + esc(formatDateCell(r0[cFec])) : '') + '</div>' +
+          '</div>' +
+          '<div class="cot-total">' + esc(formatMoney(total)) + '</div>' +
+          '<span class="cat-chev">' + (abierta ? '▲' : '▼') + '</span>' +
+        '</button>';
+      if (abierta) {
+        h += '<div class="cot-body">' +
+          '<table class="mini-table"><thead><tr><th>Producto</th><th>Material</th>' +
+          '<th style="text-align:right">Cantidad</th><th style="text-align:right">Precio Unitario</th>' +
+          '<th style="text-align:right">Importe</th></tr></thead><tbody>';
+        items.forEach(function (r) {
+          var c = parseNumber(cCant ? r[cCant] : null) || 0;
+          var p = parseNumber(cPU ? r[cPU] : null) || 0;
+          h += '<tr><td>' + esc(r[cProd] || '') + '</td><td>' + esc(cMat ? (r[cMat] || '') : '') + '</td>' +
+            '<td class="num">' + fmtNum(c) + '</td><td class="num">' + esc(formatMoney(p)) + '</td>' +
+            '<td class="num">' + esc(formatMoney(c * p)) + '</td></tr>';
+        });
+        if (envio) {
+          h += '<tr><td colspan="4" style="text-align:right">Envío del pedido</td>' +
+               '<td class="num">' + esc(formatMoney(envio)) + '</td></tr>';
+        }
+        h += '</tbody></table>' +
+          '<div class="cot-acciones">' +
+            '<button type="button" class="pdf-btn" data-folio="' + esc(k).replace(/"/g, '&quot;') + '">Ver PDF</button>' +
+            (vendida ? '<span class="s" style="color:var(--success)">Ya se convirtió en venta</span>'
+                     : '<button type="button" class="primary vender-btn" data-folio="' + esc(k).replace(/"/g, '&quot;') +
+                       '" data-cliente="' + esc(r0[cCli] || '').replace(/"/g, '&quot;') + '">Marcar como vendida</button>') +
+          '</div></div>';
+      }
+      h += '</div>';
+    });
+    return h + '</div>';
+  }
+
   function renderTable() {
     var rows = sortRows(filteredRows());
     renderSummary(rows);
@@ -2574,6 +2730,10 @@
     if (state.key === 'inventario' && catalogoAgrupado) {
       var hc = renderCatalogo(rows);
       if (hc) { document.getElementById('tableWrap').innerHTML = hc; return; }
+    }
+    if (state.key === 'cotizaciones' && catalogoAgrupado) {
+      var hq = renderCotizaciones(rows);
+      if (hq) { document.getElementById('tableWrap').innerHTML = hq; return; }
     }
     var cols = visibleHeaders();
     var pillCols = columnasConPill(rows, cols);
@@ -2652,6 +2812,7 @@
   function saveEdit(rowNum, btn) {
     var tr = btn.closest('tr');
     var inputs = tr.querySelectorAll('.row-input');
+    sellarEntrega(inputs);                 // Entregado -> fecha real de hoy
     var record = {};
     // Parte de los valores originales para no borrar las columnas ocultas
     var orig = state.rows.filter(function (r) { return r._row === rowNum; })[0] || {};
@@ -2683,6 +2844,13 @@
   }
 
   var FIELD_OPTIONS = {
+    // Para cambiar la lista de status, edita este renglón y listo.
+    ventas_registro: {
+      'Status': ['Por Entregar', 'En produccion', 'Listo para entrega', 'Entregado', 'Cancelado']
+    },
+    cotizaciones: {
+      'Status': ['Pendiente', 'Enviada', 'Vendida', 'Rechazada', 'Por volver a buscar']
+    },
     fin_cxc: {
       'Factura Si / No':  ['Si', 'No', 'Pendiente'],
       'PUE/PPD':          ['PUE', 'PPD', 'NA'],
@@ -2858,7 +3026,9 @@
   }
   // Campos obligatorios por área (por nombre; tolera espacios/acentos/mayúsculas).
   var REQUIRED_FIELDS = {
-    cotizaciones: ['Fecha del Cierre', 'Cliente', 'Vendedor', 'Fecha de entrega acordada',
+    // En una cotización la fecha de entrega NO se pide: todavía no hay compromiso.
+    // El PDF muestra el tiempo de fabricación estimado en su lugar.
+    cotizaciones: ['Fecha del Cierre', 'Cliente', 'Vendedor',
                       'Cantidad', 'Producto', 'Material', 'Material Extra'],
     ventas_registro: ['Fecha del Cierre', 'Cliente', 'Vendedor', 'Fecha de entrega acordada',
                       'Cantidad', 'Producto', 'Material', 'Material Extra'],
@@ -3404,6 +3574,11 @@
       applyCurrencyRule();
     }
     initCascade();
+    // En cotizaciones la entrega se estima a 8 semanas (editable); en ventas se captura
+    if (state.key === 'cotizaciones') {
+      var fe = fieldEl('Fecha de entrega acordada');
+      if (fe && !fe.value) fe.value = masSemanas(8);
+    }
     aplicarMesAuto();
     recalcComputed();
     renderLineList();
@@ -3539,13 +3714,61 @@
     }).then(function () { btn.disabled = false; btn.textContent = etiqueta; });
   }
 
+  // ===== Cotización -> Venta =====
+  var cotAConvertir = null;
+  function masSemanas(n) {
+    var d = new Date(); d.setDate(d.getDate() + n * 7);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  function abrirConvertirVenta(folio, cliente) {
+    cotAConvertir = folio;
+    document.getElementById('ventaResumen').innerHTML =
+      '<b>' + esc(folio) + '</b>' + (cliente ? ' · ' + esc(cliente) : '');
+    document.getElementById('ventaSabeFecha').value = 'no';
+    document.getElementById('ventaFecha').value = masSemanas(8);
+    document.getElementById('ventaModal').classList.add('on');
+  }
+  function cerrarConvertirVenta() {
+    document.getElementById('ventaModal').classList.remove('on');
+    cotAConvertir = null;
+  }
+  function convertirEnVenta() {
+    if (!cotAConvertir) return;
+    var btn = document.getElementById('ventaOk');
+    var iso = document.getElementById('ventaFecha').value;
+    btn.disabled = true; btn.textContent = 'Convirtiendo...';
+    api('to-sale', { token: state.token, folio: cotAConvertir, fechaEntrega: iso ? isoToLargo(iso) : '' })
+      .then(function (out) {
+        toast('Venta creada · Folio ' + out.folio + ' (' + out.filas +
+              (out.filas === 1 ? ' producto' : ' productos') + ')', 'ok');
+        var folioVenta = out.folio;
+        cerrarConvertirVenta();
+        loadArea();
+        // El PDF de la venta y su carpeta en Drive
+        api('quote-pdf', { token: state.token, key: 'ventas_registro', folio: folioVenta, venta: true })
+          .catch(function () {});
+        // Y el paso de facturación, igual que en una venta capturada directo
+        api('quote', { token: state.token, key: 'ventas_registro', folio: folioVenta }).then(function (q) {
+          var piezas = 0; (q.items || []).forEach(function (i) { piezas += (i.cantidad || 0); });
+          registrarEnCxc({
+            folio: folioVenta, cliente: q.cliente, despacho: q.despacho,
+            fechaCierre: q.fecha, mes: '', entregaTexto: iso ? isoToLargo(iso) : '', entregaISO: iso || '',
+            piezas: piezas, envio: q.envio || 0,
+            totalPedido: (q.total || 0) - (q.envio || 0), totalConEnvio: q.total || 0
+          });
+        }).catch(function () {});
+      })
+      .catch(function (e) { fail(e); })
+      .then(function () { btn.disabled = false; btn.textContent = 'Convertir en venta'; });
+  }
+
   // ===== Cotización con el formato de Perch (se guarda como PDF desde el navegador) =====
   var COT_CLABE = '012180001174417892';
   var COT_BANCO = 'BBVA';
   var COT_TITULAR = 'Perch Diseño y Mobiliario';
   var COT_CONDICIONES = [
     'Precios en pesos mexicanos con IVA incluido.',
-    'Tiempo de entrega: 6 semanas a partir del anticipo y de la confirmación de materiales.',
+    'Tiempo de fabricación estimado: 6 a 8 semanas a partir del anticipo y de la confirmación de materiales.',
     'Garantía de 12 meses por defectos de fabricación.',
     'Nuestros muebles son ensamblados a mano, por lo que pueden variar ligeramente en acabados y tonalidades.'
   ];
@@ -3869,10 +4092,25 @@
   document.getElementById('summary').addEventListener('click', function (e) {
     var b = e.target.closest ? e.target.closest('.mes-chip') : null;
     if (!b) return;
+    if (b.hasAttribute('data-st')) {
+      var k = b.getAttribute('data-st');
+      var c = findHeaderByName('Status');
+      var opts = (c ? optionsFor(c) : []) || [];
+      if (k === 'pendientes') filtroStatus(opts.filter(function (o) { return !/entregado|cancelad/i.test(o); }));
+      else if (k === 'entregadas') filtroStatus(opts.filter(function (o) { return /entregado/i.test(o); }));
+      else filtroStatus(null);
+      return;
+    }
     if (b.hasAttribute('data-cxc')) filtroRapidoCxc(b.getAttribute('data-cxc'));
     else filtrarMesFunnel(b.getAttribute('data-mes') || '');
   });
   document.getElementById('addModalClose').addEventListener('click', cerrarModalAlta);
+  document.getElementById('ventaClose').addEventListener('click', cerrarConvertirVenta);
+  document.getElementById('ventaCancel').addEventListener('click', cerrarConvertirVenta);
+  document.getElementById('ventaOk').addEventListener('click', convertirEnVenta);
+  document.getElementById('ventaSabeFecha').addEventListener('change', function () {
+    if (this.value === 'no') document.getElementById('ventaFecha').value = masSemanas(8);
+  });
   document.getElementById('facClose').addEventListener('click', cerrarPasoFactura);
   document.getElementById('facSkip').addEventListener('click', cerrarPasoFactura);
   document.getElementById('facSave').addEventListener('click', guardarPedidoCxc);
@@ -3922,6 +4160,15 @@
           loadArea();
         })
         .catch(function (err) { fail(err); sv.disabled = false; sv.textContent = 'Aplicar'; });
+      return;
+    }
+    var vb = e.target.closest('.vender-btn');
+    if (vb) { abrirConvertirVenta(vb.getAttribute('data-folio'), vb.getAttribute('data-cliente')); return; }
+    var ch = e.target.closest('.cot-head');
+    if (ch) {
+      var f = ch.getAttribute('data-folio');
+      cotAbierta[f] = !cotAbierta[f];
+      renderTable();
       return;
     }
     var b = e.target.closest('.cat-head');

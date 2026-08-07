@@ -21,7 +21,8 @@ const RUTAS = {
   'quote-pdf':    require('../lib/handlers/quote-pdf'),
   upload:         require('../lib/handlers/upload'),
   'funnel-debug': require('../lib/handlers/funnel-debug'),
-  inspect:        require('../lib/handlers/inspect')
+  inspect:        require('../lib/handlers/inspect'),
+  'to-sale':      require('../lib/handlers/to-sale')
 };
 
 module.exports = async (req, res) => {
