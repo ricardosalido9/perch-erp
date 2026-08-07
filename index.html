@@ -615,7 +615,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.07-20</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.07-21</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -3010,6 +3010,8 @@
   }
   // Campos "combo": se eligen de una lista pero también se puede escribir uno nuevo.
   var COMBO_FIELDS = {
+    // Catálogo: listas de lo que ya existe, pero se puede escribir uno nuevo
+    inventario: ['Productos', 'Material', 'Material Extra', 'Tipo de Producto'],
     funnel: ['Cliente', 'Despacho', 'Estatus'],
     fin_cxc: ['Cliente', 'Despacho', 'FORMA DE PAGO', 'Comentarios (uso de CFDI)']
   };
@@ -3100,6 +3102,8 @@
   function isDiscValField(h) { var s = specialCfg(); return !!(s && s.descuento && norm(s.descuento.val) === norm(h)); }
   // Campos que NO se muestran en "Agregar registro" (el resto sí). Por área.
   var EXCLUDE_FIELDS = {
+    // Catálogo: el precio del año pasado y el IVA no se capturan en un producto nuevo
+    inventario:       ['Precio de venta 2025', 'Precio de Venta 2025', 'IVA'],
     ventas_registro:  ['Mes', 'Año1'],
     cotizaciones:     ['Mes', 'Año1'],
     compras_registro: ['Mes']
@@ -3116,6 +3120,18 @@
   // Campos calculados (solo lectura). Se recalculan en orden por dependencias.
   // op: 'sub' a-b, 'add' a+b, 'mul' a*b, 'div' a/b. format:'percent' muestra %.
   var COMPUTED_FIELDS = {
+    // Catálogo: todo lo que se calcula a partir de Costo y Precio
+    inventario: {
+      'Precio Unitario':  { op: 'copy', a: 'Precio' },
+      'Precio sin IVA':   { op: 'div',  a: 'Precio', b: 1.16 },
+      'Utilidad bruta':   { op: 'sub',  a: 'Precio', b: 'Costos Total' },
+      'Margen en $':      { op: 'sub',  a: 'Precio', b: 'Costos Total' },
+      'Margen':           { op: 'margen', precio: 'Precio', costo: 'Costos Total' },
+      'Margen bruto':     { op: 'margen', precio: 'Precio', costo: 'Costos Total' },
+      'Margen en %':      { op: 'margen', precio: 'Precio', costo: 'Costos Total' },
+      'Markup':           { op: 'markup', precio: 'Precio', costo: 'Costos Total' },
+      'Descuento 15%':    { op: 'mul',  a: 'Precio', b: 0.85 }
+    },
     // Ventas: los cálculos (precio sin IVA, impuestos, totales, utilidad) los hace tu hoja por fórmula.
     compras_registro: {
       'Producto': { op: 'concat', fields: ['Marca', 'Modelo', 'Referencia', 'Serie'], sep: '/' },
@@ -3171,10 +3187,12 @@
                        'Moneda', 'Tipo de Cambio', 'Proveedor de Pago', 'Comision Compra',
                        'Otros Gastos', 'Status', 'Método de Pago'],
     funnel: ['Fecha contacto', 'Prioridad', 'Cliente', 'TIPO CLIENTE', 'Forma de Contacto',
-             'Cotización', 'Valor Venta']
+             'Cotización', 'Valor Venta'],
+    inventario: ['No Producto', 'Productos', 'Material', 'Material Extra', 'Tipo de Producto',
+                 'Costos Total', 'Precio', 'Descripción', 'Medidas']
   };
   // Campos que se autocompletan con el siguiente número disponible (editables).
-  var AUTONUM_FIELDS = ['No. Identificación', 'No. de Identificación', 'No. de Cliente'];
+  var AUTONUM_FIELDS = ['No Producto', 'No. Producto','No. Identificación', 'No. de Identificación', 'No. de Cliente'];
   function findHeaderByName(name) {
     var key = norm(name);
     return state.headers.filter(function (h) { return norm(h) === key; })[0];
@@ -3350,6 +3368,7 @@
     var tn = document.querySelector('#formFields input[placeholder="Nombre de la tela"]'); if (tn) tn.style.display = 'none';
     var dt = document.querySelector('#formFields .disc-type'); if (dt) dt.value = '';
     var da = document.querySelector('#formFields .disc-amt'); if (da) { da.value = ''; da.disabled = true; }
+    avisoMargen();
     initCascade();
     recalcComputed();
   }
@@ -3479,6 +3498,46 @@
     var el = document.querySelector('#formFields [data-col="' + real + '"]');
     return el ? el.value : '';
   }
+  // Marca en rojo cuando el margen del catálogo se va por debajo del 20%
+  var MARGEN_MINIMO = 20;
+  function avisoMargen() {
+    if (state.key !== 'inventario') return;
+    var box = document.getElementById('formFields');
+    var caja = document.getElementById('margenAviso');
+    if (!caja) {
+      caja = document.createElement('div');
+      caja.id = 'margenAviso';
+      caja.style.cssText = 'display:none;grid-column:1/-1;padding:12px 14px;border-radius:10px;' +
+        'background:var(--danger-bg);border:1px solid var(--danger);color:var(--danger);font-size:13px';
+      box.appendChild(caja);
+    }
+    function calcular() {
+      var pr = toNum(fieldValue('Precio')), co = toNum(fieldValue('Costos Total'));
+      if (!pr || !co) { caja.style.display = 'none'; return; }
+      var m = ((pr - co) / pr) * 100;
+      var mDesc = ((pr * 0.85 - co) / (pr * 0.85)) * 100;
+      if (m < MARGEN_MINIMO) {
+        caja.innerHTML = '<b>Margen bajo: ' + m.toFixed(1) + '%.</b> Está por debajo del ' + MARGEN_MINIMO +
+          '% mínimo. Con el descuento del 15% quedaría en ' + mDesc.toFixed(1) + '%.';
+        caja.style.display = 'block';
+      } else {
+        caja.innerHTML = 'Margen ' + m.toFixed(1) + '% · con descuento del 15% quedaría en ' + mDesc.toFixed(1) + '%.';
+        caja.style.background = 'var(--accent-soft)';
+        caja.style.borderColor = 'var(--accent-soft)';
+        caja.style.color = 'var(--accent-ink)';
+        caja.style.display = 'block';
+        if (mDesc < MARGEN_MINIMO) {
+          caja.style.background = 'var(--amber-bg)'; caja.style.borderColor = 'var(--amber)';
+          caja.style.color = 'var(--amber)';
+          caja.innerHTML += ' <b>Ojo:</b> con descuento se va debajo del ' + MARGEN_MINIMO + '%.';
+        }
+      }
+    }
+    box.addEventListener('input', calcular);
+    box.addEventListener('change', calcular);
+    calcular();
+  }
+
   function recalcComputed() {
     var defs = COMPUTED_FIELDS[state.key]; if (!defs) return;
     Object.keys(defs).forEach(function (target) {
@@ -3494,7 +3553,16 @@
         el.value = parts.join(d.sep || '/');
         return;
       }
-      var av = fieldValue(d.a), bv = fieldValue(d.b);
+      if (d.op === 'copy') { el.value = String(fieldValue(d.a) == null ? '' : fieldValue(d.a)).trim(); return; }
+      if (d.op === 'margen' || d.op === 'markup') {
+        var pr = toNum(fieldValue(d.precio)), co = toNum(fieldValue(d.costo));
+        if (!pr || String(fieldValue(d.costo)).trim() === '') { el.value = ''; return; }
+        var v = (d.op === 'margen') ? ((pr - co) / pr) * 100 : (co ? ((pr - co) / co) * 100 : 0);
+        el.value = (Math.round(v * 10) / 10).toFixed(1) + '%';
+        return;
+      }
+      var av = fieldValue(d.a);
+      var bv = (typeof d.b === 'number') ? d.b : fieldValue(d.b);
       var res = null;
       if (d.op === 'sum') {          // suma de varios campos (d.fields)
         var vals = (d.fields || []).map(fieldValue);
@@ -3627,6 +3695,40 @@
         return;
       }
       if (isDiscValField(h)) { return; }   // se maneja junto con "% descuento"
+      // --- Foto: se pega un link o se sube el archivo a Drive ---
+      if (esColumnaFoto(h) && !isReadonlyField(h)) {
+        var finp = document.createElement('input');
+        finp.type = 'text'; finp.setAttribute('data-col', h);
+        finp.placeholder = 'Pegá el link de la foto o subí el archivo';
+        var fila = document.createElement('div');
+        fila.style.cssText = 'display:flex;gap:8px;align-items:center';
+        var file = document.createElement('input');
+        file.type = 'file'; file.accept = 'image/*';
+        file.style.cssText = 'font:inherit;font-size:12px;max-width:190px';
+        var nota = document.createElement('div');
+        nota.style.cssText = 'font-size:12px;color:var(--muted);margin-top:4px';
+        file.addEventListener('change', function () {
+          var f = file.files && file.files[0]; if (!f) return;
+          if (f.size > 4 * 1024 * 1024) { nota.textContent = 'La imagen pesa más de 4 MB.'; return; }
+          nota.textContent = 'Subiendo ' + f.name + '...';
+          var rd = new FileReader();
+          rd.onload = function () {
+            api('upload', { token: state.token, carpetaNombre: 'Catalogo',
+                            nombre: f.name, mime: f.type || 'image/jpeg',
+                            data: String(rd.result).split(',')[1] })
+              .then(function (out) {
+                finp.value = out.imagen || out.archivo || '';
+                nota.textContent = 'Listo: ' + (out.nombre || f.name);
+              })
+              .catch(function (e) { nota.textContent = (e && e.message) || 'No se pudo subir.'; });
+          };
+          rd.readAsDataURL(f);
+        });
+        fila.appendChild(finp); fila.appendChild(file);
+        wrap.appendChild(fila); wrap.appendChild(nota);
+        box.appendChild(wrap);
+        return;
+      }
       // --- Combo: se elige de la lista o se escribe uno nuevo (Cliente, Despacho, Estatus) ---
       if (isComboField(h) && !isReadonlyField(h)) {
         var cinp2 = document.createElement('input');
@@ -3707,6 +3809,7 @@
       if (curEl) { curEl.addEventListener('change', applyCurrencyRule); curEl.addEventListener('input', applyCurrencyRule); }
       applyCurrencyRule();
     }
+    avisoMargen();
     initCascade();
     // En cotizaciones la entrega se estima a 8 semanas (editable); en ventas se captura
     if (state.key === 'cotizaciones') {
