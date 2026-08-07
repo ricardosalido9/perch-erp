@@ -615,7 +615,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.07-30</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.07-31</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -839,6 +839,9 @@
     inventario:          'Catálogo de mobiliario: variantes, materiales, costos y precios.',
     funnel:              'Bitácora histórica de prospección (archivo, ya no se captura aquí).',
     proveedores:         'Cuánto se le pidió a cada proveedor, qué llegó y cuánto se le debe.',
+    costos:              'La venta contra tres costos: el real, el de la hoja y el del catálogo.',
+    op_stock:            'Lo disponible por producto y material, con lo que está por llegar.',
+    op_revisar:          'Renglones que no cuadran y hay que corregir en Pedidos.',
     prov_pedidos:        'Pedidos generales a proveedores, con sus muebles y a dónde va cada pieza.',
     prov_entradas:       'Lo que ya llegó de cada pedido de proveedor.',
     prov_salidas:        'A qué pedido de cliente, stock o showroom se asignó cada pieza.',
@@ -850,7 +853,7 @@
     fin_cxc:             'Saldos por cobrar de cada pedido.',
     fin_ingresos:        'Cobros recibidos, ligados al folio del pedido.'
   };
-  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores'];
+  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos'];
   function esLector() {
     return state.rol === 'lector' || state.rol === 'viewer' || state.rol === 'lectura';
   }
@@ -1134,7 +1137,70 @@
     });
   }
 
+  // ===== Comparativo de costos por folio =====
+  function loadCostos() {
+    document.getElementById('tableWrap').innerHTML =
+      '<div class="state" style="padding:50px 0">Cruzando ventas, salidas, pedidos y catálogo…</div>';
+    document.getElementById('summary').innerHTML = '';
+    mostrarAlta(false);
+    api('costos', { token: state.token }).then(function (d) {
+      var F = d.folios || [];
+      var conReal = F.filter(function (r) { return r.costoReal !== null; });
+      var sum = function (arr, k) { var t = 0; arr.forEach(function (r) { t += (r[k] || 0); }); return t; };
+      var vTot = sum(conReal, 'venta'), rTot = sum(conReal, 'costoReal');
+      var hTot = sum(conReal, 'costoVentas'), cTot = sum(conReal, 'costoCatalogo');
+      var mg = function (v, c) { return v ? ((v - c) / v * 100).toFixed(1) + '%' : '—'; };
+      var lejos = conReal.filter(function (r) {
+        return r.costoCatalogo && Math.abs(r.costoReal - r.costoCatalogo) / r.costoCatalogo > 0.05;
+      }).length;
+
+      var box = document.getElementById('summary');
+      box.style.display = 'flex';
+      box.innerHTML =
+        '<div class="sum-card"><div class="k">Folios comparables</div><div class="v">' + fmtNum(conReal.length) +
+          '</div><div class="k" style="text-transform:none;letter-spacing:0">de ' + fmtNum(F.length) + ' con venta</div></div>' +
+        '<div class="sum-card"><div class="k">Venta s/IVA</div><div class="v">' + esc(fmtMoneyShort(vTot)) + '</div></div>' +
+        '<div class="sum-card"><div class="k">Margen real</div><div class="v">' + mg(vTot, rTot) + '</div>' +
+          '<div class="k" style="text-transform:none;letter-spacing:0">costo ' + esc(fmtMoneyShort(rTot)) + '</div></div>' +
+        '<div class="sum-card"><div class="k">Margen según Ventas</div><div class="v">' + mg(vTot, hTot) + '</div>' +
+          '<div class="k" style="text-transform:none;letter-spacing:0">costo ' + esc(fmtMoneyShort(hTot)) + '</div></div>' +
+        '<div class="sum-card"><div class="k">Margen según Catálogo</div><div class="v">' + mg(vTot, cTot) + '</div>' +
+          '<div class="k" style="text-transform:none;letter-spacing:0">costo ' + esc(fmtMoneyShort(cTot)) + '</div></div>' +
+        '<div class="sum-card"><div class="k">Fuera del 5%</div><div class="v" style="color:var(--danger)">' +
+          fmtNum(lejos) + '</div><div class="k" style="text-transform:none;letter-spacing:0">real vs catálogo</div></div>';
+
+      var celda = function (v, m) {
+        return '<td class="num">' + (v === null ? '—' : esc(formatMoney(v))) + '</td>' +
+               '<td class="num">' + (m === null ? '—' : m.toFixed(1) + '%') + '</td>';
+      };
+      var h = '<table class="mini-table"><thead><tr><th>Folio</th><th>Cliente</th>' +
+        '<th style="text-align:right">Venta s/IVA</th>' +
+        '<th style="text-align:right">Costo real</th><th style="text-align:right">Margen</th>' +
+        '<th style="text-align:right">Costo Ventas</th><th style="text-align:right">Margen</th>' +
+        '<th style="text-align:right">Costo Catálogo</th><th style="text-align:right">Margen</th>' +
+        '<th>Proveedores</th></tr></thead><tbody>';
+      F.forEach(function (r) {
+        var alerta = (r.costoReal !== null && r.costoCatalogo &&
+                      Math.abs(r.costoReal - r.costoCatalogo) / r.costoCatalogo > 0.05);
+        h += '<tr' + (alerta ? ' style="background:var(--danger-bg)"' : '') + '>' +
+          '<td>' + esc(r.folio) + (r.sinCostear ? ' <span title="' + r.sinCostear +
+            ' piezas sin costo" style="color:var(--danger)">•</span>' : '') + '</td>' +
+          '<td title="' + esc(r.cliente) + '">' + esc(r.cliente || '—') + '</td>' +
+          '<td class="num">' + esc(formatMoney(r.venta)) + '</td>' +
+          celda(r.costoReal, r.margenReal) + celda(r.costoVentas, r.margenVentas) +
+          celda(r.costoCatalogo, r.margenCatalogo) +
+          '<td title="' + esc(r.proveedores) + '">' + esc((r.proveedores || '').slice(0, 28)) + '</td></tr>';
+      });
+      document.getElementById('tableWrap').innerHTML = h + '</tbody></table>';
+      document.getElementById('count').textContent = F.length + ' folios';
+    }).catch(function (e) {
+      document.getElementById('tableWrap').innerHTML =
+        '<div class="state">' + esc((e && e.message) || 'No se pudo armar el comparativo.') + '</div>';
+    });
+  }
+
   function loadArea() {
+    if (state.key === 'costos') return loadCostos();
     if (state.key === 'proveedores') return loadProveedores();
     document.getElementById('tableWrap').innerHTML = '<div class="state">Cargando...</div>';
     document.getElementById('count').textContent = '';

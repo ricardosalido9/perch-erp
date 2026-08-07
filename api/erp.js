@@ -23,7 +23,8 @@ const RUTAS = {
   'funnel-debug': require('../lib/handlers/funnel-debug'),
   inspect:        require('../lib/handlers/inspect'),
   'to-sale':      require('../lib/handlers/to-sale'),
-  proveedores:    require('../lib/handlers/proveedores')
+  proveedores:    require('../lib/handlers/proveedores'),
+  costos:         require('../lib/handlers/costos')
 };
 
 module.exports = async (req, res) => {
