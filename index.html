@@ -612,7 +612,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.05-16</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.07-18</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1001,6 +1001,20 @@
     loadArea();
   }
 
+  // Filtro que dejó pendiente un aviso del Inicio (ej. "ventas sin vendedor")
+  var filtroPendiente = null;
+  function aplicarFiltroPendiente() {
+    var f = filtroPendiente; filtroPendiente = null;
+    if (!f || !f.col) return false;
+    var real = findHeaderByName(f.col);
+    if (!real) return false;
+    filters = filters.filter(function (x) { return x.col !== real; });
+    if (f.vacio) filters.push({ col: real, type: 'values', values: [''] });
+    else if (f.valores && f.valores.length) filters.push({ col: real, type: 'values', values: f.valores });
+    else return false;
+    return true;
+  }
+
   function loadArea() {
     document.getElementById('tableWrap').innerHTML = '<div class="state">Cargando...</div>';
     document.getElementById('count').textContent = '';
@@ -1014,6 +1028,7 @@
       var lk = r[2]; state.lookups = (lk && lk.lookups) ? lk.lookups : [];
       state.headers = data.headers || []; state.rows = data.rows || [];
       state.fileId = data.fileId || ''; state.sheetName = data.sheetName || '';
+      var vinoFiltrado = aplicarFiltroPendiente();
       var cvb = document.getElementById('catViewBtn');
       cvb.style.display = (state.key === 'inventario' || state.key === 'cotizaciones') ? '' : 'none';
       cvb.textContent = catalogoAgrupado ? 'Ver como tabla' : 'Ver por producto';
@@ -1028,7 +1043,8 @@
         mostrarAlta(false);
         document.getElementById('formFields').innerHTML = '';
       } else {
-        if (pendingAutoFilter) { pendingAutoFilter = false; aplicarFiltroAnual(); }
+        if (vinoFiltrado) { pendingAutoFilter = false; }
+        else if (pendingAutoFilter) { pendingAutoFilter = false; aplicarFiltroAnual(); }
         mostrarAlta(!esSoloLectura(state.key));
         renderFilterBar();
         renderTable();
@@ -1583,6 +1599,30 @@
     if (state.key === 'fin_cxc') { box.style.display = 'block'; box.innerHTML = resumenCxc(rows); return; }
     if (state.key === 'funnel') { box.style.display = 'block'; box.innerHTML = resumenFunnel(rows); return; }
     var chipsSt = (state.key === 'ventas_registro') ? chipsStatus() : '';
+    // Puntualidad: compara la fecha acordada contra la real (solo lo ya entregado)
+    var tarjetaEntrega = '';
+    if (state.key === 'ventas_registro') {
+      var cAc = findHeaderByName('Fecha de entrega acordada');
+      var cRl = findHeaderByName('Fecha de entrega real');
+      if (cAc && cRl) {
+        var nOk = 0, nTarde = 0, sumDias = 0;
+        rows.forEach(function (r) {
+          var a = parseDate(r[cAc]), b = parseDate(r[cRl]);
+          if (a === null || b === null) return;
+          var da = new Date(Math.floor(a / 10000), Math.floor(a / 100) % 100 - 1, a % 100);
+          var db = new Date(Math.floor(b / 10000), Math.floor(b / 100) % 100 - 1, b % 100);
+          var dias = Math.round((db - da) / 86400000);
+          if (dias > 0) { nTarde++; sumDias += dias; } else { nOk++; }
+        });
+        if (nOk + nTarde) {
+          var prom = nTarde ? Math.round(sumDias / nTarde) : 0;
+          tarjetaEntrega = '<div class="sum-card"><div class="k">Entregas a tiempo</div><div class="v">' +
+            Math.round((nOk / (nOk + nTarde)) * 100) + '%</div>' +
+            '<div class="k" style="text-transform:none;letter-spacing:0;margin-top:2px">' +
+            fmtNum(nTarde) + ' con retraso' + (nTarde ? ', ' + prom + ' días en promedio' : '') + '</div></div>';
+        }
+      }
+    }
     box.style.display = chipsSt ? 'block' : 'flex';
     var html = (chipsSt ? chipsSt + '<div class="summary-cards">' : '') +
                '<div class="sum-card"><div class="k">Registros</div><div class="v">' +
@@ -1660,7 +1700,7 @@
       html += '<div class="sum-card"><div class="k">' + titulo +
               '</div><div class="v">' + esc(formatMoney(sum)) + '</div></div>';
     });
-    box.innerHTML = html + (chipsSt ? '</div>' : '');
+    box.innerHTML = html + tarjetaEntrega + (chipsSt ? '</div>' : '');
   }
 
   var MESES_NOM = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
@@ -1795,7 +1835,9 @@
           '<span class="an">' + fmtNum(a.n) + '</span>' +
           '<span class="ab"><span class="at">' + esc(a.titulo) + '</span>' +
           '<span class="ad">' + esc(det) + '</span></span>' +
-          '<button data-go="' + esc(a.area) + '">Ver</button></div>';
+          '<button data-go="' + esc(a.area) + '"' +
+            (a.filtro && a.filtro.col ? ' data-filtro="' + esc(JSON.stringify(a.filtro)).replace(/"/g, '&quot;') + '"' : '') +
+          '>Ver</button></div>';
       });
       h += '</div>';
     }
@@ -1819,9 +1861,12 @@
     var box = document.getElementById('homeView');
     box.innerHTML = h;
     box.querySelectorAll('[data-go]').forEach(function (b) {
+      var fSpec = b.getAttribute('data-filtro');
+      if (fSpec) { try { b._filtro = JSON.parse(fSpec); } catch (e) { b._filtro = null; } }
       b.addEventListener('click', function () {
         var k = b.getAttribute('data-go');
         var el = document.querySelector('.nav-item[data-key="' + k + '"]');
+        filtroPendiente = b._filtro || null;      // se aplica cuando el área termine de cargar
         selectArea(k, LABELS[k] || (el ? el.textContent.trim() : k), true);
       });
     });
@@ -2846,7 +2891,8 @@
   var FIELD_OPTIONS = {
     // Para cambiar la lista de status, edita este renglón y listo.
     ventas_registro: {
-      'Status': ['Por Entregar', 'En produccion', 'Listo para entrega', 'Entregado', 'Cancelado']
+      // Mismos valores que la validación de datos de la hoja
+      'Status': ['Por entregar', 'En proceso', 'Stand by', 'Entregado']
     },
     cotizaciones: {
       'Status': ['Pendiente', 'Enviada', 'Vendida', 'Rechazada', 'Por volver a buscar']
