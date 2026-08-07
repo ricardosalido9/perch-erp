@@ -534,7 +534,10 @@
   .cot-total { font-size:17px; font-weight:600; color:var(--ink); white-space:nowrap; }
   .cot-body { border-top:1px solid var(--line); padding:14px 18px; background:var(--paper); }
   .cot-body .mini-table { background:var(--surface); border-radius:10px; }
-  .cot-acciones { display:flex; gap:10px; align-items:center; margin-top:12px; }
+  .cot-acciones { display:flex; gap:10px; align-items:center; margin-top:12px; flex-wrap:wrap; }
+  .cot-st { display:flex; align-items:center; gap:8px; margin-left:auto; }
+  .cot-st label { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; }
+  .cot-st select { min-width:150px; }
 
   /* ---------- Resumen del Funnel ---------- */
   .mes-chips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px; }
@@ -612,7 +615,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.07-18</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.07-20</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1242,6 +1245,10 @@
         return f.values.indexOf(String(v == null ? '' : v).trim()) !== -1;
       }
       if (f.type === 'gt0') { var nn = parseNumber(v); return nn !== null && nn > 0.5; }
+      if (f.type === 'contiene') { return norm(v).indexOf(norm(f.texto)) !== -1; }
+      if (f.type === 'noContiene') {
+        return !f.textos.some(function (t) { return norm(v).indexOf(norm(t)) !== -1; });
+      }
       var d = parseDate(v);
       if (d === null) return false;
       if (f.from) { var df = parseInt(f.from.replace(/-/g, ''), 10); if (d < df) return false; }
@@ -1257,7 +1264,9 @@
     if (!filters.length) { bar.innerHTML = '<span class="nofilters">No hay filtros seleccionados</span>'; return; }
     var html = '';
     filters.forEach(function (f, i) {
-      var desc = (f.type === 'gt0') ? 'con saldo'
+      var desc = (f.type === 'contiene') ? f.texto
+        : (f.type === 'noContiene') ? 'sin cerrar'
+        : (f.type === 'gt0') ? 'con saldo'
         : (f.type === 'values')
         ? (f.values.length > 2 ? f.values.length + ' seleccionados' : f.values.join(', '))
         : ((f.from ? isoToLargo(f.from) : '…') + ' → ' + (f.to ? isoToLargo(f.to) : '…'));
@@ -1593,9 +1602,73 @@
       chip('entregadas', 'Entregadas (' + fmtNum(nEnt) + ')') + '</div>';
   }
 
+  // ===== Resumen de Cotizaciones: se mide por COTIZACIÓN, no por renglón =====
+  function filtroCotStatus(cual) {
+    var c = findHeaderByName('Status');
+    if (!c) return;
+    filters = filters.filter(function (f) { return f.col !== c; });
+    if (cual === 'vendidas') filters.push({ col: c, type: 'contiene', texto: 'Vendida' });
+    else if (cual === 'rechazadas') filters.push({ col: c, type: 'contiene', texto: 'Rechazada' });
+    else if (cual === 'abiertas') filters.push({ col: c, type: 'noContiene', textos: ['Vendida', 'Rechazada'] });
+    renderFilterBar(); renderTable();
+  }
+  function resumenCotizaciones(rows) {
+    var cRef = findHeaderByName('No. de Referencia') || findHeaderByName('Folio');
+    var cSt = findHeaderByName('Status');
+    var cCant = findHeaderByName('Cantidad'), cPU = findHeaderByName('Precio Unitario');
+    var cEnv = findHeaderByName('Envio') || findHeaderByName('Envío');
+    var g = {};
+    rows.forEach(function (r) {
+      var k = cRef ? (String(r[cRef] || '').trim() || '(sin folio)') : '(sin folio)';
+      if (!g[k]) g[k] = { total: 0, piezas: 0, st: cSt ? String(r[cSt] || '') : '' };
+      var c = parseNumber(cCant ? r[cCant] : null) || 0;
+      var p = parseNumber(cPU ? r[cPU] : null) || 0;
+      var e = parseNumber(cEnv ? r[cEnv] : null) || 0;
+      g[k].total += c * p + e;
+      g[k].piezas += c;
+      if (!g[k].st && cSt && r[cSt]) g[k].st = String(r[cSt]);
+    });
+    var folios = Object.keys(g);
+    var n = folios.length, piezas = 0, valor = 0, vend = 0, valorVend = 0, rech = 0, abiertas = 0, valorAbierto = 0;
+    folios.forEach(function (k) {
+      var q = g[k];
+      piezas += q.piezas; valor += q.total;
+      if (/vendida/i.test(q.st)) { vend++; valorVend += q.total; }
+      else if (/rechazad/i.test(q.st)) { rech++; }
+      else { abiertas++; valorAbierto += q.total; }
+    });
+    var cerradas = vend + rech;
+    var tasa = cerradas ? (vend / cerradas) * 100 : 0;
+    var ticket = n ? valor / n : 0;
+
+    var f = filters.filter(function (x) { return x.col === cSt; })[0];
+    var activo = !f ? '' : (f.type === 'noContiene' ? 'abiertas'
+      : (/vendida/i.test(f.texto || '') ? 'vendidas' : 'rechazadas'));
+    var chip = function (k, t) {
+      return '<button type="button" class="mes-chip' + (activo === k ? ' on' : '') + '" data-cot="' + k + '">' + t + '</button>';
+    };
+    var card = function (k, v, extra) {
+      return '<div class="sum-card"><div class="k">' + esc(k) + '</div><div class="v">' + v + '</div>' +
+        (extra ? '<div class="k" style="text-transform:none;letter-spacing:0;margin-top:2px">' + extra + '</div>' : '') + '</div>';
+    };
+    return '<div class="mes-chips">' + chip('', 'Todas (' + fmtNum(n) + ')') +
+        chip('abiertas', 'Pendientes (' + fmtNum(abiertas) + ')') +
+        chip('vendidas', 'Vendidas (' + fmtNum(vend) + ')') + chip('rechazadas', 'Rechazadas (' + fmtNum(rech) + ')') +
+      '</div><div class="summary-cards">' +
+      card('Cotizaciones', fmtNum(n), fmtNum(rows.length) + ' renglones · ' + fmtNum(piezas) + ' piezas') +
+      card('Valor cotizado', esc(formatMoney(valor))) +
+      card('Ticket promedio', esc(formatMoney(ticket))) +
+      card('Tasa de conversión', (cerradas ? tasa.toFixed(0) + '%' : '—'),
+           cerradas ? fmtNum(vend) + ' de ' + fmtNum(cerradas) + ' cerradas' : 'sin cotizaciones cerradas') +
+      card('Valor ganado', esc(formatMoney(valorVend))) +
+      card('En pipeline', esc(formatMoney(valorAbierto)), fmtNum(abiertas) + ' abiertas') +
+      '</div>';
+  }
+
   function renderSummary(rows) {
     var box = document.getElementById('summary');
     if (!state.headers.length) { box.innerHTML = ''; return; }
+    if (state.key === 'cotizaciones') { box.style.display = 'block'; box.innerHTML = resumenCotizaciones(rows); return; }
     if (state.key === 'fin_cxc') { box.style.display = 'block'; box.innerHTML = resumenCxc(rows); return; }
     if (state.key === 'funnel') { box.style.display = 'block'; box.innerHTML = resumenFunnel(rows); return; }
     var chipsSt = (state.key === 'ventas_registro') ? chipsStatus() : '';
@@ -2695,6 +2768,20 @@
 
   // ===== Cotizaciones: una tarjeta por FOLIO, con sus piezas adentro =====
   var cotAbierta = {};
+  // Menú de status dentro de la tarjeta (cambia todos los renglones de esa cotización)
+  function selectStatusCot(folio, actual) {
+    var opts = optionsFor('Status') || [];
+    var hay = false, html = '';
+    opts.forEach(function (o) {
+      if (/vendida/i.test(o)) return;                 // "Vendida" se logra con el botón, no a mano
+      var sel = norm(o) === norm(actual);
+      if (sel) hay = true;
+      html += '<option' + (sel ? ' selected' : '') + '>' + esc(o) + '</option>';
+    });
+    if (actual && !hay) html = '<option selected>' + esc(actual) + '</option>' + html;
+    return '<select class="cot-status" data-folio="' + esc(folio).replace(/"/g, '&quot;') + '">' + html + '</select>';
+  }
+
   function renderCotizaciones(rows) {
     var cRef = findHeaderByName('No. de Referencia') || findHeaderByName('Folio');
     if (!cRef) return null;
@@ -2760,6 +2847,7 @@
             (vendida ? '<span class="s" style="color:var(--success)">Ya se convirtió en venta</span>'
                      : '<button type="button" class="primary vender-btn" data-folio="' + esc(k).replace(/"/g, '&quot;') +
                        '" data-cliente="' + esc(r0[cCli] || '').replace(/"/g, '&quot;') + '">Marcar como vendida</button>') +
+            (cSt && !vendida ? '<span class="cot-st"><label>Status</label>' + selectStatusCot(k, st) + '</span>' : '') +
           '</div></div>';
       }
       h += '</div>';
@@ -4138,6 +4226,7 @@
   document.getElementById('summary').addEventListener('click', function (e) {
     var b = e.target.closest ? e.target.closest('.mes-chip') : null;
     if (!b) return;
+    if (b.hasAttribute('data-cot')) { filtroCotStatus(b.getAttribute('data-cot')); return; }
     if (b.hasAttribute('data-st')) {
       var k = b.getAttribute('data-st');
       var c = findHeaderByName('Status');
@@ -4183,6 +4272,20 @@
     this.textContent = catalogoAgrupado ? 'Ver como tabla' : 'Ver por producto';
     renderTable();
   });
+  document.getElementById('tableWrap').addEventListener('change', function (e) {
+    var sel = e.target;
+    if (!sel.classList || !sel.classList.contains('cot-status')) return;
+    var folio = sel.getAttribute('data-folio');
+    var cRef = findHeaderByName('No. de Referencia') || findHeaderByName('Folio');
+    sel.disabled = true;
+    api('fill', { token: state.token, key: state.key,
+                  match: { col: cRef, value: folio }, set: { 'Status': sel.value } })
+      .then(function (out) {
+        toast('Status de ' + folio + ' cambiado a "' + sel.value + '".', 'ok');
+        loadArea();
+      })
+      .catch(function (err) { fail(err); sel.disabled = false; });
+  });
   document.getElementById('tableWrap').addEventListener('click', function (e) {
     if (!e.target.closest) return;
     var pb = e.target.closest('.pdf-btn');
@@ -4209,6 +4312,7 @@
       return;
     }
     var vb = e.target.closest('.vender-btn');
+
     if (vb) { abrirConvertirVenta(vb.getAttribute('data-folio'), vb.getAttribute('data-cliente')); return; }
     var ch = e.target.closest('.cot-head');
     if (ch) {
@@ -4242,6 +4346,20 @@
     } else if (t.id === 'clearFiltersBtn') {
       filters = []; renderFilterBar(); renderTable();
     }
+  });
+  document.getElementById('tableWrap').addEventListener('change', function (e) {
+    var sel = e.target;
+    if (!sel.classList || !sel.classList.contains('cot-status')) return;
+    var folio = sel.getAttribute('data-folio');
+    var cRef = findHeaderByName('No. de Referencia') || findHeaderByName('Folio');
+    sel.disabled = true;
+    api('fill', { token: state.token, key: state.key,
+                  match: { col: cRef, value: folio }, set: { 'Status': sel.value } })
+      .then(function (out) {
+        toast('Status de ' + folio + ' cambiado a "' + sel.value + '".', 'ok');
+        loadArea();
+      })
+      .catch(function (err) { fail(err); sel.disabled = false; });
   });
   document.getElementById('tableWrap').addEventListener('click', function (e) {
     var t = e.target;
