@@ -615,7 +615,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.07-21</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.07-23</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -837,7 +837,9 @@
     ventas_clientes:     'Directorio de clientes: contacto, dirección y despacho.',
     compras_proveedores: 'Proveedores registrados y su información de contacto.',
     inventario:          'Catálogo de mobiliario: variantes, materiales, costos y precios.',
-    funnel:              'Bitácora de prospección: contactos, cotizaciones y cierres.',
+    funnel:              'Bitácora histórica de prospección (archivo, ya no se captura aquí).',
+    leads:               'Quien escribió pero todavía no pide cotización. Cuatro datos y listo.',
+    showroom:            'Visitas al showroom, hayan cotizado o no.',
     fin_cxc:             'Saldos por cobrar de cada pedido.',
     fin_ingresos:        'Cobros recibidos, ligados al folio del pedido.'
   };
@@ -1004,6 +1006,25 @@
     loadArea();
   }
 
+  // Datos que arrastra un lead cuando se va a cotizar
+  var prefillCotizacion = null;
+  function aplicarPrefillCotizacion() {
+    var p = prefillCotizacion; prefillCotizacion = null;
+    if (!p) return;
+    var poner = function (campo, valor) {
+      if (!valor) return;
+      var el = fieldEl(campo);
+      if (el && !String(el.value || '').trim()) el.value = valor;
+    };
+    poner('Cliente', p.cliente);
+    poner('Forma de Contacto', p.via);
+    poner('NOTAS', p.notas);
+    if (p.cliente) {
+      toast('Cotización nueva para ' + p.cliente + '. Agregá los productos.', 'ok');
+      abrirModalAlta();
+    }
+  }
+
   // Filtro que dejó pendiente un aviso del Inicio (ej. "ventas sin vendedor")
   var filtroPendiente = null;
   function aplicarFiltroPendiente() {
@@ -1051,7 +1072,7 @@
         mostrarAlta(!esSoloLectura(state.key));
         renderFilterBar();
         renderTable();
-        if (!esSoloLectura(state.key)) renderForm();
+        if (!esSoloLectura(state.key)) { renderForm(); aplicarPrefillCotizacion(); }
       }
     }).catch(fail);
   }
@@ -1196,6 +1217,8 @@
 
   // Columnas filtrables por área. Si un área no está aquí, se pueden filtrar todas.
   var FILTER_FIELDS = {
+    leads:    ['Fecha', 'Cómo llegó', 'Estado'],
+    showroom: ['Fecha', 'Cliente', 'Despacho', 'TIPO CLIENTE', 'Cómo llegó'],
     fin_cxc: ['Fecha del Cierre', 'Fecha de Entrega', 'No. de Referencia', 'Cliente', 'Despacho',
               'Factura Si / No', 'PUE/PPD', 'FORMA DE PAGO', 'Cómo entró la venta'],
     funnel: ['MES', 'Prioridad', 'Cliente', 'Despacho', 'TIPO CLIENTE', 'Forma de Contacto',
@@ -2930,7 +2953,17 @@
         var colFolio = findHeaderByName('No. de Referencia') || findHeaderByName('No de Referencia') ||
                         findHeaderByName('Referencia') || findHeaderByName('Folio');
           var folioR = colFolio ? String(r[colFolio] || '').trim() : '';
-          html += '<td class="actions"><button class="edit-btn" data-row="' + r._row +
+          var esLead = (state.key === 'leads');
+          var datosLead = esLead ? JSON.stringify({
+            cliente: String(r[findHeaderByName('Contacto')] || '').trim(),
+            via: String(r[findHeaderByName('Cómo llegó')] || r[findHeaderByName('Como llego')] || '').trim(),
+            notas: String(r[findHeaderByName('Notas')] || '').trim(),
+            row: r._row
+          }) : '';
+          html += '<td class="actions">' +
+                  (esLead ? '<button class="row-btn cotizar-btn" data-lead="' +
+                    esc(datosLead).replace(/"/g, '&quot;') + '">Cotizar</button>' : '') +
+                  '<button class="edit-btn" data-row="' + r._row +
                   '" title="Está en la fila ' + r._row + ' de la hoja">Editar</button>' +
                   (folioR ? '<button class="row-btn pdf-btn" data-folio="' + esc(folioR).replace(/"/g, '&quot;') +
                       '" title="Ver la cotización con el formato de Perch">PDF</button>' : '') +
@@ -2976,14 +3009,33 @@
     return FILL_EDITABLE.some(function (f) { return norm(f) === norm(h); });
   }
 
+  // Cómo llegó el contacto: se usa igual en Leads, Showroom y Cotizaciones
+  var FORMAS_CONTACTO = ['Whatsapp', 'Instagram', 'Pautas', 'Recomendacion', 'Showroom',
+                         'Calendly', 'Reach out', 'Seguimiento', 'Cliente recurrente',
+                         'Despacho recurrente', 'Carrito Abandonado', 'ICFF NY', 'Pagina web'];
+  var TIPOS_CLIENTE = ['B2B', 'B2C', 'VIP'];
+  var VISITO_SHOWROOM = ['Si', 'No', 'Por visitar'];
+
   var FIELD_OPTIONS = {
+    leads: {
+      'Como llego':        FORMAS_CONTACTO,
+      'Cómo llegó':        FORMAS_CONTACTO
+    },
+    showroom: {
+      'Como llego':        FORMAS_CONTACTO,
+      'Cómo llegó':        FORMAS_CONTACTO,
+      'TIPO CLIENTE':      TIPOS_CLIENTE
+    },
     // Para cambiar la lista de status, edita este renglón y listo.
     ventas_registro: {
       // Mismos valores que la validación de datos de la hoja
       'Status': ['Por entregar', 'En proceso', 'Stand by', 'Entregado']
     },
     cotizaciones: {
-      'Status': ['Pendiente', 'Enviada', 'Vendida', 'Rechazada', 'Por volver a buscar']
+      'Status':            ['Pendiente', 'Enviada', 'Vendida', 'Rechazada', 'Por volver a buscar'],
+      'TIPO CLIENTE':      TIPOS_CLIENTE,
+      'Forma de Contacto': FORMAS_CONTACTO,
+      'Visito Showroom':   VISITO_SHOWROOM
     },
     fin_cxc: {
       'Factura Si / No':  ['Si', 'No', 'Pendiente'],
@@ -3012,6 +3064,9 @@
   var COMBO_FIELDS = {
     // Catálogo: listas de lo que ya existe, pero se puede escribir uno nuevo
     inventario: ['Productos', 'Material', 'Material Extra', 'Tipo de Producto'],
+    leads:      ['Contacto'],
+    showroom:   ['Cliente', 'Despacho'],
+    cotizaciones: ['Cliente', 'Despacho'],
     funnel: ['Cliente', 'Despacho', 'Estatus'],
     fin_cxc: ['Cliente', 'Despacho', 'FORMA DE PAGO', 'Comentarios (uso de CFDI)']
   };
@@ -3054,9 +3109,14 @@
 
   var FORM_FIELDS = {
     // Vacío = cada área muestra todas sus columnas (en el orden de la hoja).
-    // Cotizaciones: mismos campos que una venta (se guarda en la pestaña COTIZACIONES)
+    // Leads: captura mínima a propósito. Si toma más de 15 segundos, nadie la va a llenar.
+    leads: ['Fecha', 'Contacto', 'Cómo llegó', 'Notas'],
+    // Showroom: la visita se registra sola, venga o no de una cotización
+    showroom: ['Fecha', 'Cliente', 'Despacho', 'TIPO CLIENTE', 'Cómo llegó', 'Notas'],
+    // Cotizaciones: mismos campos que una venta + la encuesta comercial
     cotizaciones: [
       'Fecha del Cierre', 'Cliente', 'Despacho', 'Vendedor', 'Fecha de entrega acordada',
+      'TIPO CLIENTE', 'Forma de Contacto', 'Visito Showroom', 'NOTAS',
       'Direccion de envio', 'Telefono', 'Cantidad', 'Producto', 'Material', 'Material Extra',
       'Tipo de Producto', 'Tela', 'Descripción', 'Medidas', 'Especificaciones',
       'Precio Unitario', '% descuento', 'Descuentos', 'Envio'
@@ -3189,7 +3249,9 @@
     funnel: ['Fecha contacto', 'Prioridad', 'Cliente', 'TIPO CLIENTE', 'Forma de Contacto',
              'Cotización', 'Valor Venta'],
     inventario: ['No Producto', 'Productos', 'Material', 'Material Extra', 'Tipo de Producto',
-                 'Costos Total', 'Precio', 'Descripción', 'Medidas']
+                 'Costos Total', 'Precio', 'Descripción', 'Medidas'],
+    leads:      ['Fecha', 'Contacto', 'Cómo llegó'],
+    showroom:   ['Fecha', 'Cliente']
   };
   // Campos que se autocompletan con el siguiente número disponible (editables).
   var AUTONUM_FIELDS = ['No Producto', 'No. Producto','No. Identificación', 'No. de Identificación', 'No. de Cliente'];
@@ -3936,6 +3998,19 @@
       state.lineItems = [];
       cerrarModalAlta();
       var folioNuevo = (out && out.folio) ? out.folio : '';
+      // Si la encuesta dice que visitó el showroom, la visita se registra sola
+      var visito = order[findHeaderByName('Visito Showroom')] || '';
+      if (norm(visito) === 'si') {
+        api('add', { token: state.token, key: 'showroom', record: {
+          'Fecha': order[findHeaderByName('Fecha del Cierre')] || '',
+          'Cliente': resumenPedido.cliente,
+          'Despacho': resumenPedido.despacho,
+          'TIPO CLIENTE': order[findHeaderByName('TIPO CLIENTE')] || '',
+          'Cómo llegó': order[findHeaderByName('Forma de Contacto')] || '',
+          'Notas': order[findHeaderByName('NOTAS')] || '',
+          'Cotización': folioNuevo
+        } }).catch(function () {});
+      }
       if (folioNuevo) {
         // El PDF se arma y se guarda en Drive automáticamente
         generarPdfCotizacion(folioNuevo, !esCotiza, true).catch(function () {});
@@ -4391,6 +4466,14 @@
   });
   document.getElementById('tableWrap').addEventListener('click', function (e) {
     if (!e.target.closest) return;
+    var cz = e.target.closest('.cotizar-btn');
+    if (cz) {
+      try { prefillCotizacion = JSON.parse(cz.getAttribute('data-lead')); }
+      catch (err) { prefillCotizacion = null; }
+      var elc = document.querySelector('.nav-item[data-key="cotizaciones"]');
+      selectArea('cotizaciones', 'Cotizaciones', true);
+      return;
+    }
     var pb = e.target.closest('.pdf-btn');
     if (pb) {
       generarPdfCotizacion(pb.getAttribute('data-folio'), state.key === 'ventas_registro', false);
