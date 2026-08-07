@@ -615,7 +615,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.07-27</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.07-28</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -838,12 +838,19 @@
     compras_proveedores: 'Proveedores registrados y su información de contacto.',
     inventario:          'Catálogo de mobiliario: variantes, materiales, costos y precios.',
     funnel:              'Bitácora histórica de prospección (archivo, ya no se captura aquí).',
+    proveedores:         'Cuánto se le pidió a cada proveedor, qué llegó y cuánto se le debe.',
+    prov_pedidos:        'Pedidos generales a proveedores, con sus muebles y a dónde va cada pieza.',
+    prov_entradas:       'Lo que ya llegó de cada pedido de proveedor.',
+    prov_salidas:        'A qué pedido de cliente, stock o showroom se asignó cada pieza.',
+    prov_envios:         'Envíos y entregas, con el costo real del flete.',
+    fin_ingresos:        'Cobros registrados. De aquí sale lo pagado de cada pedido.',
+    fin_egresos:         'Pagos registrados. De aquí sale lo pagado a cada proveedor.',
     leads:               'Quien escribió pero todavía no pide cotización. Cuatro datos y listo.',
     showroom:            'Visitas al showroom, hayan cotizado o no.',
     fin_cxc:             'Saldos por cobrar de cada pedido.',
     fin_ingresos:        'Cobros recibidos, ligados al folio del pedido.'
   };
-  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc'];
+  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores'];
   function esLector() {
     return state.rol === 'lector' || state.rol === 'viewer' || state.rol === 'lectura';
   }
@@ -1296,6 +1303,12 @@
 
   // Columnas filtrables por área. Si un área no está aquí, se pueden filtrar todas.
   var FILTER_FIELDS = {
+    prov_pedidos:  ['Fecha', 'Mes', 'Status', 'Proveedor', 'Pedido Proveedor', 'Folio cliente', 'Cliente', 'Item', 'Material'],
+    prov_entradas: ['Mes', 'Pedido Proveedor', 'Proveedor', 'Pedido Cliente', 'Item', 'Material', 'Status'],
+    prov_salidas:  ['Proveedor', 'Folio', 'Cliente', 'Pedido', 'Item', 'Material'],
+    prov_envios:   ['Fecha', 'Mes', 'Status', 'Proveedor', 'Pedido'],
+    fin_ingresos:  ['Fecha', 'Mes', 'Concepto', 'Cliente', 'Cuenta', 'Método de cobro', 'Categoría', 'Subcategoría'],
+    fin_egresos:   ['Fecha', 'Mes', 'Concepto', 'Proveedor', 'Pedido', 'Cuenta', 'Método de pago', 'Categoría', 'Subcategoría'],
     leads:    ['Fecha', 'Cómo llegó', 'Estado'],
     showroom: ['Fecha', 'Cliente', 'Despacho', 'TIPO CLIENTE', 'Cómo llegó'],
     fin_cxc: ['Fecha del Cierre', 'Fecha de Entrega', 'No. de Referencia', 'Cliente', 'Despacho',
