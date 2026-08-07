@@ -615,7 +615,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.07-33</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.07-34</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1433,9 +1433,9 @@
 
   // Columnas filtrables por área. Si un área no está aquí, se pueden filtrar todas.
   var FILTER_FIELDS = {
-    prov_pedidos:  ['Fecha', 'Mes', 'Status', 'Proveedor', 'Pedido Proveedor', 'Folio cliente', 'Cliente', 'Item', 'Material'],
-    prov_entradas: ['Mes', 'Pedido Proveedor', 'Proveedor', 'Pedido Cliente', 'Item', 'Material', 'Status'],
-    prov_salidas:  ['Proveedor', 'Folio', 'Cliente', 'Pedido', 'Item', 'Material'],
+    prov_pedidos:  ['Fecha', 'Mes', 'Status', 'Proveedor', 'Pedido Proveedor', 'Folio cliente', 'Cliente', 'Productos', 'Material'],
+    prov_entradas: ['Mes', 'Pedido Proveedor', 'Proveedor', 'Pedido Cliente', 'Productos', 'Material', 'Status'],
+    prov_salidas:  ['Proveedor', 'Folio cliente', 'Cliente', 'Pedido Proveedor', 'Productos', 'Material'],
     prov_envios:   ['Fecha', 'Mes', 'Status', 'Proveedor', 'Pedido'],
     fin_ingresos:  ['Fecha', 'Mes', 'Concepto', 'Cliente', 'Cuenta', 'Método de cobro', 'Categoría', 'Subcategoría'],
     fin_egresos:   ['Fecha', 'Mes', 'Concepto', 'Proveedor', 'Pedido', 'Cuenta', 'Método de pago', 'Categoría', 'Subcategoría'],
@@ -1923,7 +1923,7 @@
       n.porLlegar += parseNumber(cP ? r[cP] : null) || 0;
       n.asignadas += parseNumber(cA ? r[cA] : null) || 0;
       n.extra += parseNumber(cX ? r[cX] : null) || 0;
-      if (st > 0) { n.combis++; n.prods[String(r[findHeaderByName('Item')] || '')] = 1; }
+      if (st > 0) { n.combis++; n.prods[String(r[findHeaderByName('Productos') || findHeaderByName('Item')] || '')] = 1; }
       else if (st === 0) n.sinStock++;
     });
     var card = function (k, v, extra) {
@@ -3411,6 +3411,8 @@
 
   // Si la hoja usa otro nombre para el mismo dato, aquí se reconoce igual
   var ALIAS_CAMPOS = {
+    'Productos':         ['Producto', 'Item'],
+    'Item':              ['Productos', 'Producto'],
     'TIPO CLIENTE':      ['Tipo de Cliente', 'Tipo Cliente', 'TIPO DE CLIENTE'],
     'Forma de Contacto': ['Como llego', 'Cómo llegó', 'Forma de contacto', 'Canal', 'Origen'],
     'Visito Showroom':   ['Visitó Showroom', 'Visito showroom', 'Showroom'],
@@ -3592,7 +3594,7 @@
     inventario:       ['Precio de venta 2025', 'Precio de Venta 2025', 'IVA'],
     prov_pedidos:     ['Mes', 'Año', 'Status', 'Entradas', 'Pendientes por entregar',
                        'Ventas + Exhibición', 'Stock', 'Valor', 'Folio cliente', 'Cliente',
-                       'Dirección de Entrega', 'Item'],
+                       'Dirección de Entrega'],
     ventas_registro:  ['Mes', 'Año1'],
     cotizaciones:     ['Mes', 'Año1'],
     compras_registro: ['Mes']
