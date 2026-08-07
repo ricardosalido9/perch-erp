@@ -615,7 +615,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.07-28</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.07-29</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -3186,6 +3186,24 @@
   var TIPOS_CLIENTE = ['B2B', 'B2C', 'VIP'];
   var VISITO_SHOWROOM = ['Si', 'No', 'Por visitar'];
 
+  // Si la hoja usa otro nombre para el mismo dato, aquí se reconoce igual
+  var ALIAS_CAMPOS = {
+    'TIPO CLIENTE':      ['Tipo de Cliente', 'Tipo Cliente', 'TIPO DE CLIENTE'],
+    'Forma de Contacto': ['Como llego', 'Cómo llegó', 'Forma de contacto', 'Canal', 'Origen'],
+    'Visito Showroom':   ['Visitó Showroom', 'Visito showroom', 'Showroom'],
+    'NOTAS':             ['Notas', 'Comentarios', 'Observaciones']
+  };
+  function headerConAlias(nombre) {
+    var real = state.headers.filter(function (h) { return norm(h) === norm(nombre); })[0];
+    if (real !== undefined) return real;
+    var alt = ALIAS_CAMPOS[nombre] || [];
+    for (var i = 0; i < alt.length; i++) {
+      var r = state.headers.filter(function (h) { return norm(h) === norm(alt[i]); })[0];
+      if (r !== undefined) return r;
+    }
+    return undefined;
+  }
+
   var FIELD_OPTIONS = {
     leads: {
       'Como llego':        FORMAS_CONTACTO,
@@ -3601,6 +3619,18 @@
     var tn = document.querySelector('#formFields input[placeholder="Nombre de la tela"]'); if (tn) tn.style.display = 'none';
     var dt = document.querySelector('#formFields .disc-type'); if (dt) dt.value = '';
     var da = document.querySelector('#formFields .disc-amt'); if (da) { da.value = ''; da.disabled = true; }
+    if (faltantes.length) {
+      var av = document.createElement('div');
+      av.style.cssText = 'grid-column:1/-1;padding:12px 14px;border-radius:10px;background:var(--amber-bg);' +
+        'border:1px solid var(--amber);color:var(--amber);font-size:13px';
+      av.innerHTML = '<b>Faltan columnas en la hoja.</b> Estos campos no se pueden capturar porque la pestaña ' +
+        '<b>' + esc(state.sheetName || state.label) + '</b> no las tiene. Agrégalas en la fila 1 con este nombre exacto:' +
+        '<div style="margin-top:6px">' + faltantes.map(function (f) {
+          return '<code style="background:var(--surface);padding:2px 6px;border-radius:5px;margin-right:6px;' +
+                 'display:inline-block;margin-bottom:4px">' + esc(f) + '</code>';
+        }).join('') + '</div>';
+      box.insertBefore(av, box.firstChild);
+    }
     avisoMargen();
     initCascade();
     recalcComputed();
@@ -3844,13 +3874,15 @@
     var box = document.getElementById('formFields'); box.innerHTML = '';
     var allow = FORM_FIELDS[state.key];
     var fields;
+    var faltantes = [];
     if (allow && allow.length) {
       fields = [];
       allow.forEach(function (name) {
         // Busca el encabezado real tolerando espacios de más / mayúsculas / acentos
-        var actual = state.headers.filter(function (h) { return norm(h) === norm(name); })[0];
+        var actual = headerConAlias(name);
         if (actual !== undefined) fields.push(actual);
         else if (cascadeLevelIndex(name) >= 0 || esCampoExtra(name)) fields.push(name);  // aunque la hoja no tenga la columna
+        else faltantes.push(name);                                     // la hoja no tiene esa columna
       });
     } else {
       var excl = EXCLUDE_FIELDS[state.key] || [];
@@ -4041,6 +4073,18 @@
       var curEl = curReal && document.querySelector('#formFields [data-col="' + curReal + '"]');
       if (curEl) { curEl.addEventListener('change', applyCurrencyRule); curEl.addEventListener('input', applyCurrencyRule); }
       applyCurrencyRule();
+    }
+    if (faltantes.length) {
+      var av = document.createElement('div');
+      av.style.cssText = 'grid-column:1/-1;padding:12px 14px;border-radius:10px;background:var(--amber-bg);' +
+        'border:1px solid var(--amber);color:var(--amber);font-size:13px';
+      av.innerHTML = '<b>Faltan columnas en la hoja.</b> Estos campos no se pueden capturar porque la pestaña ' +
+        '<b>' + esc(state.sheetName || state.label) + '</b> no las tiene. Agrégalas en la fila 1 con este nombre exacto:' +
+        '<div style="margin-top:6px">' + faltantes.map(function (f) {
+          return '<code style="background:var(--surface);padding:2px 6px;border-radius:5px;margin-right:6px;' +
+                 'display:inline-block;margin-bottom:4px">' + esc(f) + '</code>';
+        }).join('') + '</div>';
+      box.insertBefore(av, box.firstChild);
     }
     avisoMargen();
     initCascade();
