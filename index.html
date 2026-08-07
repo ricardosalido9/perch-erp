@@ -615,7 +615,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.07-35</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.07-37</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -3412,7 +3412,9 @@
   // Si la hoja usa otro nombre para el mismo dato, aquí se reconoce igual
   var ALIAS_CAMPOS = {
     'Productos':         ['Producto', 'Item'],
+    'Producto':          ['Productos', 'Item'],
     'Item':              ['Productos', 'Producto'],
+    'Costo Unitario':    ['Costos Total', 'Costo unitario'],
     'TIPO CLIENTE':      ['Tipo de Cliente', 'Tipo Cliente', 'TIPO DE CLIENTE'],
     'Forma de Contacto': ['Como llego', 'Cómo llegó', 'Forma de contacto', 'Canal', 'Origen'],
     'Visito Showroom':   ['Visitó Showroom', 'Visito showroom', 'Showroom'],
@@ -3697,7 +3699,15 @@
   var AUTONUM_FIELDS = ['No Producto', 'No. Producto','No. Identificación', 'No. de Identificación', 'No. de Cliente'];
   function findHeaderByName(name) {
     var key = norm(name);
-    return state.headers.filter(function (h) { return norm(h) === key; })[0];
+    var real = state.headers.filter(function (h) { return norm(h) === key; })[0];
+    if (real !== undefined) return real;
+    // Si no está con ese nombre, se prueban los alias (Producto = Productos = Item)
+    var alt = ALIAS_CAMPOS[name] || [];
+    for (var i = 0; i < alt.length; i++) {
+      var r = state.headers.filter(function (h) { return norm(h) === norm(alt[i]); })[0];
+      if (r !== undefined) return r;
+    }
+    return undefined;
   }
   function isRequiredField(h) {
     return (REQUIRED_FIELDS[state.key] || []).some(function (r) { return norm(r) === norm(h); });
@@ -3955,13 +3965,17 @@
       box.style.display = 'none'; box.innerHTML = ''; return;
     }
     if (addBtn) addBtn.style.display = '';
-    // En Ventas y en Cotizaciones se puede guardar en cualquiera de las dos
+    // El botón de cotización solo tiene sentido entre Ventas y Cotizaciones
     if (qBtn && sBtn) {
       var enCot = (state.key === 'cotizaciones');
-      qBtn.style.display = '';
-      qBtn.textContent = enCot ? 'Guardar como venta' : 'Guardar como cotización';
-      qBtn.setAttribute('data-destino', enCot ? 'ventas_registro' : 'cotizaciones');
-      sBtn.textContent = enCot ? 'Guardar cotización' : 'Guardar venta';
+      var comercial = enCot || state.key === 'ventas_registro';
+      qBtn.style.display = comercial ? '' : 'none';
+      if (comercial) {
+        qBtn.textContent = enCot ? 'Guardar como venta' : 'Guardar como cotización';
+        qBtn.setAttribute('data-destino', enCot ? 'ventas_registro' : 'cotizaciones');
+      }
+      sBtn.textContent = enCot ? 'Guardar cotización'
+        : (state.key === 'prov_pedidos' ? 'Guardar pedido' : 'Guardar venta');
     }
     box.style.display = '';
     var items = state.lineItems || [];
