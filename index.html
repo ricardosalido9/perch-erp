@@ -615,7 +615,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.07-29</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.07-30</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1101,6 +1101,16 @@
                 ' · <b' + (d2.porPagar > 0.5 ? ' style="color:var(--danger)"' : '') + '>por pagar ' +
                 esc(formatMoney(d2.porPagar)) + '</b></span>' +
               '</div>' +
+              ((d2.detallePagos && d2.detallePagos.length)
+                ? '<table class="mini-table" style="margin-bottom:8px"><thead><tr>' +
+                  '<th>Pago</th><th>Concepto</th><th>Cuenta</th><th style="text-align:right">Monto</th>' +
+                  '</tr></thead><tbody>' + d2.detallePagos.map(function (g) {
+                    return '<tr><td>' + esc(g.fecha ? formatDateCell(g.fecha) : '—') + '</td>' +
+                      '<td title="' + esc(g.descripcion) + '">' + esc(g.concepto || g.descripcion || '') + '</td>' +
+                      '<td>' + esc(g.cuenta || g.metodo || '') + '</td>' +
+                      '<td class="num">' + esc(formatMoney(g.monto)) + '</td></tr>';
+                  }).join('') + '</tbody></table>'
+                : (d2.pagado ? '' : '<div class="s" style="margin-bottom:8px;color:var(--muted)">Sin pagos registrados en EGRESOS con este número de pedido.</div>')) +
               '<table class="mini-table"><thead><tr><th>Mueble</th><th>Material</th>' +
               '<th style="text-align:right">Pedidas</th><th style="text-align:right">Llegaron</th>' +
               '<th>Destino</th><th>Status</th></tr></thead><tbody>' +
