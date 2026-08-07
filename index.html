@@ -615,7 +615,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.07-32</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.07-33</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -667,6 +667,20 @@
         <div class="card-head">Registros</div>
         <div id="tableWrap" class="table-scroll"><div class="state">Cargando...</div></div>
       </section>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="aventaModal">
+    <div class="modal-card" style="max-width:900px">
+      <div class="modal-head">
+        <h3 id="aventaTitulo">Mandar a venta</h3>
+        <button class="modal-x" id="aventaClose" type="button" aria-label="Cerrar">&times;</button>
+      </div>
+      <div class="modal-body"><div id="aventaCuerpo"></div></div>
+      <div class="modal-foot">
+        <button id="aventaCancel" type="button" class="grow">Cerrar</button>
+        <button class="primary" id="aventaOk" type="button">Registrar salidas</button>
       </div>
     </div>
   </div>
@@ -1256,7 +1270,7 @@
       state.fileId = data.fileId || ''; state.sheetName = data.sheetName || '';
       var vinoFiltrado = aplicarFiltroPendiente();
       var cvb = document.getElementById('catViewBtn');
-      cvb.style.display = (state.key === 'inventario' || state.key === 'cotizaciones') ? '' : 'none';
+      cvb.style.display = ['inventario','cotizaciones','prov_pedidos'].indexOf(state.key) !== -1 ? '' : 'none';
       cvb.textContent = catalogoAgrupado ? 'Ver como tabla' : 'Ver por producto';
       if (!data.connected) {
         document.getElementById('tableWrap').innerHTML =
@@ -3194,6 +3208,65 @@
     return h + '</div>';
   }
 
+  // ===== Pedidos a proveedores agrupados por pedido =====
+  var pedAbierto = {};
+  function renderPedidosProv(rows) {
+    var cPed = findHeaderByName('Pedido Proveedor');
+    if (!cPed) return null;
+    var cProv = findHeaderByName('Proveedor'), cFec = findHeaderByName('Fecha');
+    var cEst = findHeaderByName('Fecha Estimada de Entrega'), cSt = findHeaderByName('Status');
+    var cIt = findHeaderByName('Productos') || findHeaderByName('Item');
+    var cMat = findHeaderByName('Material'), cCant = findHeaderByName('Cantidad');
+    var cCU = findHeaderByName('Costo Unitario'), cIVA = findHeaderByName('Costo Total + IVA');
+    var cFol = findHeaderByName('Folio cliente');
+    var g = {}, orden = [];
+    rows.forEach(function (r) {
+      var k = String(r[cPed] || '').trim() || '(sin pedido)';
+      if (!g[k]) { g[k] = []; orden.push(k); }
+      g[k].push(r);
+    });
+    var h = '<div class="cot-grid">';
+    orden.forEach(function (k) {
+      var it = g[k], r0 = it[0], piezas = 0, total = 0;
+      it.forEach(function (r) {
+        piezas += parseNumber(cCant ? r[cCant] : null) || 0;
+        total += parseNumber(cIVA ? r[cIVA] : null) ||
+                 ((parseNumber(cCU ? r[cCU] : null) || 0) * (parseNumber(cCant ? r[cCant] : null) || 0) * 1.16);
+      });
+      var ab = !!pedAbierto[k];
+      h += '<div class="cot-card' + (ab ? ' open' : '') + '">' +
+        '<button type="button" class="cot-head" data-ped="' + esc(k).replace(/"/g, '&quot;') + '">' +
+          '<div class="cot-info"><div class="cot-folio">' + esc(k) +
+            (cSt && r0[cSt] ? ' ' + pillHTML(String(r0[cSt])) : '') + '</div>' +
+            '<div class="cot-cli">' + esc(cProv ? (r0[cProv] || '') : '') + '</div>' +
+            '<div class="cot-sub">' + fmtNum(it.length) + (it.length === 1 ? ' producto' : ' productos') +
+              ' · ' + fmtNum(piezas) + ' piezas' +
+              (cFec && r0[cFec] ? ' · ' + esc(formatDateCell(r0[cFec])) : '') +
+              (cEst && r0[cEst] ? ' · estimada ' + esc(formatDateCell(r0[cEst])) : '') + '</div></div>' +
+          '<div class="cot-total">' + esc(formatMoney(total)) + '</div>' +
+          '<span class="cat-chev">' + (ab ? '▲' : '▼') + '</span></button>';
+      if (ab) {
+        h += '<div class="cot-body"><table class="mini-table"><thead><tr><th>Producto</th><th>Material</th>' +
+          '<th style="text-align:right">Cantidad</th><th style="text-align:right">Costo unitario</th>' +
+          '<th style="text-align:right">Total + IVA</th><th>Destino</th></tr></thead><tbody>' +
+          it.map(function (r) {
+            var c = parseNumber(cCant ? r[cCant] : null) || 0;
+            var cu = parseNumber(cCU ? r[cCU] : null) || 0;
+            var d = String((cFol ? r[cFol] : '') || 'Sin asignar').trim() || 'Sin asignar';
+            return '<tr><td>' + esc(cIt ? (r[cIt] || '') : '') + '</td><td>' + esc(cMat ? (r[cMat] || '') : '') + '</td>' +
+              '<td class="num">' + fmtNum(c) + '</td><td class="num">' + esc(formatMoney(cu)) + '</td>' +
+              '<td class="num">' + esc(formatMoney(cu * c * 1.16)) + '</td><td>' + pillHTML(d) + '</td></tr>';
+          }).join('') + '</tbody></table>' +
+          '<div class="cot-acciones"><button type="button" class="primary aventa-btn" data-ped="' +
+            esc(k).replace(/"/g, '&quot;') + '">Mandar a venta</button>' +
+            '<span class="s" style="color:var(--muted)">Asigna piezas de este pedido a folios de venta</span>' +
+          '</div></div>';
+      }
+      h += '</div>';
+    });
+    return h + '</div>';
+  }
+
   function renderTable() {
     var rows = sortRows(filteredRows());
     renderSummary(rows);
@@ -3202,6 +3275,10 @@
     if (state.key === 'inventario' && catalogoAgrupado) {
       var hc = renderCatalogo(rows);
       if (hc) { document.getElementById('tableWrap').innerHTML = hc; return; }
+    }
+    if (state.key === 'prov_pedidos' && catalogoAgrupado) {
+      var hp = renderPedidosProv(rows);
+      if (hp) { document.getElementById('tableWrap').innerHTML = hp; return; }
     }
     if (state.key === 'cotizaciones' && catalogoAgrupado) {
       var hq = renderCotizaciones(rows);
@@ -3445,8 +3522,8 @@
     // Vacío = cada área muestra todas sus columnas (en el orden de la hoja).
     // Pedidos a proveedores: primero el pedido, luego uno o varios productos
     prov_pedidos: [
-      'Fecha', 'Fecha Estimada de Entrega', 'Proveedor', 'Pedido Proveedor', 'Dirección de Entrega',
-      'Item', 'Material', 'Tela', 'Especificaciones', 'Cantidad', 'Costo Unitario',
+      'Fecha', 'Fecha Estimada de Entrega', 'Proveedor', 'Pedido Proveedor',
+      'Productos', 'Material', 'Tela', 'Especificaciones', 'Cantidad', 'Costo Unitario',
       'Costo Total', 'Costo Total + IVA'
     ],
     // Leads: captura mínima a propósito. Si toma más de 15 segundos, nadie la va a llenar.
@@ -3484,7 +3561,7 @@
                         '% descuento', 'Descuentos'];
   var LINE_ITEMS = {
     // Un pedido a proveedor puede traer muchos productos
-    prov_pedidos: { line: ['Item', 'Material', 'Tela', 'Especificaciones', 'Cantidad',
+    prov_pedidos: { line: ['Productos', 'Material', 'Tela', 'Especificaciones', 'Cantidad',
                            'Costo Unitario', 'Costo Total', 'Costo Total + IVA'] },
     ventas_registro: { line: LINEA_PRODUCTO, envioOnce: 'Envio' },
     cotizaciones:    { line: LINEA_PRODUCTO, envioOnce: 'Envio' }
@@ -3514,7 +3591,8 @@
     // Catálogo: el precio del año pasado y el IVA no se capturan en un producto nuevo
     inventario:       ['Precio de venta 2025', 'Precio de Venta 2025', 'IVA'],
     prov_pedidos:     ['Mes', 'Año', 'Status', 'Entradas', 'Pendientes por entregar',
-                       'Ventas + Exhibición', 'Stock', 'Valor', 'Folio cliente', 'Cliente'],
+                       'Ventas + Exhibición', 'Stock', 'Valor', 'Folio cliente', 'Cliente',
+                       'Dirección de Entrega', 'Item'],
     ventas_registro:  ['Mes', 'Año1'],
     cotizaciones:     ['Mes', 'Año1'],
     compras_registro: ['Mes']
@@ -3608,7 +3686,7 @@
     inventario: ['No Producto', 'Productos', 'Material', 'Material Extra', 'Tipo de Producto',
                  'Costos Total', 'Precio', 'Descripción', 'Medidas'],
     prov_pedidos: ['Fecha Estimada de Entrega', 'Proveedor', 'Pedido Proveedor',
-                   'Item', 'Material', 'Cantidad', 'Costo Unitario'],
+                   'Productos', 'Material', 'Cantidad', 'Costo Unitario'],
     leads:      ['Fecha', 'Contacto', 'Cómo llegó'],
     showroom:   ['Fecha', 'Cliente']
   };
@@ -4427,6 +4505,105 @@
     }).then(function () { btn.disabled = false; btn.textContent = etiqueta; });
   }
 
+  // ===== Mandar piezas de un pedido a una venta =====
+  var aventaPedido = null, aventaLineas = [], aventaPend = [];
+  function abrirMandarAVenta(pedido) {
+    aventaPedido = pedido;
+    var cPed = findHeaderByName('Pedido Proveedor');
+    var cIt = findHeaderByName('Productos') || findHeaderByName('Item');
+    var cMat = findHeaderByName('Material'), cCant = findHeaderByName('Cantidad');
+    var cCU = findHeaderByName('Costo Unitario'), cProv = findHeaderByName('Proveedor');
+    aventaLineas = (state.rows || []).filter(function (r) {
+      return String(r[cPed] || '').trim() === pedido;
+    }).map(function (r) {
+      return { producto: String(r[cIt] || '').trim(), material: String(r[cMat] || '').trim(),
+               cantidad: parseNumber(r[cCant]) || 0, costo: parseNumber(r[cCU]) || 0,
+               proveedor: String(r[cProv] || '').trim() };
+    });
+    document.getElementById('aventaTitulo').textContent = 'Mandar a venta · ' + pedido;
+    document.getElementById('aventaCuerpo').innerHTML =
+      '<div class="state" style="padding:30px 0">Buscando ventas que pidieron estos productos…</div>';
+    document.getElementById('aventaModal').classList.add('on');
+    api('pendientes', { token: state.token,
+        productos: aventaLineas.map(function (l) { return l.producto; }) })
+      .then(function (d) { aventaPend = d.pendientes || []; pintarMandarAVenta(); })
+      .catch(function (e) {
+        document.getElementById('aventaCuerpo').innerHTML =
+          '<div class="state">' + esc((e && e.message) || 'No se pudieron leer las ventas.') + '</div>';
+      });
+  }
+  function pintarMandarAVenta() {
+    var h = '<table class="mini-table"><thead><tr><th>Producto</th><th>Material</th>' +
+      '<th style="text-align:right">Pedidas</th><th style="text-align:right">A venta</th>' +
+      '<th>Folio</th><th>Dirección de envío</th></tr></thead><tbody>';
+    aventaLineas.forEach(function (l, i) {
+      // Solo las ventas que pidieron ESE producto y siguen sin surtir
+      var ops = aventaPend.filter(function (p) { return norm(p.producto) === norm(l.producto); });
+      var sel = '<select data-i="' + i + '" class="av-folio"><option value="">Stock (sin asignar)</option>';
+      ops.forEach(function (p) {
+        sel += '<option value="' + esc(p.folio) + '" data-dir="' + esc(p.direccion).replace(/"/g, '&quot;') + '">' +
+          esc(p.folio) + ' · ' + esc(p.cliente || 'sin cliente') + ' · faltan ' + fmtNum(p.faltan) + '</option>';
+      });
+      sel += '</select>';
+      h += '<tr><td>' + esc(l.producto) + '</td><td>' + esc(l.material) + '</td>' +
+        '<td class="num">' + fmtNum(l.cantidad) + '</td>' +
+        '<td><input class="row-input av-cant" data-i="' + i + '" type="number" min="0" max="' + l.cantidad +
+          '" value="0" style="width:70px;text-align:right"></td>' +
+        '<td>' + sel + '</td>' +
+        '<td><input class="row-input av-dir" data-i="' + i + '" placeholder="opcional"></td></tr>';
+      if (!ops.length) {
+        h += '<tr><td colspan="6" class="s" style="color:var(--muted);padding-top:0">' +
+             'Ninguna venta pendiente pidió ' + esc(l.producto) + '</td></tr>';
+      }
+    });
+    h += '</tbody></table>' +
+      '<div class="s" style="margin-top:12px;color:var(--muted)">Solo aparecen las ventas que pidieron ese ' +
+      'producto y todavía no tienen salida registrada. Lo que dejes en cero se queda en stock.</div>';
+    document.getElementById('aventaCuerpo').innerHTML = h;
+    document.querySelectorAll('.av-folio').forEach(function (s2) {
+      s2.addEventListener('change', function () {
+        var op = s2.options[s2.selectedIndex];
+        var dir = op ? op.getAttribute('data-dir') : '';
+        var el = document.querySelector('.av-dir[data-i="' + s2.getAttribute('data-i') + '"]');
+        if (el && dir && !el.value) el.value = dir;
+      });
+    });
+  }
+  function cerrarMandarAVenta() {
+    document.getElementById('aventaModal').classList.remove('on');
+    aventaPedido = null; aventaLineas = []; aventaPend = [];
+  }
+  function registrarSalidas() {
+    var envs = [];
+    document.querySelectorAll('.av-cant').forEach(function (inp) {
+      var i = +inp.getAttribute('data-i');
+      var c = parseFloat(inp.value || '0');
+      if (!c) return;
+      var sel = document.querySelector('.av-folio[data-i="' + i + '"]');
+      var dir = document.querySelector('.av-dir[data-i="' + i + '"]');
+      var l = aventaLineas[i];
+      envs.push({ 'Fecha': '', 'Folio cliente': sel ? sel.value : '', 'Cliente': '',
+        'Pedido Proveedor': aventaPedido, 'Proveedor': l.proveedor,
+        'Item': l.producto, 'Productos': l.producto, 'Material': l.material,
+        'Cantidad': c, 'Destino': (sel && sel.value) ? 'Cliente' : 'Stock',
+        'Notas': dir && dir.value ? 'Envío: ' + dir.value : '' });
+    });
+    if (!envs.length) { toast('No pusiste cantidades.', 'err'); return; }
+    var btn = document.getElementById('aventaOk');
+    btn.disabled = true; btn.textContent = 'Registrando...';
+    var hoy = new Date();
+    var fecha = hoy.getDate() + ' ' + MESES_ES[hoy.getMonth()].toLowerCase() + ' ' + hoy.getFullYear();
+    envs.forEach(function (e) { e['Fecha'] = fecha; });
+    Promise.all(envs.map(function (e) {
+      return api('add', { token: state.token, key: 'prov_salidas', record: e });
+    })).then(function () {
+      toast('Se registraron ' + envs.length + (envs.length === 1 ? ' salida.' : ' salidas.'), 'ok');
+      cerrarMandarAVenta(); loadArea();
+    }).catch(fail).then(function () {
+      btn.disabled = false; btn.textContent = 'Registrar salidas';
+    });
+  }
+
   // ===== Cotización -> Venta =====
   var cotAConvertir = null;
   function masSemanas(n) {
@@ -4819,6 +4996,9 @@
     else filtrarMesFunnel(b.getAttribute('data-mes') || '');
   });
   document.getElementById('addModalClose').addEventListener('click', cerrarModalAlta);
+  document.getElementById('aventaClose').addEventListener('click', cerrarMandarAVenta);
+  document.getElementById('aventaCancel').addEventListener('click', cerrarMandarAVenta);
+  document.getElementById('aventaOk').addEventListener('click', registrarSalidas);
   document.getElementById('ventaClose').addEventListener('click', cerrarConvertirVenta);
   document.getElementById('ventaCancel').addEventListener('click', cerrarConvertirVenta);
   document.getElementById('ventaOk').addEventListener('click', convertirEnVenta);
@@ -4896,6 +5076,15 @@
           loadArea();
         })
         .catch(function (err) { fail(err); sv.disabled = false; sv.textContent = 'Aplicar'; });
+      return;
+    }
+    var av = e.target.closest('.aventa-btn');
+    if (av) { abrirMandarAVenta(av.getAttribute('data-ped')); return; }
+    var ph2 = e.target.closest('[data-ped]');
+    if (ph2 && !av) {
+      var kp2 = ph2.getAttribute('data-ped');
+      pedAbierto[kp2] = !pedAbierto[kp2];
+      renderTable();
       return;
     }
     var vb = e.target.closest('.vender-btn');

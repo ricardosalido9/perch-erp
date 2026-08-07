@@ -24,7 +24,8 @@ const RUTAS = {
   inspect:        require('../lib/handlers/inspect'),
   'to-sale':      require('../lib/handlers/to-sale'),
   proveedores:    require('../lib/handlers/proveedores'),
-  costos:         require('../lib/handlers/costos')
+  costos:         require('../lib/handlers/costos'),
+  pendientes:     require('../lib/handlers/pendientes')
 };
 
 module.exports = async (req, res) => {
