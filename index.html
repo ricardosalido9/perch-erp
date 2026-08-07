@@ -615,7 +615,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.07-23</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.07-25</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1034,6 +1034,9 @@
     if (!real) return false;
     filters = filters.filter(function (x) { return x.col !== real; });
     if (f.vacio) filters.push({ col: real, type: 'values', values: [''] });
+    else if (f.gt0) filters.push({ col: real, type: 'gt0' });
+    else if (f.noContiene && f.noContiene.length) filters.push({ col: real, type: 'noContiene', textos: f.noContiene });
+    else if (f.contiene) filters.push({ col: real, type: 'contiene', texto: f.contiene });
     else if (f.valores && f.valores.length) filters.push({ col: real, type: 'values', values: f.valores });
     else return false;
     return true;
@@ -2335,6 +2338,84 @@
         '<div class="panel"><h4>Ventas por Happening / Campaña</h4><div class="panel-body">' +
           barsX(Vm, Vmp, 'hap', 'tot', { money: true, limit: 15, otros: true }) + '</div></div>' +
         '</div></div>';
+    }
+
+    // --- Embudo comercial: leads -> cotizaciones -> ventas ---
+    var em = d.embudo;
+    if (em && em.ok && (em.cotizaciones || []).length) {
+      var Q  = em.cotizaciones.filter(function (r) { return enRango(r.d); });
+      var Qp = cmpOn ? em.cotizaciones.filter(function (r) { return enRangoPrev(r.d); }) : [];
+      var L  = (em.leads || []).filter(function (r) { return enRango(r.d); });
+      var SR = (em.showroom || []).filter(function (r) { return enRango(r.d); });
+      var cnt = function (arr, cat) { var n = 0; arr.forEach(function (r) { if (r.cat === cat) n++; }); return n; };
+      var mto = function (arr, cat) {
+        var t = 0; arr.forEach(function (r) { if (!cat || r.cat === cat) t += (r.total || 0); }); return t;
+      };
+      var agrupaQ = function (arr, campo, val) {
+        var o = {};
+        arr.forEach(function (r) { var k = r[campo] || 'Sin especificar'; o[k] = (o[k] || 0) + (val ? (r.total || 0) : 1); });
+        return o;
+      };
+      var nQ = Q.length, nGan = cnt(Q, 'vendida'), nPer = cnt(Q, 'rechazada'), nAb = cnt(Q, 'abierta');
+      var cerr = nGan + nPer;
+      var tasaQ = cerr ? (nGan / cerr) * 100 : 0;
+      var tasaLQ = L.length ? (nQ / L.length) * 100 : 0;
+
+      h += '<div class="dash-section"><h3>Embudo comercial · leads, cotizaciones y cierres</h3><div class="kpi-grid">' +
+        '<div class="kpi"><div class="k">Leads</div><div class="v">' + fmtNum(L.length) + '</div>' +
+          '<div class="s">contactos nuevos</div></div>' +
+        '<div class="kpi"><div class="k">Visitas al showroom</div><div class="v">' + fmtNum(SR.length) + '</div></div>' +
+        '<div class="kpi dark"><div class="k">Cotizaciones</div><div class="v">' + fmtNum(nQ) + '</div>' +
+          (cmpOn ? variacionHTML(nQ, Qp.length) : '<div class="s">' + tasaLQ.toFixed(0) + '% de los leads</div>') + '</div>' +
+        '<div class="kpi"><div class="k">Vendidas</div><div class="v" style="color:var(--success)">' + fmtNum(nGan) + '</div>' +
+          '<div class="s">' + tasaQ.toFixed(0) + '% de las cerradas</div></div>' +
+        '<div class="kpi"><div class="k">En pipeline</div><div class="v" title="' + esc(formatMoney(mto(Q, 'abierta'))) + '">' +
+          esc(fmtMoneyShort(mto(Q, 'abierta'))) + '</div><div class="s">' + fmtNum(nAb) + ' abiertas</div></div>' +
+        '</div>';
+
+      var etapasQ = [
+        { k: 'Leads', v: L.length, c: 'var(--ink)' },
+        { k: 'Cotizaciones', v: nQ, c: 'var(--primary-600)' },
+        { k: 'Vendidas', v: nGan, c: 'var(--success)' }
+      ];
+      var baseQ = Math.max(L.length, nQ) || 1;
+      var embudoQ = '<div style="display:flex;flex-direction:column;gap:10px">';
+      etapasQ.forEach(function (e) {
+        var w = Math.max(3, Math.round((e.v / baseQ) * 100));
+        embudoQ += '<div style="display:flex;align-items:center;gap:10px">' +
+          '<span style="width:92px;flex:none;font-size:12px;color:var(--slate)">' + esc(e.k) + '</span>' +
+          '<span style="flex:1;background:var(--paper);border-radius:999px;height:22px;display:block;overflow:hidden">' +
+            '<span style="display:block;height:22px;width:' + w + '%;background:' + e.c + ';border-radius:999px"></span></span>' +
+          '<span style="width:104px;flex:none;text-align:right;font-size:13px;font-variant-numeric:tabular-nums">' +
+            fmtNum(e.v) + '</span></div>';
+      });
+      embudoQ += '</div>';
+
+      h += '<div class="dash-cols">' +
+        '<div class="panel"><h4>Del contacto al cierre</h4><div class="panel-body">' + embudoQ + '</div></div>' +
+        '<div class="panel"><h4>Cotizado por forma de contacto</h4><div class="panel-body">' +
+          barsHTML(agrupaQ(Q, 'via', true), { money: true, limit: 8, otros: true }) + '</div></div>' +
+        '</div>';
+
+      h += '<div class="dash-cols" style="margin-top:12px">' +
+        '<div class="panel"><h4>Cotizado por tipo de cliente</h4><div class="panel-body">' +
+          barsHTML(agrupaQ(Q, 'tipo', true), { money: true, limit: 6 }) + '</div></div>' +
+        '<div class="panel"><h4>Cotizaciones por visita al showroom</h4><div class="panel-body">' +
+          barsHTML(agrupaQ(Q, 'sr', false), { limit: 6 }) + '</div></div>' +
+        '</div>';
+
+      var topQ = Q.filter(function (r) { return r.cat === 'abierta' && r.total > 0; })
+        .sort(function (a, b) { return b.total - a.total; }).slice(0, 10);
+      if (topQ.length) {
+        h += '<div class="panel" style="margin-top:12px"><h4>Cotizaciones abiertas por monto</h4><div class="panel-body">' +
+          '<table class="mini-table"><thead><tr><th>Folio</th><th>Cliente</th><th>Status</th>' +
+          '<th style="text-align:right">Monto</th></tr></thead><tbody>' +
+          topQ.map(function (r) {
+            return '<tr><td>' + esc(r.folio) + '</td><td>' + esc(r.cli || '—') + '</td>' +
+              '<td>' + esc(r.st) + '</td><td class="num">' + esc(formatMoney(r.total)) + '</td></tr>';
+          }).join('') + '</tbody></table></div></div>';
+      }
+      h += '</div>';
     }
 
     // --- Funnel de ventas (bitácora de contactos · pestaña "Montse 2026") ---
