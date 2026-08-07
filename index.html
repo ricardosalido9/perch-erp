@@ -615,7 +615,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.07-37</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.07-38</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1152,7 +1152,7 @@
   }
 
   // ===== Comparativo de costos por folio =====
-  var costosAnio = '', costosDatos = [];
+  var costosAnio = '', costosDatos = [], costoAbierto = '';
   function bajarCostos() {
     var cols = ['Folio','Fecha','Cliente','Venta sin IVA','Costo real','Margen real',
                 'Costo Ventas','Margen Ventas','Costo Catálogo','Margen Catálogo',
@@ -1230,8 +1230,11 @@
       F.forEach(function (r) {
         var alerta = (r.costoReal !== null && r.costoCatalogo &&
                       Math.abs(r.costoReal - r.costoCatalogo) / r.costoCatalogo > 0.05);
-        h += '<tr' + (alerta ? ' style="background:var(--danger-bg)"' : '') + '>' +
-          '<td>' + esc(r.folio) + (r.sinCostear ? ' <span title="' + r.sinCostear +
+        h += '<tr class="costo-fila" data-folio="' + esc(r.folio).replace(/"/g, '&quot;') +
+            '" style="cursor:pointer' + (alerta ? ';background:var(--danger-bg)' : '') + '">' +
+          '<td>' + (r.aproximados ? '<span title="' + r.aproximados +
+            ' piezas costeadas con promedio" style="color:var(--amber)">≈</span> ' : '') +
+          esc(r.folio) + (r.sinCostear ? ' <span title="' + r.sinCostear +
             ' piezas sin costo" style="color:var(--danger)">•</span>' : '') + '</td>' +
           '<td>' + esc(r.fecha ? formatDateCell(r.fecha) : '') + '</td>' +
           '<td title="' + esc(r.cliente) + '">' + esc(r.cliente || '—') + '</td>' +
@@ -1239,11 +1242,42 @@
           celda(r.costoReal, r.margenReal) + celda(r.costoVentas, r.margenVentas) +
           celda(r.costoCatalogo, r.margenCatalogo) +
           '<td title="' + esc(r.proveedores) + '">' + esc((r.proveedores || '').slice(0, 28)) + '</td></tr>';
+        if (costoAbierto === r.folio && r.detalle && r.detalle.length) {
+          h += '<tr><td colspan="11" style="background:var(--paper);padding:12px 14px">' +
+            '<table class="mini-table" style="background:var(--surface)"><thead><tr>' +
+            '<th>Pieza que salió</th><th>Material</th><th>Proveedor</th><th>Pedido</th>' +
+            '<th style="text-align:right">Cant</th><th style="text-align:right">Costo unitario</th>' +
+            '<th>De dónde salió ese costo</th><th style="text-align:right">Catálogo</th></tr></thead><tbody>' +
+            r.detalle.map(function (p) {
+              var fte = p.fuente === 'pedido'
+                ? 'Del pedido ' + esc(p.pedido)
+                : (p.fuente === 'promedio'
+                    ? '<b style="color:var(--amber)">Promedio</b>' +
+                      (p.opciones.length ? ' de ' + p.opciones.map(function (v) { return formatMoney(v); }).join(' · ') : '')
+                    : '<b style="color:var(--danger)">Sin costo</b>');
+              return '<tr><td>' + esc(p.producto) + '</td><td>' + esc(p.material) + '</td>' +
+                '<td>' + esc(p.proveedor || '—') + '</td><td>' + esc(p.pedido || '—') + '</td>' +
+                '<td class="num">' + fmtNum(p.cantidad) + '</td>' +
+                '<td class="num">' + (p.costoUnitario === null ? '—' : esc(formatMoney(p.costoUnitario))) + '</td>' +
+                '<td>' + fte + '</td>' +
+                '<td class="num">' + (p.catalogo === null ? '—' : esc(formatMoney(p.catalogo))) + '</td></tr>';
+            }).join('') + '</tbody></table>' +
+            '<div class="s" style="margin-top:8px;color:var(--muted)">Cuando el pedido de proveedor no viene ' +
+            'en la salida, el costo se estima con el promedio de ese producto. Corrigiendo la columna ' +
+            'Pedido Proveedor en la hoja Salidas, el costo pasa a ser el exacto.</div></td></tr>';
+        }
       });
       document.getElementById('tableWrap').innerHTML = h + '</tbody></table>';
       document.getElementById('count').textContent = F.length + ' folios';
       var bb = document.getElementById('bajarCostos');
       if (bb) bb.addEventListener('click', bajarCostos);
+      document.querySelectorAll('#tableWrap .costo-fila').forEach(function (tr) {
+        tr.addEventListener('click', function () {
+          var f = tr.getAttribute('data-folio');
+          costoAbierto = (costoAbierto === f) ? '' : f;
+          loadCostos();
+        });
+      });
       document.querySelectorAll('#tableWrap [data-anio]').forEach(function (b) {
         b.addEventListener('click', function () { costosAnio = b.getAttribute('data-anio'); loadCostos(); });
       });
