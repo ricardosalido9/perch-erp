@@ -615,7 +615,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.07-31</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.07-32</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -842,7 +842,7 @@
     costos:              'La venta contra tres costos: el real, el de la hoja y el del catálogo.',
     op_stock:            'Lo disponible por producto y material, con lo que está por llegar.',
     op_revisar:          'Renglones que no cuadran y hay que corregir en Pedidos.',
-    prov_pedidos:        'Pedidos generales a proveedores, con sus muebles y a dónde va cada pieza.',
+    prov_pedidos:        'Pedidos a proveedores. La fecha y el status se ponen solos; el costo lo propone el catálogo.',
     prov_entradas:       'Lo que ya llegó de cada pedido de proveedor.',
     prov_salidas:        'A qué pedido de cliente, stock o showroom se asignó cada pieza.',
     prov_envios:         'Envíos y entregas, con el costo real del flete.',
@@ -1138,6 +1138,28 @@
   }
 
   // ===== Comparativo de costos por folio =====
+  var costosAnio = '', costosDatos = [];
+  function bajarCostos() {
+    var cols = ['Folio','Fecha','Cliente','Venta sin IVA','Costo real','Margen real',
+                'Costo Ventas','Margen Ventas','Costo Catálogo','Margen Catálogo',
+                'Piezas','Proveedores','Piezas sin costear'];
+    var filas = costosDatos.map(function (r) {
+      return [r.folio, r.fecha, r.cliente, r.venta, r.costoReal, r.margenReal,
+              r.costoVentas, r.margenVentas, r.costoCatalogo, r.margenCatalogo,
+              r.piezas, r.proveedores, r.sinCostear];
+    });
+    var csv = [cols].concat(filas).map(function (f) {
+      return f.map(function (v) {
+        var t = (v === null || v === undefined) ? '' : String(v);
+        return /[",;\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+      }).join(',');
+    }).join('\n');
+    var url = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }));
+    var a = document.createElement('a');
+    a.href = url; a.download = 'comparativo_costos' + (costosAnio ? '_' + costosAnio : '') + '.csv'; a.click();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+  }
+
   function loadCostos() {
     document.getElementById('tableWrap').innerHTML =
       '<div class="state" style="padding:50px 0">Cruzando ventas, salidas, pedidos y catálogo…</div>';
@@ -1173,7 +1195,19 @@
         return '<td class="num">' + (v === null ? '—' : esc(formatMoney(v))) + '</td>' +
                '<td class="num">' + (m === null ? '—' : m.toFixed(1) + '%') + '</td>';
       };
-      var h = '<table class="mini-table"><thead><tr><th>Folio</th><th>Cliente</th>' +
+      var anios = {};
+      F.forEach(function (r) { if (r.anio) anios[r.anio] = (anios[r.anio] || 0) + 1; });
+      var chips = '<div class="mes-chips"><button type="button" class="mes-chip' +
+        (costosAnio ? '' : ' on') + '" data-anio="">Todos</button>';
+      Object.keys(anios).sort().reverse().forEach(function (a) {
+        chips += '<button type="button" class="mes-chip' + (String(costosAnio) === a ? ' on' : '') +
+          '" data-anio="' + a + '">' + a + ' (' + fmtNum(anios[a]) + ')</button>';
+      });
+      chips += '<button type="button" class="mes-chip" id="bajarCostos">Descargar para Excel</button></div>';
+      if (costosAnio) F = F.filter(function (r) { return String(r.anio) === String(costosAnio); });
+      costosDatos = F;
+
+      var h = chips + '<table class="mini-table"><thead><tr><th>Folio</th><th>Fecha</th><th>Cliente</th>' +
         '<th style="text-align:right">Venta s/IVA</th>' +
         '<th style="text-align:right">Costo real</th><th style="text-align:right">Margen</th>' +
         '<th style="text-align:right">Costo Ventas</th><th style="text-align:right">Margen</th>' +
@@ -1185,6 +1219,7 @@
         h += '<tr' + (alerta ? ' style="background:var(--danger-bg)"' : '') + '>' +
           '<td>' + esc(r.folio) + (r.sinCostear ? ' <span title="' + r.sinCostear +
             ' piezas sin costo" style="color:var(--danger)">•</span>' : '') + '</td>' +
+          '<td>' + esc(r.fecha ? formatDateCell(r.fecha) : '') + '</td>' +
           '<td title="' + esc(r.cliente) + '">' + esc(r.cliente || '—') + '</td>' +
           '<td class="num">' + esc(formatMoney(r.venta)) + '</td>' +
           celda(r.costoReal, r.margenReal) + celda(r.costoVentas, r.margenVentas) +
@@ -1193,6 +1228,11 @@
       });
       document.getElementById('tableWrap').innerHTML = h + '</tbody></table>';
       document.getElementById('count').textContent = F.length + ' folios';
+      var bb = document.getElementById('bajarCostos');
+      if (bb) bb.addEventListener('click', bajarCostos);
+      document.querySelectorAll('#tableWrap [data-anio]').forEach(function (b) {
+        b.addEventListener('click', function () { costosAnio = b.getAttribute('data-anio'); loadCostos(); });
+      });
     }).catch(function (e) {
       document.getElementById('tableWrap').innerHTML =
         '<div class="state">' + esc((e && e.message) || 'No se pudo armar el comparativo.') + '</div>';
@@ -1856,10 +1896,40 @@
       '</div>';
   }
 
+  // Resumen del Stock: piezas, no renglones
+  function resumenStock(rows) {
+    var cS = findHeaderByName('Stock inicial') || findHeaderByName('Stock');
+    var cP = findHeaderByName('Por llegar');
+    var cA = findHeaderByName('Asignadas a venta');
+    var cX = findHeaderByName('Llegaron de más');
+    var n = { piezas: 0, porLlegar: 0, asignadas: 0, extra: 0, combis: 0, sinStock: 0, prods: {} };
+    rows.forEach(function (r) {
+      var st = parseNumber(cS ? r[cS] : null) || 0;
+      n.piezas += st;
+      n.porLlegar += parseNumber(cP ? r[cP] : null) || 0;
+      n.asignadas += parseNumber(cA ? r[cA] : null) || 0;
+      n.extra += parseNumber(cX ? r[cX] : null) || 0;
+      if (st > 0) { n.combis++; n.prods[String(r[findHeaderByName('Item')] || '')] = 1; }
+      else if (st === 0) n.sinStock++;
+    });
+    var card = function (k, v, extra) {
+      return '<div class="sum-card"><div class="k">' + esc(k) + '</div><div class="v">' + v + '</div>' +
+        (extra ? '<div class="k" style="text-transform:none;letter-spacing:0;margin-top:2px">' + extra + '</div>' : '') + '</div>';
+    };
+    return card('Piezas en stock', fmtNum(n.piezas),
+                fmtNum(n.combis) + ' combinaciones · ' + fmtNum(Object.keys(n.prods).length) + ' productos') +
+      card('Por llegar', fmtNum(n.porLlegar), 'pedido al proveedor') +
+      card('Disponible total', fmtNum(n.piezas + n.porLlegar)) +
+      card('Asignadas a venta', fmtNum(n.asignadas), 'ya tienen dueño') +
+      (n.extra ? card('Llegaron de más', fmtNum(n.extra), 'revisar con el proveedor') : '') +
+      card('Sin existencia', fmtNum(n.sinStock), 'combinaciones en cero');
+  }
+
   function renderSummary(rows) {
     var box = document.getElementById('summary');
     if (!state.headers.length) { box.innerHTML = ''; return; }
     if (state.key === 'cotizaciones') { box.style.display = 'block'; box.innerHTML = resumenCotizaciones(rows); return; }
+    if (state.key === 'op_stock') { box.style.display = 'flex'; box.innerHTML = resumenStock(rows); return; }
     if (state.key === 'fin_cxc') { box.style.display = 'block'; box.innerHTML = resumenCxc(rows); return; }
     if (state.key === 'funnel') { box.style.display = 'block'; box.innerHTML = resumenFunnel(rows); return; }
     var chipsSt = (state.key === 'ventas_registro') ? chipsStatus() : '';
@@ -3373,6 +3443,12 @@
 
   var FORM_FIELDS = {
     // Vacío = cada área muestra todas sus columnas (en el orden de la hoja).
+    // Pedidos a proveedores: primero el pedido, luego uno o varios productos
+    prov_pedidos: [
+      'Fecha', 'Fecha Estimada de Entrega', 'Proveedor', 'Pedido Proveedor', 'Dirección de Entrega',
+      'Item', 'Material', 'Tela', 'Especificaciones', 'Cantidad', 'Costo Unitario',
+      'Costo Total', 'Costo Total + IVA'
+    ],
     // Leads: captura mínima a propósito. Si toma más de 15 segundos, nadie la va a llenar.
     leads: ['Fecha', 'Contacto', 'Cómo llegó', 'Notas'],
     // Showroom: la visita se registra sola, venga o no de una cotización
@@ -3407,6 +3483,9 @@
                         'Descripción', 'Medidas', 'Especificaciones', 'Cantidad', 'Precio Unitario',
                         '% descuento', 'Descuentos'];
   var LINE_ITEMS = {
+    // Un pedido a proveedor puede traer muchos productos
+    prov_pedidos: { line: ['Item', 'Material', 'Tela', 'Especificaciones', 'Cantidad',
+                           'Costo Unitario', 'Costo Total', 'Costo Total + IVA'] },
     ventas_registro: { line: LINEA_PRODUCTO, envioOnce: 'Envio' },
     cotizaciones:    { line: LINEA_PRODUCTO, envioOnce: 'Envio' }
   };
@@ -3425,9 +3504,17 @@
   function isDiscPctField(h) { var s = specialCfg(); return !!(s && s.descuento && norm(s.descuento.pct) === norm(h)); }
   function isDiscValField(h) { var s = specialCfg(); return !!(s && s.descuento && norm(s.descuento.val) === norm(h)); }
   // Campos que NO se muestran en "Agregar registro" (el resto sí). Por área.
+  // Campos que se llenan con la fecha de hoy y no se editan
+  var AUTOFECHA_FIELDS = { prov_pedidos: ['Fecha'] };
+  function esAutoFecha(h) {
+    return (AUTOFECHA_FIELDS[state.key] || []).some(function (f) { return norm(f) === norm(h); });
+  }
+
   var EXCLUDE_FIELDS = {
     // Catálogo: el precio del año pasado y el IVA no se capturan en un producto nuevo
     inventario:       ['Precio de venta 2025', 'Precio de Venta 2025', 'IVA'],
+    prov_pedidos:     ['Mes', 'Año', 'Status', 'Entradas', 'Pendientes por entregar',
+                       'Ventas + Exhibición', 'Stock', 'Valor', 'Folio cliente', 'Cliente'],
     ventas_registro:  ['Mes', 'Año1'],
     cotizaciones:     ['Mes', 'Año1'],
     compras_registro: ['Mes']
@@ -3438,12 +3525,17 @@
     // Precio) se activan al conectar los lookups de Clientes/Catálogo.
     ventas_registro: [],
     cotizaciones: [],
+    prov_pedidos: ['Fecha', 'Costo Total', 'Costo Total + IVA'],
     compras_registro: ['Producto', 'Total USD', 'Costo Total USD'],
     funnel: ['MES']
   };
   // Campos calculados (solo lectura). Se recalculan en orden por dependencias.
   // op: 'sub' a-b, 'add' a+b, 'mul' a*b, 'div' a/b. format:'percent' muestra %.
   var COMPUTED_FIELDS = {
+    prov_pedidos: {
+      'Costo Total':       { op: 'mul', a: 'Costo Unitario', b: 'Cantidad' },
+      'Costo Total + IVA': { op: 'mul', a: 'Costo Total', b: 1.16 }
+    },
     // Catálogo: todo lo que se calcula a partir de Costo y Precio
     inventario: {
       'Precio Unitario':  { op: 'copy', a: 'Precio' },
@@ -3515,6 +3607,8 @@
              'Cotización', 'Valor Venta'],
     inventario: ['No Producto', 'Productos', 'Material', 'Material Extra', 'Tipo de Producto',
                  'Costos Total', 'Precio', 'Descripción', 'Medidas'],
+    prov_pedidos: ['Fecha Estimada de Entrega', 'Proveedor', 'Pedido Proveedor',
+                   'Item', 'Material', 'Cantidad', 'Costo Unitario'],
     leads:      ['Fecha', 'Contacto', 'Cómo llegó'],
     showroom:   ['Fecha', 'Cliente']
   };
@@ -3707,6 +3801,14 @@
         }).join('') + '</div>';
       box.insertBefore(av, box.firstChild);
     }
+    (AUTOFECHA_FIELDS[state.key] || []).forEach(function (f) {
+      var el = fieldEl(f);
+      if (el && !el.value) {
+        var d = new Date();
+        el.value = d.getDate() + ' ' + MESES_ES[d.getMonth()].toLowerCase() + ' ' + d.getFullYear();
+        el.readOnly = true; el.tabIndex = -1;
+      }
+    });
     avisoMargen();
     initCascade();
     recalcComputed();
@@ -4162,6 +4264,14 @@
         }).join('') + '</div>';
       box.insertBefore(av, box.firstChild);
     }
+    (AUTOFECHA_FIELDS[state.key] || []).forEach(function (f) {
+      var el = fieldEl(f);
+      if (el && !el.value) {
+        var d = new Date();
+        el.value = d.getDate() + ' ' + MESES_ES[d.getMonth()].toLowerCase() + ' ' + d.getFullYear();
+        el.readOnly = true; el.tabIndex = -1;
+      }
+    });
     avisoMargen();
     initCascade();
     // En cotizaciones la entrega se estima a 8 semanas (editable); en ventas se captura
