@@ -615,7 +615,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.07-26</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.07-27</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1042,7 +1042,83 @@
     return true;
   }
 
+  // ===== Estado de cuenta por proveedor (vista propia, no es una hoja) =====
+  var provAbierto = {};
+  function loadProveedores() {
+    document.getElementById('tableWrap').innerHTML =
+      '<div class="state" style="padding:50px 0">Armando el estado de cuenta…</div>';
+    document.getElementById('summary').innerHTML = '';
+    mostrarAlta(false);
+    api('proveedores', { token: state.token }).then(function (d) {
+      var provs = d.proveedores || [];
+      var tot = { costo: 0, pagado: 0, porPagar: 0, pend: 0 };
+      provs.forEach(function (p) {
+        tot.costo += p.totales.costo; tot.pagado += p.totales.pagado;
+        tot.porPagar += p.totales.porPagar; tot.pend += p.totales.pendientes;
+      });
+      var box = document.getElementById('summary');
+      box.style.display = 'flex';
+      box.innerHTML =
+        '<div class="sum-card"><div class="k">Proveedores</div><div class="v">' + fmtNum(provs.length) + '</div></div>' +
+        '<div class="sum-card"><div class="k">Comprado</div><div class="v">' + esc(formatMoney(tot.costo)) + '</div></div>' +
+        '<div class="sum-card"><div class="k">Pagado</div><div class="v">' + esc(formatMoney(tot.pagado)) + '</div></div>' +
+        '<div class="sum-card"><div class="k">Por pagar</div><div class="v" style="color:var(--danger)">' +
+          esc(formatMoney(tot.porPagar)) + '</div></div>' +
+        '<div class="sum-card"><div class="k">Piezas por llegar</div><div class="v">' + fmtNum(tot.pend) + '</div></div>' +
+        (d.conPagos ? '' : '<div class="sum-card"><div class="k">Pagos</div><div class="v">—</div>' +
+          '<div class="k" style="text-transform:none;letter-spacing:0">sin leer EGRESOS</div></div>');
+
+      var h = '<div class="cot-grid">';
+      provs.forEach(function (p) {
+        var t = p.totales, ab = !!provAbierto[p.proveedor];
+        h += '<div class="cot-card' + (ab ? ' open' : '') + '">' +
+          '<button type="button" class="cot-head" data-prov="' + esc(p.proveedor).replace(/"/g, '&quot;') + '">' +
+            '<div class="cot-info">' +
+              '<div class="cot-folio">' + esc(p.proveedor) + '</div>' +
+              '<div class="cot-sub">' + fmtNum(t.pedidos) + ' pedidos · ' + fmtNum(t.piezas) + ' piezas · ' +
+                fmtNum(t.pendientes) + ' por llegar</div>' +
+            '</div>' +
+            '<div style="text-align:right"><div class="cot-total"' +
+              (t.porPagar > 0.5 ? ' style="color:var(--danger)"' : '') + '>' + esc(formatMoney(t.porPagar)) + '</div>' +
+              '<div class="cot-sub">por pagar de ' + esc(fmtMoneyShort(t.costo)) + '</div></div>' +
+            '<span class="cat-chev">' + (ab ? '▲' : '▼') + '</span>' +
+          '</button>';
+        if (ab) {
+          h += '<div class="cot-body">';
+          p.pedidos.forEach(function (d2) {
+            h += '<div style="margin-bottom:14px">' +
+              '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:6px">' +
+                '<b>' + esc(d2.pedido) + '</b>' +
+                '<span class="s">' + esc(d2.fecha) + (d2.estimada ? ' · estimada ' + esc(d2.estimada) : '') + '</span>' +
+                '<span>' + esc(formatMoney(d2.costo)) + ' · pagado ' + esc(formatMoney(d2.pagado)) +
+                ' · <b' + (d2.porPagar > 0.5 ? ' style="color:var(--danger)"' : '') + '>por pagar ' +
+                esc(formatMoney(d2.porPagar)) + '</b></span>' +
+              '</div>' +
+              '<table class="mini-table"><thead><tr><th>Mueble</th><th>Material</th>' +
+              '<th style="text-align:right">Pedidas</th><th style="text-align:right">Llegaron</th>' +
+              '<th>Destino</th><th>Status</th></tr></thead><tbody>' +
+              d2.items.map(function (i) {
+                return '<tr><td>' + esc(i.item) + '</td><td>' + esc(i.material) + '</td>' +
+                  '<td class="num">' + fmtNum(i.cantidad) + '</td>' +
+                  '<td class="num">' + fmtNum(i.recibidas) +
+                    (i.pendientes ? ' <span style="color:var(--danger)">(' + fmtNum(i.pendientes) + ')</span>' : '') + '</td>' +
+                  '<td>' + pillHTML(i.destino) + '</td><td>' + esc(i.status) + '</td></tr>';
+              }).join('') + '</tbody></table></div>';
+          });
+          h += '</div>';
+        }
+        h += '</div>';
+      });
+      document.getElementById('tableWrap').innerHTML = h + '</div>';
+      document.getElementById('count').textContent = provs.length + ' proveedores';
+    }).catch(function (e) {
+      document.getElementById('tableWrap').innerHTML =
+        '<div class="state">' + esc((e && e.message) || 'No se pudo armar el estado de cuenta.') + '</div>';
+    });
+  }
+
   function loadArea() {
+    if (state.key === 'proveedores') return loadProveedores();
     document.getElementById('tableWrap').innerHTML = '<div class="state">Cargando...</div>';
     document.getElementById('count').textContent = '';
     state.categories = {}; state.lookups = []; state.lineItems = [];
@@ -4582,6 +4658,13 @@
     var vb = e.target.closest('.vender-btn');
 
     if (vb) { abrirConvertirVenta(vb.getAttribute('data-folio'), vb.getAttribute('data-cliente')); return; }
+    var ph = e.target.closest('[data-prov]');
+    if (ph) {
+      var kp = ph.getAttribute('data-prov');
+      provAbierto[kp] = !provAbierto[kp];
+      loadProveedores();
+      return;
+    }
     var ch = e.target.closest('.cot-head');
     if (ch) {
       var f = ch.getAttribute('data-folio');
