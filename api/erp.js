@@ -27,7 +27,8 @@ const RUTAS = {
   costos:         require('../lib/handlers/costos'),
   pendientes:     require('../lib/handlers/pendientes'),
   'costos-export': require('../lib/handlers/costos-export'),
-  version:        require('../lib/handlers/version')
+  version:        require('../lib/handlers/version'),
+  'stock-export': require('../lib/handlers/stock-export')
 };
 
 module.exports = async (req, res) => {
