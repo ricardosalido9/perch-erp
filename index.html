@@ -621,7 +621,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.07-53</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.07-56</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1264,6 +1264,11 @@
           '<td title="' + esc(r.proveedores) + '">' + esc((r.proveedores || '').slice(0, 28)) + '</td></tr>';
         if (costoAbierto === r.folio && r.detalle && r.detalle.length) {
           h += '<tr><td colspan="11" style="background:var(--paper);padding:12px 14px">' +
+            (r.faltanSalidas
+              ? '<div class="s" style="margin-bottom:8px;color:var(--danger)"><b>Faltan ' +
+                fmtNum(r.faltanSalidas) + ' piezas por registrar en Salidas.</b> El pedido las asignó a este ' +
+                'folio pero no aparecen en la hoja de Salidas, así que su costo no se está contando.</div>'
+              : '') +
             (function () {
               var cnt = {};
               r.detalle.forEach(function (p) { cnt[p.fuente] = (cnt[p.fuente] || 0) + 1; });
@@ -5138,7 +5143,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.07-53';
+    var mia = '2026.08.07-56';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {

@@ -28,7 +28,8 @@ const RUTAS = {
   pendientes:     require('../lib/handlers/pendientes'),
   'costos-export': require('../lib/handlers/costos-export'),
   version:        require('../lib/handlers/version'),
-  'stock-export': require('../lib/handlers/stock-export')
+  'stock-export': require('../lib/handlers/stock-export'),
+  folio:          require('../lib/handlers/folio')
 };
 
 module.exports = async (req, res) => {
