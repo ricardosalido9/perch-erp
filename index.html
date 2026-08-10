@@ -311,6 +311,9 @@
   #lineItemsBox { margin-top:18px; border-top:1px dashed var(--line); padding-top:14px; }
   #lineItemsBox .li-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
   #lineItemsBox .li-title { font-weight:600; color:var(--ink); font-size:14px; }
+  #lineItemsBox .li-edit { background:transparent; border:0; color:var(--muted); font-size:15px;
+    cursor:pointer; padding:2px 6px; }
+  #lineItemsBox .li-edit:hover { color:var(--accent-ink); border-color:transparent; }
   #lineItemsBox .li-add { background:var(--surface); border:1px solid var(--primary); color:var(--primary);
     border-radius:8px; padding:8px 12px; font-weight:600; cursor:pointer; }
   #lineItemsBox .li-add:hover { background:var(--success-bg); }
@@ -550,6 +553,9 @@
 
   /* ---------- Detalles heredados ---------- */
   #lineItemsBox .li-row .li-n { background:var(--primary); color:#fff; }
+  #lineItemsBox .li-edit { background:transparent; border:0; color:var(--muted); font-size:15px;
+    cursor:pointer; padding:2px 6px; }
+  #lineItemsBox .li-edit:hover { color:var(--accent-ink); border-color:transparent; }
   #lineItemsBox .li-add { border-color:var(--accent); color:var(--accent-ink); border-radius:10px; }
   #lineItemsBox .li-add:hover { background:var(--accent-soft); }
   #lineItemsBox { border-top-color:var(--line); }
@@ -615,7 +621,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.07-41</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.07-42</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -658,6 +664,7 @@
         <button id="refreshBtn" type="button">Actualizar</button>
         <button id="openSheetBtn" type="button" title="Abrir la pestaña en Google Sheets">Abrir hoja</button>
         <button id="catViewBtn" type="button" style="display:none">Ver como tabla</button>
+        <button id="driveCostosBtn" type="button" style="display:none">Actualizar en Drive</button>
         <button id="downloadBtn" type="button">Descargar</button>
         <span class="count" id="count"></span>
       </div>
@@ -1174,7 +1181,18 @@
     setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
   }
 
+  function subirCostosADrive(btn) {
+    btn.disabled = true;
+    var t = btn.textContent; btn.textContent = 'Escribiendo en Drive...';
+    api('costos-export', { token: state.token }).then(function (o) {
+      toast('Listo: ' + fmtNum(o.folios) + ' folios y ' + fmtNum(o.piezas) +
+            ' piezas en las pestañas Comparativas.', 'ok');
+      if (o.archivo) window.open(o.archivo, '_blank');
+    }).catch(fail).then(function () { btn.disabled = false; btn.textContent = t; });
+  }
+
   function loadCostos() {
+    document.getElementById('driveCostosBtn').style.display = '';
     document.getElementById('tableWrap').innerHTML =
       '<div class="state" style="padding:50px 0">Cruzando ventas, salidas, pedidos y catálogo…</div>';
     document.getElementById('summary').innerHTML = '';
@@ -1318,6 +1336,7 @@
       state.headers = data.headers || []; state.rows = data.rows || [];
       state.fileId = data.fileId || ''; state.sheetName = data.sheetName || '';
       var vinoFiltrado = aplicarFiltroPendiente();
+      document.getElementById('driveCostosBtn').style.display = (state.key === 'costos') ? '' : 'none';
       var cvb = document.getElementById('catViewBtn');
       cvb.style.display = ['inventario','cotizaciones','prov_pedidos'].indexOf(state.key) !== -1 ? '' : 'none';
       cvb.textContent = catalogoAgrupado ? 'Ver como tabla' : 'Ver por producto';
@@ -2118,8 +2137,9 @@
 
   // Columnas que NO se muestran en la tabla de registros. Por área.
   var HIDE_COLUMNS = {
-    cotizaciones: ['Mes', 'Año1'],
-    ventas_registro: ['Mes', 'Año1'],
+    // Se siguen guardando en la hoja; solo no estorban en la tabla
+    cotizaciones:     ['Mes', 'Año1', 'Trimestre', 'Año'],
+    ventas_registro:  ['Mes', 'Año1', 'Trimestre', 'Año'],
     compras_registro: ['Mes'],
     // CxC: se ocultan las columnas de control interno (links, complementos, notas de facturación)
     // En CxC se ocultan solo los enlaces y notas sueltas; las columnas de facturación SÍ se ven,
@@ -4038,6 +4058,7 @@
         html += '<div class="li-row"><span class="li-n">' + (i + 1) + '</span>' +
                 '<span class="li-txt">' + esc(r.titulo) + (r.sub ? ' <small>' + esc(r.sub) + '</small>' : '') + '</span>' +
                 '<span class="li-txt" style="flex:none;font-weight:600">$' + fmtMoney(lineTotal(rec)) + '</span>' +
+                '<button type="button" class="li-edit" data-i="' + i + '" title="Editar">✎</button>' +
                 '<button type="button" class="li-del" data-i="' + i + '" title="Quitar">✕</button></div>';
       });
     }
@@ -4051,8 +4072,48 @@
         renderLineList();
       });
     });
+    // Editar: regresa el producto al formulario de arriba y lo saca de la lista
+    Array.prototype.forEach.call(box.querySelectorAll('.li-edit'), function (b) {
+      b.addEventListener('click', function () {
+        var i = parseInt(b.getAttribute('data-i'), 10);
+        var rec = state.lineItems[i];
+        if (!rec) return;
+        var pend = readLineFromForm();
+        if (pend && pend.ok && pend.cantidad) state.lineItems.push(pend.rec);   // no se pierde lo escrito
+        cargarLineaEnFormulario(rec);
+        state.lineItems.splice(i, 1);
+        renderLineList();
+        toast('Corrige el producto y vuelve a tocar "Agregar producto al pedido".', 'ok');
+      });
+    });
     updateOrderTotal();
   }
+  // Vuelve a poner un producto de la lista en los campos de arriba
+  function cargarLineaEnFormulario(rec) {
+    var c = lineCfg(); if (!c) return;
+    var casc = cascadeLU();
+    // Primero los niveles de la cascada, en orden, para que cada uno cargue sus opciones
+    if (casc) {
+      (casc.levels || []).forEach(function (lv, n) {
+        var nombre = (typeof lv === 'string') ? lv : lv.field;
+        var el = cascElem(n);
+        var v = rec[findHeaderByName(nombre)];
+        if (el && v != null) { el.value = v; onCascadeChange(n); }
+      });
+    }
+    c.line.forEach(function (campo) {
+      var real = findHeaderByName(campo);
+      if (!real) return;
+      var el = document.querySelector('#formFields [data-col="' + real + '"]');
+      if (!el || el.hasAttribute('data-casc-level')) return;
+      var v = rec[real];
+      if (v != null && String(v) !== '') el.value = v;
+    });
+    recalcComputed();
+    var prim = fieldEl(c.producto || 'Producto');
+    if (prim && prim.scrollIntoView) prim.scrollIntoView({ block: 'center' });
+  }
+
   function addProductLine() {
     var falta = cascadeLevelsMissing();
     if (falta) { toast('Falta elegir: ' + falta, 'err'); return; }
@@ -4559,11 +4620,12 @@
           'Cotización': folioNuevo
         } }).catch(function () {});
       }
-      if (folioNuevo) {
-        // El PDF se arma y se guarda en Drive automáticamente
+      if (folioNuevo && (esCotiza || areaDestino === 'ventas_registro')) {
+        // El PDF con formato Perch solo aplica a cotizaciones y ventas
         generarPdfCotizacion(folioNuevo, !esCotiza, true).catch(function () {});
       }
-      if (!esCotiza) {                      // una cotización todavía no es cuenta por cobrar
+      // Cuentas por Cobrar y factura son cosa de VENTAS. Un pedido a proveedor no las lleva.
+      if (areaDestino === 'ventas_registro') {
         resumenPedido.folio = folioNuevo;
         registrarEnCxc(resumenPedido);
       }
@@ -5046,7 +5108,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.07-41';
+    var mia = '2026.08.07-42';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
@@ -5107,6 +5169,9 @@
     closeNav();
   });
   document.getElementById('search').addEventListener('input', renderTable);
+  document.getElementById('driveCostosBtn').addEventListener('click', function () {
+    subirCostosADrive(this);
+  });
   document.getElementById('catViewBtn').addEventListener('click', function () {
     catalogoAgrupado = !catalogoAgrupado;
     this.textContent = catalogoAgrupado ? 'Ver como tabla' : 'Ver por producto';
