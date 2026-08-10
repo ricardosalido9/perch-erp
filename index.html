@@ -621,7 +621,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.07-56</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.07-57</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1209,9 +1209,39 @@
         return r.costoCatalogo && Math.abs(r.costoReal - r.costoCatalogo) / r.costoCatalogo > 0.05;
       }).length;
 
+      // Triaje: de los que no cuadran, ¿por qué no cuadran?
+      var difs = conReal.filter(function (r) {
+        return r.costoVentas && Math.abs(r.costoReal - r.costoVentas) > 1;
+      });
+      var g = { salidas: [], sinCosto: [], sinProduccion: [], precio: [] };
+      difs.forEach(function (r) {
+        if (r.faltanSalidas > 0) g.salidas.push(r);
+        else if (r.sinCostear > 0) g.sinCosto.push(r);
+        else if (!r.piezas) g.sinProduccion.push(r);
+        else g.precio.push(r);
+      });
+      var triaje = '';
+      if (difs.length) {
+        var linea = function (n, lista, txt2) {
+          if (!lista.length) return '';
+          return '<div style="margin-top:4px"><b>' + fmtNum(lista.length) + '</b> · ' + esc(txt2) +
+            '<div class="s" style="color:var(--muted)">' +
+            esc(lista.slice(0, 12).map(function (r) { return r.folio; }).join(' · ')) +
+            (lista.length > 12 ? ' …' : '') + '</div></div>';
+        };
+        triaje = '<div style="grid-column:1/-1;background:var(--surface);border:1px solid var(--line);' +
+          'border-radius:12px;padding:14px 16px;margin-bottom:12px;font-size:13.5px">' +
+          '<b>' + fmtNum(difs.length) + ' folios no cuadran. Por qué:</b>' +
+          linea(1, g.salidas, 'Faltan piezas por registrar en Salidas — se arregla capturando la salida') +
+          linea(2, g.sinCosto, 'Hay piezas sin costo — revisar el pedido de esa pieza') +
+          linea(3, g.sinProduccion, 'No tienen ninguna pieza en producción — salieron de stock sin registrar') +
+          linea(4, g.precio, 'Cantidades completas pero el precio no coincide — es diferencia de costo real') +
+          '</div>';
+      }
       var box = document.getElementById('summary');
-      box.style.display = 'flex';
-      box.innerHTML =
+      box.style.display = 'block';
+      box.innerHTML = triaje +
+        '<div class="summary-cards">' +
         '<div class="sum-card"><div class="k">Folios comparables</div><div class="v">' + fmtNum(conReal.length) +
           '</div><div class="k" style="text-transform:none;letter-spacing:0">de ' + fmtNum(F.length) + ' con venta</div></div>' +
         '<div class="sum-card"><div class="k">Venta s/IVA</div><div class="v">' + esc(fmtMoneyShort(vTot)) + '</div></div>' +
@@ -1222,7 +1252,8 @@
         '<div class="sum-card"><div class="k">Margen según Catálogo</div><div class="v">' + mg(vTot, cTot) + '</div>' +
           '<div class="k" style="text-transform:none;letter-spacing:0">costo ' + esc(fmtMoneyShort(cTot)) + '</div></div>' +
         '<div class="sum-card"><div class="k">Fuera del 5%</div><div class="v" style="color:var(--danger)">' +
-          fmtNum(lejos) + '</div><div class="k" style="text-transform:none;letter-spacing:0">real vs catálogo</div></div>';
+          fmtNum(lejos) + '</div><div class="k" style="text-transform:none;letter-spacing:0">real vs catálogo</div></div>' +
+        '</div>';
 
       var celda = function (v, m) {
         return '<td class="num">' + (v === null ? '—' : esc(formatMoney(v))) + '</td>' +
@@ -5143,7 +5174,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.07-56';
+    var mia = '2026.08.07-57';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
