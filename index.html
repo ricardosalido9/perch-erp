@@ -621,7 +621,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.07-43</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.07-44</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1185,8 +1185,8 @@
     btn.disabled = true;
     var t = btn.textContent; btn.textContent = 'Escribiendo en Drive...';
     api('costos-export', { token: state.token }).then(function (o) {
-      toast('Listo: ' + fmtNum(o.folios) + ' folios y ' + fmtNum(o.piezas) +
-            ' piezas en las pestañas Comparativas.', 'ok');
+      toast('Listo: ' + fmtNum(o.folios) + ' folios, ' + fmtNum(o.piezas) + ' piezas y ' +
+            fmtNum(o.diferencias || 0) + ' renglones de diferencias.', 'ok');
       if (o.archivo) window.open(o.archivo, '_blank');
     }).catch(fail).then(function () { btn.disabled = false; btn.textContent = t; });
   }
@@ -5111,7 +5111,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.07-43';
+    var mia = '2026.08.07-44';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
