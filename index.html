@@ -621,7 +621,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.07-42</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.07-43</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1269,7 +1269,9 @@
             '<th>De dónde salió ese costo</th><th style="text-align:right">Catálogo</th></tr></thead><tbody>' +
             r.detalle.map(function (p) {
               var fte;
-              if (p.fuente === 'pedido') fte = 'Del pedido ' + esc(p.pedido);
+              if (p.fuente === 'pedido directo')
+                fte = '<b style="color:var(--success)">Pedido directo al cliente</b> · ' + esc(p.pedido);
+              else if (p.fuente === 'pedido') fte = 'Del pedido ' + esc(p.pedido);
               else if (p.fuente === 'proveedor') fte = 'Único precio de ese proveedor · ' + esc(p.pedido);
               else if (p.fuente === 'lote más antiguo')
                 fte = '<b style="color:var(--accent-ink)">Lote más antiguo</b> del proveedor · ' + esc(p.pedido);
@@ -1284,7 +1286,8 @@
                 '<td>' + fte + '</td>' +
                 '<td class="num">' + (p.catalogo === null ? '—' : esc(formatMoney(p.catalogo))) + '</td></tr>';
             }).join('') + '</tbody></table>' +
-            '<div class="s" style="margin-top:8px;color:var(--muted)">Si la salida trae el pedido, se usa ese ' +
+            '<div class="s" style="margin-top:8px;color:var(--muted)">Primero cuentan las piezas que el pedido ' +
+            'ya asignó a este folio. Después, las que salieron de stock: si la salida trae el pedido, se usa ese ' +
             'costo. Si no, se toma el del mismo proveedor consumiendo el lote más antiguo primero, como rota ' +
             'el inventario. Solo cuando no hay proveedor se recurre al promedio del producto.</div></td></tr>';
         }
@@ -5108,7 +5111,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.07-42';
+    var mia = '2026.08.07-43';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
