@@ -615,7 +615,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.07-39</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.07-40</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1217,7 +1217,8 @@
         chips += '<button type="button" class="mes-chip' + (String(costosAnio) === a ? ' on' : '') +
           '" data-anio="' + a + '">' + a + ' (' + fmtNum(anios[a]) + ')</button>';
       });
-      chips += '<button type="button" class="mes-chip" id="bajarCostos">Descargar para Excel</button></div>';
+      chips += '<button type="button" class="mes-chip" id="bajarCostos">Descargar para Excel</button>' +
+        '<button type="button" class="mes-chip" id="subirCostos">Actualizar en Drive</button></div>';
       if (costosAnio) F = F.filter(function (r) { return String(r.anio) === String(costosAnio); });
       costosDatos = F;
 
@@ -1274,6 +1275,17 @@
       document.getElementById('count').textContent = F.length + ' folios';
       var bb = document.getElementById('bajarCostos');
       if (bb) bb.addEventListener('click', bajarCostos);
+      var sb = document.getElementById('subirCostos');
+      if (sb) sb.addEventListener('click', function () {
+        sb.disabled = true; sb.textContent = 'Escribiendo en Drive...';
+        api('costos-export', { token: state.token }).then(function (o) {
+          toast('Listo: ' + fmtNum(o.folios) + ' folios y ' + fmtNum(o.piezas) +
+                ' piezas en las pestañas Comparativas.', 'ok');
+          if (o.archivo) window.open(o.archivo, '_blank');
+        }).catch(fail).then(function () {
+          sb.disabled = false; sb.textContent = 'Actualizar en Drive';
+        });
+      });
       document.querySelectorAll('#tableWrap .costo-fila').forEach(function (tr) {
         tr.addEventListener('click', function () {
           var f = tr.getAttribute('data-folio');
