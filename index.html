@@ -621,7 +621,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.07-44</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.07-46</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1339,6 +1339,15 @@
       state.headers = data.headers || []; state.rows = data.rows || [];
       state.fileId = data.fileId || ''; state.sheetName = data.sheetName || '';
       var vinoFiltrado = aplicarFiltroPendiente();
+      // Si la hoja trae celdas con error de fórmula, se avisa en vez de mostrarlas como datos
+      if (data.errores) {
+        avisoFijo('<b>La pestaña "' + esc(data.sheetName || state.label) + '" tiene ' +
+          fmtNum(data.errores) + ' celdas con error de fórmula</b> (' + esc(data.tiposError) + ').<br>' +
+          'Casi siempre pasa cuando la pestaña se creó duplicando otra: las fórmulas quedaron apuntando ' +
+          'a rangos que ya no existen.<div style="margin-top:8px">Solución: crea la pestaña desde cero ' +
+          '(Hoja nueva, no Duplicar), escribe solo los encabezados en la fila 1 y deja el resto vacío. ' +
+          'El ERP llena los renglones.</div>');
+      }
       document.getElementById('driveCostosBtn').style.display = (state.key === 'costos') ? '' : 'none';
       var cvb = document.getElementById('catViewBtn');
       cvb.style.display = ['inventario','cotizaciones','prov_pedidos'].indexOf(state.key) !== -1 ? '' : 'none';
@@ -5111,7 +5120,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.07-44';
+    var mia = '2026.08.07-46';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
