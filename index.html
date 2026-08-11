@@ -626,7 +626,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-82</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-83</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1071,14 +1071,14 @@
     var f = filtroPendiente; filtroPendiente = null;
     if (!f || !f.col) return false;
     var real = findHeaderByName(f.col);
-    if (!real) return false;
+    if (!real) { toast('No encontré la columna "' + f.col + '" en esta hoja.', 'err'); return false; }
     filters = filters.filter(function (x) { return x.col !== real; });
     if (f.vacio) filters.push({ col: real, type: 'values', values: [''] });
     else if (f.gt0) filters.push({ col: real, type: 'gt0' });
     else if (f.noContiene && f.noContiene.length) filters.push({ col: real, type: 'noContiene', textos: f.noContiene });
     else if (f.contiene) filters.push({ col: real, type: 'contiene', texto: f.contiene });
     else if (f.valores && f.valores.length) filters.push({ col: real, type: 'values', values: f.valores });
-    else return false;
+    else { toast('Ese aviso no trae un filtro aplicable.', 'err'); return false; }
     return true;
   }
 
@@ -1664,12 +1664,14 @@
       var vinoFiltrado = aplicarFiltroPendiente();
       // Si la hoja trae celdas con error de fórmula, se avisa en vez de mostrarlas como datos
       if (data.errores) {
+        var fe = (data.filasError || []);
         avisoFijo('<b>La pestaña "' + esc(data.sheetName || state.label) + '" tiene ' +
-          fmtNum(data.errores) + ' celdas con error de fórmula</b> (' + esc(data.tiposError) + ').<br>' +
-          'Casi siempre pasa cuando la pestaña se creó duplicando otra: las fórmulas quedaron apuntando ' +
-          'a rangos que ya no existen.<div style="margin-top:8px">Solución: crea la pestaña desde cero ' +
-          '(Hoja nueva, no Duplicar), escribe solo los encabezados en la fila 1 y deja el resto vacío. ' +
-          'El ERP llena los renglones.</div>');
+          fmtNum(data.errores) + ' celdas con error de fórmula</b> (' + esc(data.tiposError) + ').' +
+          (fe.length ? '<div style="margin-top:6px">En ' + (fe.length === 1 ? 'la fila ' : 'las filas ') +
+            '<b>' + esc(fe.join(', ')) + '</b>.</div>' : '') +
+          '<div style="margin-top:8px">Si son pocas, bórralas o corrige la fórmula de esas celdas. ' +
+          'Si es toda la pestaña, suele ser que se creó duplicando otra: conviene rehacerla desde cero ' +
+          'con solo los encabezados en la fila 1.</div>');
       }
       document.getElementById('driveCostosBtn').style.display = (state.key === 'costos') ? '' : 'none';
       document.getElementById('driveStockBtn').style.display = (state.key === 'op_stock') ? '' : 'none';
@@ -1692,7 +1694,7 @@
         mostrarAlta(!esSoloLectura(state.key));
         renderFilterBar();
         renderTable();
-        if (!esSoloLectura(state.key)) { renderForm(); aplicarPrefillCotizacion(); }
+        if (!esSoloLectura(state.key)) { renderForm(); cargarComboExtra(); aplicarPrefillCotizacion(); }
       }
     }).catch(fail);
   }
@@ -3882,7 +3884,14 @@
   function optionsFor(h) {
     var m = FIELD_OPTIONS[state.key]; if (!m) return null;
     var k = Object.keys(m).filter(function (x) { return norm(x) === norm(h); })[0];
-    return k ? m[k] : null;
+    if (k) return m[k];
+    // La hoja puede llamar distinto al campo: se prueban los alias conocidos
+    var ks = Object.keys(m);
+    for (var i = 0; i < ks.length; i++) {
+      var alt = ALIAS_CAMPOS[ks[i]] || [];
+      if (alt.some(function (a) { return norm(a) === norm(h); })) return m[ks[i]];
+    }
+    return null;
   }
   // Campos "combo": se eligen de una lista pero también se puede escribir uno nuevo.
   var COMBO_FIELDS = {
@@ -3908,6 +3917,10 @@
     (state.rows || []).forEach(function (r) {
       var v = String(r[h] == null ? '' : r[h]).trim();
       if (v && !vistos[v]) { vistos[v] = 1; out.push(v); }
+    });
+    // Valores traídos de otras áreas (ej. los vendedores que ya existen en Ventas)
+    (comboExtraVals[norm(h)] || []).forEach(function (o) {
+      var v = String(o).trim(); if (v && !vistos[v]) { vistos[v] = 1; out.push(v); }
     });
     out.sort(function (a, b) { return a.localeCompare(b, 'es'); });
     return out;
@@ -4306,7 +4319,11 @@
       var el = fieldEl(f);
       if (el && !el.value) {
         var d = new Date();
-        el.value = d.getDate() + ' ' + MESES_ES[d.getMonth()].toLowerCase() + ' ' + d.getFullYear();
+        // Un input type="date" solo acepta AAAA-MM-DD; uno de texto, la fecha larga
+        el.value = (el.type === 'date')
+          ? d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' +
+            String(d.getDate()).padStart(2, '0')
+          : d.getDate() + ' ' + MESES_ES[d.getMonth()].toLowerCase() + ' ' + d.getFullYear();
         // En Leads y Showroom la fecha se puede corregir; en pedidos queda fija
         if (state.key === 'prov_pedidos') { el.readOnly = true; el.tabIndex = -1; }
       }
@@ -4818,7 +4835,11 @@
       var el = fieldEl(f);
       if (el && !el.value) {
         var d = new Date();
-        el.value = d.getDate() + ' ' + MESES_ES[d.getMonth()].toLowerCase() + ' ' + d.getFullYear();
+        // Un input type="date" solo acepta AAAA-MM-DD; uno de texto, la fecha larga
+        el.value = (el.type === 'date')
+          ? d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' +
+            String(d.getDate()).padStart(2, '0')
+          : d.getDate() + ' ' + MESES_ES[d.getMonth()].toLowerCase() + ' ' + d.getFullYear();
         // En Leads y Showroom la fecha se puede corregir; en pedidos queda fija
         if (state.key === 'prov_pedidos') { el.readOnly = true; el.tabIndex = -1; }
       }
@@ -4966,6 +4987,14 @@
       if (folioNuevo && (esCotiza || areaDestino === 'ventas_registro')) {
         // El PDF con formato Perch solo aplica a cotizaciones y ventas
         generarPdfCotizacion(folioNuevo, !esCotiza, true).catch(function () {});
+      }
+      // Si la venta se capturó directo y quedaron datos de marketing vacíos, se piden
+      if (areaDestino === 'ventas_registro' && folioNuevo) {
+        var faltanMkt = CAMPOS_MKT.filter(function (mk) {
+          var c = findHeaderByName(mk.campo);
+          return c && !String(order[c] || '').trim();
+        });
+        if (faltanMkt.length) pedirMarketing(folioNuevo, faltanMkt, 'ventas_registro');
       }
       // Cuentas por Cobrar y factura son cosa de VENTAS. Un pedido a proveedor no las lleva.
       if (areaDestino === 'ventas_registro') {
@@ -5185,7 +5214,30 @@
     { campo: 'Forma de Contacto', label: 'Cómo llegó' },
     { campo: 'Visito Showroom',   label: '¿Visitó el showroom?' }
   ];
+  // Modal chico para completar los datos de marketing de una venta ya guardada
+  function pedirMarketing(folio, faltan, area) {
+    var html = '<div style="font-size:13px;color:var(--slate);margin-bottom:10px">' +
+      'Completa estos datos de <b>' + esc(folio) + '</b> para que la base quede llena.</div>' +
+      '<div class="form-grid">' + faltan.map(function (m) {
+        var col = findHeaderByName(m.campo);
+        var opts = optionsFor(col) || optionsFor(m.campo) || [];
+        return '<div class="fld"><label>' + esc(m.label) + '</label>' +
+          '<select class="mkt-post" data-col="' + esc(col) + '"><option value=""></option>' +
+          opts.map(function (o) { return '<option>' + esc(o) + '</option>'; }).join('') + '</select></div>';
+      }).join('') + '</div>';
+    document.getElementById('ventaResumen').innerHTML = html;
+    document.getElementById('ventaMkt').innerHTML = '';
+    document.querySelector('#ventaModal h3').textContent = 'Datos de marketing';
+    document.getElementById('ventaOk').textContent = 'Guardar';
+    document.getElementById('ventaModal').classList.add('on');
+    marketingPost = { folio: folio, area: area };
+  }
+  var marketingPost = null;
+
   function abrirConvertirVenta(folio, cliente) {
+    marketingPost = null;
+    document.querySelector('#ventaModal h3').textContent = 'Convertir en venta';
+    document.getElementById('ventaOk').textContent = 'Convertir en venta';
     cotAConvertir = folio;
     // Solo se preguntan los que estén vacíos en la cotización
     var fila = (state.rows || []).filter(function (r) {
@@ -5219,6 +5271,21 @@
     cotAConvertir = null;
   }
   function convertirEnVenta() {
+    // Modo "solo completar marketing" de una venta ya guardada
+    if (marketingPost) {
+      var set = {};
+      document.querySelectorAll('.mkt-post').forEach(function (sel) {
+        if (sel.value) set[sel.getAttribute('data-col')] = sel.value;
+      });
+      var cRef3 = findHeaderByName('No. de Referencia') || findHeaderByName('Folio');
+      if (!Object.keys(set).length || !cRef3) { cerrarConvertirVenta(); marketingPost = null; return; }
+      api('fill', { token: state.token, key: marketingPost.area,
+                    match: { col: cRef3, value: marketingPost.folio }, set: set })
+        .then(function () { toast('Datos guardados.', 'ok'); loadArea(); })
+        .catch(fail)
+        .then(function () { cerrarConvertirVenta(); marketingPost = null; });
+      return;
+    }
     if (!cotAConvertir) return;
     var btn = document.getElementById('ventaOk');
     var iso = document.getElementById('ventaFecha').value;
@@ -5585,7 +5652,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-82';
+    var mia = '2026.08.11-83';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
