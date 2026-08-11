@@ -538,6 +538,11 @@
   .cot-body { border-top:1px solid var(--line); padding:14px 18px; background:var(--paper); }
   .cot-body .mini-table { background:var(--surface); border-radius:10px; }
   .cot-acciones { display:flex; gap:10px; align-items:center; margin-top:12px; flex-wrap:wrap; }
+  .prov-cifras { display:flex; gap:26px; flex:none; }
+  .prov-cifras > div { text-align:right; min-width:110px; display:flex; flex-direction:column; gap:2px; }
+  .prov-cifras .k { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; }
+  .prov-cifras b { font-size:16px; font-weight:600; color:var(--ink); font-variant-numeric:tabular-nums; }
+  @media (max-width:900px) { .prov-cifras { gap:14px; } .prov-cifras > div { min-width:88px; } }
   .cot-st { display:flex; align-items:center; gap:8px; margin-left:auto; }
   .cot-st label { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; }
   .cot-st select { min-width:150px; }
@@ -621,7 +626,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-77</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-78</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1091,12 +1096,19 @@
       });
       var box = document.getElementById('summary');
       box.style.display = 'flex';
+      var conDeuda = provs.filter(function (x) { return x.totales.porPagar > 0.5; });
+      var conFavor = provs.filter(function (x) { return x.totales.porPagar < -0.5; });
       box.innerHTML =
-        '<div class="sum-card"><div class="k">Proveedores</div><div class="v">' + fmtNum(provs.length) + '</div></div>' +
-        '<div class="sum-card"><div class="k">Comprado</div><div class="v">' + esc(formatMoney(tot.costo)) + '</div></div>' +
-        '<div class="sum-card"><div class="k">Pagado</div><div class="v">' + esc(formatMoney(tot.pagado)) + '</div></div>' +
-        '<div class="sum-card"><div class="k">Por pagar</div><div class="v" style="color:var(--danger)">' +
-          esc(formatMoney(tot.porPagar)) + '</div></div>' +
+        '<div class="sum-card"><div class="k">Proveedores</div><div class="v">' + fmtNum(provs.length) + '</div>' +
+          '<div class="k" style="text-transform:none;letter-spacing:0">' + fmtNum(conDeuda.length) +
+          ' con saldo' + (conFavor.length ? ' · ' + fmtNum(conFavor.length) + ' a favor' : '') + '</div></div>' +
+        '<div class="sum-card"><div class="k">Total pedido</div><div class="v">' + esc(formatMoney(tot.costo)) + '</div></div>' +
+        '<div class="sum-card"><div class="k">Total pagado</div><div class="v">' + esc(formatMoney(tot.pagado)) + '</div></div>' +
+        '<div class="sum-card"><div class="k">Saldo</div><div class="v" style="color:' +
+          (tot.porPagar > 0.5 ? 'var(--danger)' : 'var(--success)') + '">' +
+          esc(formatMoney(Math.abs(tot.porPagar))) + '</div>' +
+          '<div class="k" style="text-transform:none;letter-spacing:0">' +
+          (tot.porPagar > 0.5 ? 'que debemos' : 'a favor') + '</div></div>' +
         '<div class="sum-card"><div class="k">Piezas por llegar</div><div class="v">' + fmtNum(tot.pend) + '</div></div>' +
         (d.conPagos ? '' : '<div class="sum-card"><div class="k">Pagos</div><div class="v">—</div>' +
           '<div class="k" style="text-transform:none;letter-spacing:0">sin leer EGRESOS</div></div>');
@@ -1104,17 +1116,23 @@
       var h = '<div class="cot-grid">';
       provs.forEach(function (p) {
         var t = p.totales, ab = !!provAbierto[p.proveedor];
+        var aFavor = t.porPagar < -0.5;
         h += '<div class="cot-card' + (ab ? ' open' : '') + '">' +
           '<button type="button" class="cot-head" data-prov="' + esc(p.proveedor).replace(/"/g, '&quot;') + '">' +
-            '<div class="cot-info">' +
+            '<div class="cot-info" style="flex:1.2">' +
               '<div class="cot-folio">' + esc(p.proveedor) + '</div>' +
               '<div class="cot-sub">' + fmtNum(t.pedidos) + ' pedidos · ' + fmtNum(t.piezas) + ' piezas · ' +
-                fmtNum(t.pendientes) + ' por llegar' +
-                (t.ajustes ? ' · incluye ' + esc(formatMoney(t.ajustes)) + ' de ajustes' : '') + '</div>' +
+                fmtNum(t.pendientes) + ' por llegar</div>' +
             '</div>' +
-            '<div style="text-align:right"><div class="cot-total"' +
-              (t.porPagar > 0.5 ? ' style="color:var(--danger)"' : '') + '>' + esc(formatMoney(t.porPagar)) + '</div>' +
-              '<div class="cot-sub">por pagar de ' + esc(fmtMoneyShort(t.costo)) + '</div></div>' +
+            '<div class="prov-cifras">' +
+              '<div><span class="k">Le he pedido</span><b>' + esc(formatMoney(t.costo)) + '</b></div>' +
+              '<div><span class="k">Le he pagado</span><b>' + esc(formatMoney(t.pagado)) + '</b>' +
+                (t.ajustes ? '<span class="k">incluye ' + esc(fmtMoneyShort(t.ajustes)) + ' de ajustes</span>' : '') +
+              '</div>' +
+              '<div><span class="k">' + (aFavor ? 'Saldo a favor' : 'Le debo') + '</span>' +
+                '<b style="color:' + (aFavor ? 'var(--success)' : (t.porPagar > 0.5 ? 'var(--danger)' : 'var(--muted)')) +
+                '">' + esc(formatMoney(Math.abs(t.porPagar))) + '</b></div>' +
+            '</div>' +
             '<span class="cat-chev">' + (ab ? '▲' : '▼') + '</span>' +
           '</button>';
         if (ab) {
@@ -5347,7 +5365,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-77';
+    var mia = '2026.08.11-78';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
