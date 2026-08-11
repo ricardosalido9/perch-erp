@@ -31,7 +31,8 @@ const RUTAS = {
   'stock-export': require('../lib/handlers/stock-export'),
   folio:          require('../lib/handlers/folio'),
   conciliacion:   require('../lib/handlers/conciliacion'),
-  'conci-traza':  require('../lib/handlers/conci-traza')
+  'conci-traza':  require('../lib/handlers/conci-traza'),
+  'inv-prov':     require('../lib/handlers/inventario-prov')
 };
 
 module.exports = async (req, res) => {

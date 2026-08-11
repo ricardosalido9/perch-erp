@@ -626,7 +626,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-81</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-82</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -869,6 +869,7 @@
     proveedores:         'Cuánto se le pidió a cada proveedor, qué llegó y cuánto se le debe.',
     costos:              'La venta contra tres costos: el real, el de la hoja y el del catálogo.',
     conciliacion:        'Lo que Nico captura a mano contra lo que de verdad salió del banco.',
+    inv_prov:            'Qué tiene terminado cada proveedor, qué falta por fabricar y a dónde se fue.',
     op_stock:            'Lo disponible por producto y material, con lo que está por llegar.',
     op_revisar:          'Renglones que no cuadran y hay que corregir en Pedidos.',
     prov_pedidos:        'Pedidos a proveedores. La fecha y el status se ponen solos; el costo lo propone el catálogo.',
@@ -882,7 +883,7 @@
     fin_cxc:             'Saldos por cobrar de cada pedido.',
     fin_ingresos:        'Cobros recibidos, ligados al folio del pedido.'
   };
-  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion'];
+  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov'];
   function esLector() {
     return state.rol === 'lector' || state.rol === 'viewer' || state.rol === 'lectura';
   }
@@ -1578,7 +1579,73 @@
     });
   }
 
+  // ===== Qué tiene guardado cada proveedor =====
+  var invProvAbierto = {};
+  function loadInvProv() {
+    document.getElementById('tableWrap').innerHTML =
+      '<div class="state" style="padding:50px 0">Revisando lo que tiene cada proveedor…</div>';
+    document.getElementById('summary').innerHTML = '';
+    mostrarAlta(false);
+    api('inv-prov', { token: state.token }).then(function (d) {
+      var t = d.totales || {};
+      var box = document.getElementById('summary');
+      box.style.display = 'flex';
+      box.innerHTML =
+        '<div class="sum-card"><div class="k">Piezas en proveedores</div><div class="v">' +
+          fmtNum(t.disponible) + '</div><div class="k" style="text-transform:none;letter-spacing:0">' +
+          'terminadas y sin salir</div></div>' +
+        '<div class="sum-card"><div class="k">Por fabricar</div><div class="v">' + fmtNum(t.porFabricar) + '</div></div>' +
+        '<div class="sum-card"><div class="k">Combinaciones</div><div class="v">' + fmtNum(t.combinaciones) + '</div></div>';
+
+      var h = '<div class="cot-grid">';
+      (d.proveedores || []).forEach(function (p) {
+        var ab = !!invProvAbierto[p.proveedor];
+        h += '<div class="cot-card' + (ab ? ' open' : '') + '">' +
+          '<button type="button" class="cot-head" data-invprov="' + esc(p.proveedor).replace(/"/g, '&quot;') + '">' +
+            '<div class="cot-info"><div class="cot-folio">' + esc(p.proveedor) + '</div>' +
+              '<div class="cot-sub">' + fmtNum(p.lineas.length) + ' productos distintos</div></div>' +
+            '<div class="prov-cifras">' +
+              '<div><span class="k">Tiene guardadas</span><b>' + fmtNum(p.disponible) + '</b></div>' +
+              '<div><span class="k">Por fabricar</span><b>' + fmtNum(p.porFabricar) + '</b></div>' +
+            '</div>' +
+            '<span class="cat-chev">' + (ab ? '▲' : '▼') + '</span></button>';
+        if (ab) {
+          h += '<div class="cot-body"><table class="mini-table"><thead><tr>' +
+            '<th>Mueble</th><th>Material</th><th style="text-align:right">Le pedí</th>' +
+            '<th style="text-align:right">Entregó</th><th style="text-align:right">Salieron</th>' +
+            '<th style="text-align:right">Tiene guardadas</th><th style="text-align:right">Por fabricar</th>' +
+            '<th>Pedidos</th></tr></thead><tbody>' +
+            p.lineas.map(function (l) {
+              return '<tr><td>' + esc(l.producto) + '</td><td>' + esc(l.material || '—') + '</td>' +
+                '<td class="num">' + fmtNum(l.pedidas) + '</td>' +
+                '<td class="num">' + fmtNum(l.entregadas) + '</td>' +
+                '<td class="num">' + fmtNum(l.salidas) + '</td>' +
+                '<td class="num"><b' + (l.disponible > 0 ? ' style="color:var(--success)"' : '') + '>' +
+                  fmtNum(l.disponible) + '</b></td>' +
+                '<td class="num">' + (l.porFabricar ? '<span style="color:var(--amber)">' +
+                  fmtNum(l.porFabricar) + '</span>' : '') + '</td>' +
+                '<td class="s">' + esc(l.pedidos.map(function (x) { return x.pedido; }).slice(0, 4).join(' · ')) + '</td></tr>';
+            }).join('') + '</tbody></table></div>';
+        }
+        h += '</div>';
+      });
+      document.getElementById('tableWrap').innerHTML = h + '</div>';
+      document.getElementById('count').textContent = (d.proveedores || []).length + ' proveedores';
+      document.querySelectorAll('#tableWrap [data-invprov]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          var k = b.getAttribute('data-invprov');
+          invProvAbierto[k] = !invProvAbierto[k];
+          loadInvProv();
+        });
+      });
+    }).catch(function (e) {
+      document.getElementById('tableWrap').innerHTML =
+        '<div class="state">' + esc((e && e.message) || 'No se pudo leer el inventario.') + '</div>';
+    });
+  }
+
   function loadArea() {
+    if (state.key === 'inv_prov') return loadInvProv();
     if (state.key === 'conciliacion') return loadConciliacion();
     if (state.key === 'costos') return loadCostos();
     if (state.key === 'proveedores') return loadProveedores();
@@ -4939,62 +5006,123 @@
           '<div class="state">' + esc((e && e.message) || 'No se pudieron leer las ventas.') + '</div>';
       });
   }
+  // Una línea del pedido se puede repartir entre VARIAS ventas.
+  // Cada destino es un renglón: cantidad + folio (o Stock) + dirección.
+  var aventaDest = {};      // índice de línea -> [{ cant, folio, dir }]
+  function destinosDe(i) {
+    if (!aventaDest[i]) aventaDest[i] = [{ cant: '', folio: '', dir: '' }];
+    return aventaDest[i];
+  }
+  function repartidas(i) {
+    return destinosDe(i).reduce(function (t, d) { return t + (parseFloat(d.cant) || 0); }, 0);
+  }
   function pintarMandarAVenta() {
-    var h = '<table class="mini-table"><thead><tr><th>Producto</th><th>Material</th>' +
-      '<th style="text-align:right">Pedidas</th><th style="text-align:right">A venta</th>' +
-      '<th>Folio</th><th>Dirección de envío</th></tr></thead><tbody>';
+    var h = '';
     aventaLineas.forEach(function (l, i) {
-      // Solo las ventas que pidieron ESE producto y siguen sin surtir
       var ops = aventaPend.filter(function (p) { return norm(p.producto) === norm(l.producto); });
-      var sel = '<select data-i="' + i + '" class="av-folio"><option value="">Stock (sin asignar)</option>';
-      ops.forEach(function (p) {
-        sel += '<option value="' + esc(p.folio) + '" data-dir="' + esc(p.direccion).replace(/"/g, '&quot;') + '">' +
-          esc(p.folio) + ' · ' + esc(p.cliente || 'sin cliente') + ' · faltan ' + fmtNum(p.faltan) + '</option>';
+      var falta = l.cantidad - repartidas(i);
+      h += '<div style="border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:12px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:10px">' +
+          '<div><b>' + esc(l.producto) + '</b> · ' + esc(l.material || '—') +
+            (l.proveedor ? ' <span class="s" style="color:var(--muted)">' + esc(l.proveedor) + '</span>' : '') + '</div>' +
+          '<div class="s">' + fmtNum(l.cantidad) + ' piezas · ' +
+            '<b style="color:' + (falta < 0 ? 'var(--danger)' : (falta === 0 ? 'var(--success)' : 'var(--slate)')) + '">' +
+            (falta < 0 ? 'te pasaste por ' + fmtNum(-falta) : (falta === 0 ? 'repartidas' : fmtNum(falta) + ' sin repartir')) +
+            '</b></div>' +
+        '</div>';
+      destinosDe(i).forEach(function (d2, j) {
+        h += '<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap">' +
+          '<input class="row-input av-cant" data-i="' + i + '" data-j="' + j + '" type="number" min="0" ' +
+            'style="width:78px;text-align:right" placeholder="cant" value="' + esc(d2.cant) + '">' +
+          '<select class="av-folio" data-i="' + i + '" data-j="' + j + '" style="min-width:250px">' +
+            '<option value="">Se queda en stock</option>' +
+            ops.map(function (p) {
+              return '<option value="' + esc(p.folio) + '" data-dir="' + esc(p.direccion).replace(/"/g, '&quot;') + '"' +
+                (d2.folio === p.folio ? ' selected' : '') + '>' + esc(p.folio) + ' · ' +
+                esc(p.cliente || 'sin cliente') + ' · faltan ' + fmtNum(p.faltan) + '</option>';
+            }).join('') + '</select>' +
+          '<input class="row-input av-dir" data-i="' + i + '" data-j="' + j + '" placeholder="dirección de envío" ' +
+            'style="flex:1;min-width:170px" value="' + esc(d2.dir) + '">' +
+          (destinosDe(i).length > 1
+            ? '<button type="button" class="av-quita" data-i="' + i + '" data-j="' + j + '" title="Quitar">✕</button>'
+            : '') +
+        '</div>';
       });
-      sel += '</select>';
-      h += '<tr><td>' + esc(l.producto) + '</td><td>' + esc(l.material) + '</td>' +
-        '<td class="num">' + fmtNum(l.cantidad) + '</td>' +
-        '<td><input class="row-input av-cant" data-i="' + i + '" type="number" min="0" max="' + l.cantidad +
-          '" value="0" style="width:70px;text-align:right"></td>' +
-        '<td>' + sel + '</td>' +
-        '<td><input class="row-input av-dir" data-i="' + i + '" placeholder="opcional"></td></tr>';
+      h += '<button type="button" class="av-mas" data-i="' + i + '" style="font-size:13px;margin-top:4px">' +
+        '+ Repartir a otra venta</button>';
       if (!ops.length) {
-        h += '<tr><td colspan="6" class="s" style="color:var(--muted);padding-top:0">' +
-             'Ninguna venta pendiente pidió ' + esc(l.producto) + '</td></tr>';
+        h += '<div class="s" style="color:var(--muted);margin-top:6px">Ninguna venta pendiente pidió ' +
+          esc(l.producto) + '. Si la dejas sin folio, se queda en stock.</div>';
       }
+      h += '</div>';
     });
-    h += '</tbody></table>' +
-      '<div class="s" style="margin-top:12px;color:var(--muted)">Solo aparecen las ventas que pidieron ese ' +
-      'producto y todavía no tienen salida registrada. Lo que dejes en cero se queda en stock.</div>';
+    h += '<div class="s" style="color:var(--muted)">Solo aparecen las ventas que pidieron ese producto y ' +
+      'todavía no tienen salida. Lo que no repartas se queda en stock del proveedor.</div>';
     document.getElementById('aventaCuerpo').innerHTML = h;
-    document.querySelectorAll('.av-folio').forEach(function (s2) {
-      s2.addEventListener('change', function () {
-        var op = s2.options[s2.selectedIndex];
+
+    // Guardar lo que se escribe, sin perderlo al repintar
+    document.querySelectorAll('#aventaCuerpo .av-cant, #aventaCuerpo .av-dir').forEach(function (el) {
+      el.addEventListener('input', function () {
+        var i = +el.getAttribute('data-i'), j = +el.getAttribute('data-j');
+        destinosDe(i)[j][el.classList.contains('av-cant') ? 'cant' : 'dir'] = el.value;
+        if (el.classList.contains('av-cant')) pintarMandarAVenta();
+      });
+    });
+    document.querySelectorAll('#aventaCuerpo .av-folio').forEach(function (sel) {
+      sel.addEventListener('change', function () {
+        var i = +sel.getAttribute('data-i'), j = +sel.getAttribute('data-j');
+        var d3 = destinosDe(i)[j];
+        d3.folio = sel.value;
+        var op = sel.options[sel.selectedIndex];
         var dir = op ? op.getAttribute('data-dir') : '';
-        var el = document.querySelector('.av-dir[data-i="' + s2.getAttribute('data-i') + '"]');
-        if (el && dir && !el.value) el.value = dir;
+        if (dir && !d3.dir) d3.dir = dir;
+        // Si aún no hay cantidad, se propone lo que falta de esa venta
+        if (!d3.cant && sel.value) {
+          var p2 = aventaPend.filter(function (x) { return x.folio === sel.value; })[0];
+          var libre = aventaLineas[i].cantidad - repartidas(i);
+          if (p2) d3.cant = String(Math.max(0, Math.min(p2.faltan, libre)));
+        }
+        pintarMandarAVenta();
+      });
+    });
+    document.querySelectorAll('#aventaCuerpo .av-mas').forEach(function (b) {
+      b.addEventListener('click', function () {
+        destinosDe(+b.getAttribute('data-i')).push({ cant: '', folio: '', dir: '' });
+        pintarMandarAVenta();
+      });
+    });
+    document.querySelectorAll('#aventaCuerpo .av-quita').forEach(function (b) {
+      b.addEventListener('click', function () {
+        destinosDe(+b.getAttribute('data-i')).splice(+b.getAttribute('data-j'), 1);
+        pintarMandarAVenta();
       });
     });
   }
   function cerrarMandarAVenta() {
     document.getElementById('aventaModal').classList.remove('on');
-    aventaPedido = null; aventaLineas = []; aventaPend = [];
+    aventaPedido = null; aventaLineas = []; aventaPend = []; aventaDest = {};
   }
   function registrarSalidas() {
     var envs = [];
-    document.querySelectorAll('.av-cant').forEach(function (inp) {
-      var i = +inp.getAttribute('data-i');
-      var c = parseFloat(inp.value || '0');
-      if (!c) return;
-      var sel = document.querySelector('.av-folio[data-i="' + i + '"]');
-      var dir = document.querySelector('.av-dir[data-i="' + i + '"]');
-      var l = aventaLineas[i];
-      envs.push({ 'Fecha': '', 'Folio cliente': sel ? sel.value : '', 'Cliente': '',
-        'Pedido Proveedor': aventaPedido, 'Proveedor': l.proveedor,
-        'Item': l.producto, 'Productos': l.producto, 'Material': l.material,
-        'Cantidad': c, 'Destino': (sel && sel.value) ? 'Cliente' : 'Stock',
-        'Notas': dir && dir.value ? 'Envío: ' + dir.value : '' });
+    var error = '';
+    aventaLineas.forEach(function (l, i) {
+      var total = 0;
+      destinosDe(i).forEach(function (d2) {
+        var c = parseFloat(d2.cant || '0');
+        if (!c) return;
+        total += c;
+        envs.push({ 'Fecha': '', 'Folio cliente': d2.folio, 'Folio': d2.folio, 'Cliente': '',
+          'Pedido Proveedor': aventaPedido, 'Pedido': aventaPedido, 'Proveedor': l.proveedor,
+          'Item': l.producto, 'Productos': l.producto, 'Material': l.material,
+          'Cantidad': c, 'Costo Unitario': l.costo, 'Costo': l.costo * c,
+          'Destino': d2.folio ? 'Cliente' : 'Stock',
+          'Comentarios': d2.dir ? 'Envío: ' + d2.dir : '' });
+      });
+      if (total > l.cantidad + 0.001) {
+        error = 'En ' + l.producto + ' repartiste ' + total + ' de ' + l.cantidad + ' piezas.';
+      }
     });
+    if (error) { toast(error, 'err'); return; }
     if (!envs.length) { toast('No pusiste cantidades.', 'err'); return; }
     var btn = document.getElementById('aventaOk');
     btn.disabled = true; btn.textContent = 'Registrando...';
@@ -5005,10 +5133,44 @@
       return api('add', { token: state.token, key: 'prov_salidas', record: e });
     })).then(function () {
       toast('Se registraron ' + envs.length + (envs.length === 1 ? ' salida.' : ' salidas.'), 'ok');
+      ultimoReparto = { pedido: aventaPedido, envs: envs };
       cerrarMandarAVenta(); loadArea();
+      mostrarAvisoProveedor();
     }).catch(fail).then(function () {
       btn.disabled = false; btn.textContent = 'Registrar salidas';
     });
+  }
+
+  // ===== Aviso listo para mandarle al proveedor =====
+  var ultimoReparto = null;
+  function mostrarAvisoProveedor() {
+    if (!ultimoReparto || !ultimoReparto.envs.length) return;
+    var porProd = {};
+    ultimoReparto.envs.forEach(function (e) {
+      var k = e.Item + ' · ' + (e.Material || '');
+      (porProd[k] = porProd[k] || []).push(e);
+    });
+    var txt = 'Pedido ' + ultimoReparto.pedido + '\n\n';
+    Object.keys(porProd).forEach(function (k) {
+      txt += k + ':\n';
+      porProd[k].forEach(function (e) {
+        txt += '  · ' + e.Cantidad + ' ' + (e['Folio cliente']
+          ? 'para el pedido ' + e['Folio cliente'] + (e.Comentarios ? ' (' + e.Comentarios + ')' : '')
+          : 'se quedan en tu stock') + '\n';
+      });
+    });
+    avisoFijo('<b>Aviso para el proveedor</b><div style="margin-top:8px;white-space:pre-wrap;' +
+      'background:var(--paper);padding:10px 12px;border-radius:8px;font-size:12.5px" id="avisoProvTxt">' +
+      esc(txt) + '</div>' +
+      '<button type="button" id="copiarAvisoProv" style="margin-top:10px;font-size:13px">Copiar</button>');
+    setTimeout(function () {
+      var b = document.getElementById('copiarAvisoProv');
+      if (b) b.addEventListener('click', function () {
+        var t = document.getElementById('avisoProvTxt').textContent;
+        if (navigator.clipboard) navigator.clipboard.writeText(t);
+        b.textContent = 'Copiado';
+      });
+    }, 50);
   }
 
   // ===== Cotización -> Venta =====
@@ -5423,7 +5585,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-81';
+    var mia = '2026.08.11-82';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
