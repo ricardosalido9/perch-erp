@@ -626,7 +626,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-83</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-85</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1664,14 +1664,16 @@
       var vinoFiltrado = aplicarFiltroPendiente();
       // Si la hoja trae celdas con error de fórmula, se avisa en vez de mostrarlas como datos
       if (data.errores) {
-        var fe = (data.filasError || []);
+        var fe = (data.filasError || []).slice(0, 15);
         avisoFijo('<b>La pestaña "' + esc(data.sheetName || state.label) + '" tiene ' +
           fmtNum(data.errores) + ' celdas con error de fórmula</b> (' + esc(data.tiposError) + ').' +
           (fe.length ? '<div style="margin-top:6px">En ' + (fe.length === 1 ? 'la fila ' : 'las filas ') +
             '<b>' + esc(fe.join(', ')) + '</b>.</div>' : '') +
-          '<div style="margin-top:8px">Si son pocas, bórralas o corrige la fórmula de esas celdas. ' +
-          'Si es toda la pestaña, suele ser que se creó duplicando otra: conviene rehacerla desde cero ' +
-          'con solo los encabezados en la fila 1.</div>');
+          '<div style="margin-top:8px">Son celdas donde una fórmula ya no encuentra su referencia, ' +
+          'así que el ERP no puede leer ese dato. Corrígelas en la hoja y vuelve a entrar.</div>' +
+          (data.erroresLeves ? '<div style="margin-top:6px;color:var(--muted);font-size:12px">' +
+            'Hay además ' + fmtNum(data.erroresLeves) + ' errores menores (#DIV/0! y similares) en filas ' +
+            'con datos. No estorban al ERP.</div>' : ''));
       }
       document.getElementById('driveCostosBtn').style.display = (state.key === 'costos') ? '' : 'none';
       document.getElementById('driveStockBtn').style.display = (state.key === 'op_stock') ? '' : 'none';
@@ -3908,6 +3910,34 @@
     return (COMBO_FIELDS[state.key] || []).some(function (f) { return norm(f) === norm(h); });
   }
   // Sugerencias del combo: lo que ya existe en la hoja + (para Cliente) la Lista de Clientes.
+  // De dónde salen sugerencias extra para un combo, además de la propia hoja
+  var COMBO_EXTRA = {
+    cotizaciones:    { 'Cliente': ['leads', 'showroom'], 'Vendedor': ['ventas_registro'] },
+    ventas_registro: { 'Cliente': ['leads', 'showroom'], 'Vendedor': ['cotizaciones'] }
+  };
+  var comboExtraVals = {};
+  function cargarComboExtra() {
+    var cfg = COMBO_EXTRA[state.key];
+    comboExtraVals = {};
+    if (!cfg) return;
+    Object.keys(cfg).forEach(function (campo) {
+      cfg[campo].forEach(function (area) {
+        api('data', { token: state.token, key: area }).then(function (d) {
+          var c = (d.headers || []).filter(function (x) { return norm(x) === norm(campo); })[0];
+          if (!c) return;
+          var vals = {};
+          (d.rows || []).forEach(function (r) {
+            var v = String(r[c] == null ? '' : r[c]).trim();
+            if (v && !/^#(REF|N\/A|VALUE|DIV)/i.test(v)) vals[v] = 1;
+          });
+          var k = norm(campo);
+          comboExtraVals[k] = (comboExtraVals[k] || []).concat(Object.keys(vals));
+          if (!esSoloLectura(state.key)) renderForm();
+        }).catch(function () {});
+      });
+    });
+  }
+
   function comboOptionsFor(h) {
     var vistos = {}, out = [];
     var lk = lookupFor(h);
@@ -4636,6 +4666,7 @@
       });
     }
     fields.forEach(function (h) {
+      try {
       var wrap = document.createElement('div'); wrap.className = 'fld';
       var lab = document.createElement('label');
       lab.innerHTML = esc(String(h).trim()) + (isRequiredField(h) ? ' <span style="color:var(--danger)">*</span>' : '');
@@ -4810,6 +4841,15 @@
         wrap.appendChild(inp);
       }
       box.appendChild(wrap);
+      } catch (err) {
+        // Un campo con problema no debe dejar el formulario a medias
+        console.error('Campo "' + h + '":', err);
+        var eb = document.createElement('div');
+        eb.className = 'fld';
+        eb.innerHTML = '<label>' + esc(h) + '</label>' +
+          '<input type="text" data-col="' + esc(h) + '" placeholder="(campo con problema)">';
+        box.appendChild(eb);
+      }
     });
     // Regla de moneda (Tipo de Cambio según Moneda) + primer cálculo
     var crule = CURRENCY_RULE[state.key];
@@ -5652,7 +5692,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-83';
+    var mia = '2026.08.11-85';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
