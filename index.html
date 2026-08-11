@@ -626,7 +626,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-86</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-87</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -3825,14 +3825,14 @@
 
   // Si la hoja usa otro nombre para el mismo dato, aquí se reconoce igual
   var ALIAS_CAMPOS = {
-    'Cómo Llego':        ['Como llego', 'Cómo llegó', 'Forma de Contacto', 'Canal', 'Origen'],
-    'Línea de Negocio':  ['Linea de Negocio', 'Línea de negocio'],
-    'Tipo de Línea':     ['Tipo de Linea', 'Tipo de línea', 'TIPO CLIENTE', 'Tipo de Cliente'],
-    'Showroom':          ['Visito Showroom', 'Visitó Showroom', 'Visito showroom'],
-    'Notas':             ['NOTAS', 'Comentarios', 'Observaciones'],
-    'Ciudad':            ['CIUDAD'],
-    'Proyecto':          ['PROYECTO'],
-    'Happening':         ['HAPPENING'],
+    'Cómo Llego':               ['Como llego', 'Cómo llegó', 'Forma de Contacto', 'Canal', 'Origen'],
+    'Línea de Negocio':         ['Linea de Negocio', 'Línea de negocio'],
+    'Tipo de Línea de Negocio': ['Tipo de Linea de Negocio', 'Tipo de Línea', 'Tipo de Linea', 'TIPO CLIENTE'],
+    'Tipo de Proyecto':         ['Proyecto', 'PROYECTO', 'Tipo de proyecto'],
+    'Showroom':                 ['Visito Showroom', 'Visitó Showroom', 'Visito showroom'],
+    'HAPPENING':                ['Happening'],
+    'Notas':                    ['NOTAS', 'Comentarios', 'Observaciones'],
+    'Ciudad':                   ['CIUDAD'],
     'Productos':         ['Producto', 'Item'],
     'Producto':          ['Productos', 'Item'],
     'Item':              ['Productos', 'Producto'],
@@ -3866,10 +3866,12 @@
     // Para cambiar la lista de status, edita este renglón y listo.
     ventas_registro: {
       // Mismos valores que la validación de datos de la hoja
-      'Status': ['Por entregar', 'En proceso', 'Stand by', 'Entregado']
+      'Status': ['Por entregar', 'En proceso', 'Stand by', 'Entregado'],
+      'Showroom': VISITO_SHOWROOM
     },
     cotizaciones: {
       'Status':            ['Pendiente', 'Enviada', 'Vendida', 'Rechazada', 'Por volver a buscar'],
+      'Showroom':          VISITO_SHOWROOM,
       'TIPO CLIENTE':      TIPOS_CLIENTE,
       'Forma de Contacto': FORMAS_CONTACTO,
       'Visito Showroom':   VISITO_SHOWROOM
@@ -3995,11 +3997,13 @@
     // Leads: captura mínima a propósito. Si toma más de 15 segundos, nadie la va a llenar.
     leads: ['Fecha', 'Contacto', 'Cómo Llego', 'Notas'],
     // Showroom: la visita se registra sola, venga o no de una cotización
-    showroom: ['Fecha', 'Cliente', 'Despacho', 'Ciudad', 'Cómo Llego', 'Línea de Negocio', 'Tipo de Línea', 'Notas'],
+    showroom: ['Fecha', 'Cliente', 'Despacho', 'Ciudad', 'Cómo Llego', 'Línea de Negocio',
+               'Tipo de Línea de Negocio', 'Notas'],
     // Cotizaciones: mismos campos que una venta + la encuesta comercial
     cotizaciones: [
       'Fecha del Cierre', 'Cliente', 'Despacho', 'Vendedor', 'Fecha de entrega acordada',
-      'Ciudad', 'Proyecto', 'Cómo Llego', 'Línea de Negocio', 'Tipo de Línea', 'Showroom', 'Happening', 'Notas',
+      'Ciudad', 'Tipo de Proyecto', 'Cómo Llego', 'Línea de Negocio', 'Tipo de Línea de Negocio',
+      'HAPPENING', 'Showroom', 'Notas',
       'Direccion de envio', 'Telefono', 'Cantidad', 'Producto', 'Material', 'Material Extra',
       'Tipo de Producto', 'Tela', 'Descripción', 'Medidas', 'Especificaciones',
       'Precio Unitario', '% descuento', 'Descuentos', 'Envio'
@@ -5037,6 +5041,15 @@
         // El PDF con formato Perch solo aplica a cotizaciones y ventas
         generarPdfCotizacion(folioNuevo, !esCotiza, true).catch(function () {});
       }
+      // El renglón de Marketing se crea con lo que ya se sabe
+      if (areaDestino === 'ventas_registro' && folioNuevo) {
+        var datosMkt = { 'No. de Referencia': folioNuevo };
+        state.headers.forEach(function (h) { if (order[h] != null) datosMkt[h] = order[h]; });
+        datosMkt['Productos'] = resumenPedido.piezas;
+        datosMkt['Total Pedido'] = resumenPedido.totalPedido;
+        datosMkt['Envio'] = resumenPedido.envio;
+        registrarMarketing(folioNuevo, datosMkt);
+      }
       // Si la venta se capturó directo y quedaron datos de marketing vacíos, se piden
       if (areaDestino === 'ventas_registro' && folioNuevo) {
         var faltanMkt = CAMPOS_MKT.filter(function (mk) {
@@ -5259,16 +5272,32 @@
   }
   // Campos de marketing que deben quedar completos al cerrar la venta
   // Las mismas preguntas del registro de ventas. Las respuestas salen de la pestaña Categorías.
+  // Los nombres son los de la pestaña Categorías. Showroom no está ahí: se responde Sí/No.
   var CAMPOS_MKT = [
-    { campo: 'Ciudad',            label: 'Ciudad' },
-    { campo: 'Proyecto',          label: 'Proyecto' },
-    { campo: 'Cómo Llego',        label: 'Cómo llegó' },
-    { campo: 'Línea de Negocio',  label: 'Línea de negocio' },
-    { campo: 'Tipo de Línea',     label: 'Tipo de línea' },
-    { campo: 'Showroom',          label: '¿Visitó el showroom?' },
-    { campo: 'Happening',         label: 'Happening' },
-    { campo: 'Notas',             label: 'Notas' }
+    { campo: 'Ciudad',                    label: 'Ciudad' },
+    { campo: 'Tipo de Proyecto',          label: 'Tipo de proyecto' },
+    { campo: 'Cómo Llego',                label: 'Cómo llegó' },
+    { campo: 'Línea de Negocio',          label: 'Línea de negocio' },
+    { campo: 'Tipo de Línea de Negocio',  label: 'Tipo de línea de negocio' },
+    { campo: 'HAPPENING',                 label: 'Happening' },
+    { campo: 'Showroom',                  label: '¿Visitó el showroom?' },
+    { campo: 'Notas',                     label: 'Notas' }
   ];
+  // Un renglón por venta en la pestaña Marketing, con lo que ya se capturó
+  function registrarMarketing(folio, datos) {
+    if (!folio) return Promise.resolve();
+    var rec = { 'No. de Referencia': folio, 'Folio': folio };
+    // Lo que viene de la venta
+    ['Fecha del Cierre', 'Cliente', 'Despacho', 'Productos', 'Total Pedido', 'Envio', 'Mes']
+      .forEach(function (c) { if (datos[c] != null && datos[c] !== '') rec[c] = datos[c]; });
+    // Y las respuestas de marketing
+    CAMPOS_MKT.forEach(function (m) {
+      var v = datos[m.campo];
+      if (v != null && String(v).trim() !== '') rec[m.campo] = v;
+    });
+    return api('add', { token: state.token, key: 'marketing', record: rec }).catch(function () {});
+  }
+
   // Modal chico para completar los datos de marketing de una venta ya guardada
   function pedirMarketing(folio, faltan, area) {
     var html = '<div style="font-size:13px;color:var(--slate);margin-bottom:10px">' +
@@ -5351,6 +5380,9 @@
       if (sel.value) mkt[sel.getAttribute('data-col')] = sel.value;
     });
     var cRef2 = findHeaderByName('No. de Referencia') || findHeaderByName('Folio');
+    var filaCot = (state.rows || []).filter(function (r) {
+      return cRef2 && String(r[cRef2] || '').trim() === cotAConvertir;
+    })[0] || {};
     var previo = Object.keys(mkt).length && cRef2
       ? api('fill', { token: state.token, key: 'cotizaciones',
                       match: { col: cRef2, value: cotAConvertir }, set: mkt }).catch(function () {})
@@ -5369,6 +5401,16 @@
         // Y el paso de facturación, igual que en una venta capturada directo
         api('quote', { token: state.token, key: 'ventas_registro', folio: folioVenta }).then(function (q) {
           var piezas = 0; (q.items || []).forEach(function (i) { piezas += (i.cantidad || 0); });
+          // Renglón de Marketing con lo capturado en la cotización y lo que se acaba de preguntar
+          var dm = { 'Fecha del Cierre': q.fecha, 'Cliente': q.cliente, 'Despacho': q.despacho,
+                     'Productos': piezas, 'Total Pedido': (q.total || 0) - (q.envio || 0),
+                     'Envio': q.envio || 0 };
+          CAMPOS_MKT.forEach(function (m) {
+            var col = findHeaderByName(m.campo);
+            if (col && filaCot && filaCot[col]) dm[m.campo] = filaCot[col];
+            if (mkt[col]) dm[m.campo] = mkt[col];
+          });
+          registrarMarketing(folioVenta, dm);
           registrarEnCxc({
             folio: folioVenta, cliente: q.cliente, despacho: q.despacho,
             fechaCierre: q.fecha, mes: '', entregaTexto: iso ? isoToLargo(iso) : '', entregaISO: iso || '',
@@ -5707,7 +5749,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-86';
+    var mia = '2026.08.11-87';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
