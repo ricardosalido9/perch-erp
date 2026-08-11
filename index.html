@@ -626,7 +626,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-90</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-91</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -5179,6 +5179,9 @@
       state.lineItems = []; envioValor = '';
       cerrarModalAlta();
       var folioNuevo = (out && out.folio) ? out.folio : '';
+      // ¿Le faltan datos a este cliente? Se piden ahora, no después
+      var colCli = findHeaderByName('Cliente');
+      if (colCli && order[colCli]) setTimeout(function () { revisarCliente(order[colCli]); }, 400);
       // Si la encuesta dice que visitó el showroom, la visita se registra sola
       var visito = order[findHeaderByName('Visito Showroom')] || '';
       if (norm(visito) === 'si') {
@@ -5482,6 +5485,70 @@
       .catch(function () {});
   }
 
+  // Datos que un cliente debe tener completos para poder facturarle y entregarle
+  var CLIENTE_OBLIGATORIO = ['Teléfono', 'Despacho', 'Dirección de envío'];
+  // Se completan solos al subir la CSF
+  var CLIENTE_FISCAL = ['Razón Social', 'RFC', 'Tipo de Persona', 'Régimen fiscal'];
+
+  function revisarCliente(nombre) {
+    if (!nombre) return;
+    api('clientes', { token: state.token, buscar: nombre }).then(function (d) {
+      var c = (d.clientes || []).filter(function (x) { return norm(x.cliente) === norm(nombre); })[0];
+      if (!c) return;
+      if (!c.enLista) { pedirDatosCliente(nombre, CLIENTE_OBLIGATORIO, true); return; }
+      if (c.faltan && c.faltan.length) pedirDatosCliente(nombre, c.faltan, false);
+    }).catch(function () {});
+  }
+
+  function pedirDatosCliente(nombre, faltan, esNuevo) {
+    var h = '<div style="font-size:13px;color:var(--slate);margin-bottom:12px">' +
+      (esNuevo
+        ? '<b>' + esc(nombre) + '</b> todavía no está en la Lista de Clientes. Complétalo para poder ' +
+          'entregarle y facturarle.'
+        : 'A <b>' + esc(nombre) + '</b> le faltan datos. Complétalos ahora para no perderlos.') + '</div>' +
+      '<div class="form-grid">' + faltan.map(function (f) {
+        return '<div class="fld"><label>' + esc(f) + '</label>' +
+          '<input class="cli-dato" type="text" data-campo="' + esc(f) + '"></div>';
+      }).join('') + '</div>' +
+      '<div style="margin-top:16px;padding-top:14px;border-top:1px dashed var(--line)">' +
+        '<div style="font-size:13px;color:var(--slate);margin-bottom:8px">' +
+        '¿Va a pedir factura? Sube la Constancia de Situación Fiscal y se llenan solos ' +
+        'Razón Social, RFC, Tipo de Persona y Régimen fiscal.</div>' +
+        '<input type="file" id="cliCsf" accept="application/pdf" style="font:inherit;font-size:13px">' +
+        '<div id="cliCsfNota" class="s" style="color:var(--muted);margin-top:6px"></div>' +
+        '<div class="form-grid" id="cliFiscal" style="margin-top:10px"></div>' +
+      '</div>';
+    document.getElementById('ventaResumen').innerHTML = h;
+    document.getElementById('ventaMkt').innerHTML = '';
+    document.querySelector('#ventaModal h3').textContent = 'Datos del cliente';
+    document.getElementById('ventaOk').textContent = 'Guardar cliente';
+    document.getElementById('ventaModal').classList.add('on');
+    clientePost = { cliente: nombre, esNuevo: esNuevo };
+    marketingPost = null; cotAConvertir = null;
+
+    var fi = document.getElementById('cliCsf');
+    fi.addEventListener('change', function () {
+      var f = fi.files && fi.files[0];
+      if (!f) return;
+      var nota = document.getElementById('cliCsfNota');
+      nota.textContent = 'Leyendo ' + f.name + '…';
+      var rd = new FileReader();
+      rd.onload = function () {
+        api('csf', { token: state.token, data: String(rd.result).split(',')[1] }).then(function (o) {
+          if (!o.ok) { nota.textContent = o.motivo || 'No se pudieron leer los datos.'; return; }
+          nota.textContent = 'Datos leídos de la constancia. Revísalos antes de guardar.';
+          document.getElementById('cliFiscal').innerHTML = CLIENTE_FISCAL.map(function (c) {
+            return '<div class="fld"><label>' + esc(c) + '</label>' +
+              '<input class="cli-dato" type="text" data-campo="' + esc(c) + '" value="' +
+              esc(o.datos[c] || '') + '"></div>';
+          }).join('');
+        }).catch(function (e) { nota.textContent = (e && e.message) || 'No se pudo leer el PDF.'; });
+      };
+      rd.readAsDataURL(f);
+    });
+  }
+  var clientePost = null;
+
   // Modal chico para completar los datos de marketing de una venta ya guardada
   function pedirMarketing(folio, faltan, area, datos) {
     var html = '<div style="font-size:13px;color:var(--slate);margin-bottom:10px">' +
@@ -5505,7 +5572,7 @@
   var marketingPost = null;
 
   function abrirConvertirVenta(folio, cliente) {
-    marketingPost = null;
+    marketingPost = null; clientePost = null;
     document.querySelector('#ventaModal h3').textContent = 'Convertir en venta';
     document.getElementById('ventaOk').textContent = 'Convertir en venta';
     cotAConvertir = folio;
@@ -5543,6 +5610,27 @@
     cotAConvertir = null;
   }
   function convertirEnVenta() {
+    // Modo "completar la ficha del cliente"
+    if (clientePost) {
+      var rec = {};
+      document.querySelectorAll('.cli-dato').forEach(function (el) {
+        if (el.value) rec[el.getAttribute('data-campo')] = el.value;
+      });
+      if (!Object.keys(rec).length) { cerrarConvertirVenta(); clientePost = null; return; }
+      var btn2 = document.getElementById('ventaOk');
+      btn2.disabled = true; btn2.textContent = 'Guardando...';
+      var accion = clientePost.esNuevo
+        ? api('add', { token: state.token, key: 'ventas_clientes',
+                       record: Object.assign({ 'Cliente': clientePost.cliente,
+                                               'Nombre/Razón Social': clientePost.cliente }, rec) })
+        : api('fill', { token: state.token, key: 'ventas_clientes',
+                        match: { col: 'Cliente', value: clientePost.cliente }, set: rec });
+      accion.then(function () { toast('Cliente actualizado.', 'ok'); })
+        .catch(fail)
+        .then(function () { cerrarConvertirVenta(); clientePost = null;
+                            btn2.disabled = false; btn2.textContent = 'Convertir en venta'; });
+      return;
+    }
     // Modo "solo completar marketing" de una venta ya guardada
     if (marketingPost) {
       var set = {};
@@ -5950,7 +6038,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-90';
+    var mia = '2026.08.11-91';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
