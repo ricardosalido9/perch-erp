@@ -621,7 +621,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-68</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-69</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1442,7 +1442,7 @@
         chip('sinPar', 'Capturados y no salieron del banco (' + fmtNum(t.sinPar) + ')') +
         chip('soloBanco', 'Salieron del banco y no están capturados (' + fmtNum(t.soloBanco) + ')') +
         chip('conciliados', 'Conciliados (' + fmtNum(t.conciliados) + ')') +
-        chip('ajustes', 'Ajustes contables (' + fmtNum(t.ajustes || 0) + ')') +
+        chip('ajustes', 'Ajustes de Gastos Manuales (' + fmtNum(t.ajustes || 0) + ')') +
         '<button type="button" class="mes-chip' + (conciOrden === 'fecha' ? ' on' : '') +
           '" data-orden="fecha">Por fecha</button>' +
         '<button type="button" class="mes-chip' + (conciOrden === 'monto' ? ' on' : '') +
@@ -1471,13 +1471,18 @@
               '<td>' + esc(r.nivel) + '</td></tr>';
           }).join('') + '</tbody></table>';
       } else if (conciVista === 'ajustes') {
-        h += '<div class="s" style="margin:8px 0;color:var(--muted)">Renglones que no son pagos reales ' +
-          '(dicen ajuste, cuadre, corrección, traspaso, redondeo…). Se apartan de la conciliación.</div>' +
-          '<table class="mini-table"><thead><tr><th>Hoja</th><th>Fila</th><th>Fecha</th><th>Proveedor</th>' +
-          '<th>Descripción</th><th>Pedido</th><th style="text-align:right">Monto</th></tr></thead><tbody>' +
+        h += '<div class="s" style="margin:8px 0;color:var(--muted)">Renglones de <b>Gastos Manuales</b> que ' +
+          'no son pagos reales (ajuste, cuadre, corrección, traspaso, redondeo…). Se apartan de la conciliación.' +
+          (t.ajustesBanco ? '<br>Del lado del banco se apartaron además ' + fmtNum(t.ajustesBanco) +
+            ' traspasos y ajustes por ' + esc(fmtMoneyShort(t.montoAjustesBanco)) +
+            ', que tampoco son compras.' : '') + '</div>' +
+          '<table class="mini-table"><thead><tr><th>Fila</th><th>Fecha</th><th>Proveedor</th>' +
+          '<th>Concepto</th><th>Descripción</th><th>Pedido</th>' +
+          '<th style="text-align:right">Monto</th></tr></thead><tbody>' +
           lista.map(function (r) {
-            return '<tr><td>' + esc(r.origen) + '</td><td>' + fmtNum(r.fila) + '</td>' +
+            return '<tr><td>' + fmtNum(r.fila) + '</td>' +
               '<td>' + esc(formatDateCell(r.fecha)) + '</td><td>' + esc(r.proveedor || '—') + '</td>' +
+              '<td>' + esc(r.concepto || '') + '</td>' +
               '<td title="' + esc(r.descripcion) + '">' + esc((r.descripcion || '').slice(0, 50)) + '</td>' +
               '<td>' + esc(r.pedido || '') + '</td>' +
               '<td class="num">' + esc(formatMoney(r.monto)) + '</td></tr>';
@@ -5321,7 +5326,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-68';
+    var mia = '2026.08.11-69';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
