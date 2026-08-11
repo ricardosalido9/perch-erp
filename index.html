@@ -626,7 +626,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-97</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-98</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1084,7 +1084,7 @@
   }
 
   // ===== Estado de cuenta por proveedor (vista propia, no es una hoja) =====
-  var provAbierto = {}, provSolo = 'abiertos';
+  var provAbierto = {}, provSolo = 'abiertos', provSaldo = true;
   function loadProveedores() {
     document.getElementById('tableWrap').innerHTML =
       '<div class="state" style="padding:50px 0">Armando el estado de cuenta…</div>';
@@ -1092,8 +1092,12 @@
     mostrarAlta(false);
     api('proveedores', { token: state.token }).then(function (d) {
       var provs = d.proveedores || [];
+      var conSaldoLista = provs.filter(function (p) {
+        var x = (provSolo === 'abiertos' && p.abiertos) ? p.abiertos : p.totales;
+        return Math.abs(x.porPagar) > 1;
+      });
       var tot = { costo: 0, pagado: 0, porPagar: 0, pend: 0 };
-      provs.forEach(function (p) {
+      (provSaldo ? conSaldoLista : provs).forEach(function (p) {
         var x = (provSolo === 'abiertos' && p.abiertos) ? p.abiertos : p.totales;
         tot.costo += x.costo; tot.pagado += x.pagado;
         tot.porPagar += x.porPagar; tot.pend += x.pendientes;
@@ -1103,9 +1107,11 @@
       var conDeuda = provs.filter(function (x) { return x.totales.porPagar > 0.5; });
       var conFavor = provs.filter(function (x) { return x.totales.porPagar < -0.5; });
       box.innerHTML =
-        '<div class="sum-card"><div class="k">Proveedores</div><div class="v">' + fmtNum(provs.length) + '</div>' +
+        '<div class="sum-card"><div class="k">Proveedores</div><div class="v">' +
+          fmtNum(provSaldo ? conSaldoLista.length : provs.length) + '</div>' +
           '<div class="k" style="text-transform:none;letter-spacing:0">' + fmtNum(conDeuda.length) +
-          ' con saldo' + (conFavor.length ? ' · ' + fmtNum(conFavor.length) + ' a favor' : '') + '</div></div>' +
+          ' con saldo' + (conFavor.length ? ' · ' + fmtNum(conFavor.length) + ' a favor' : '') +
+          ' · ' + fmtNum(provs.length) + ' en total</div></div>' +
         '<div class="sum-card"><div class="k">Total pedido</div><div class="v">' + esc(formatMoney(tot.costo)) + '</div></div>' +
         '<div class="sum-card"><div class="k">Total pagado</div><div class="v">' + esc(formatMoney(tot.pagado)) + '</div></div>' +
         '<div class="sum-card"><div class="k">Saldo</div><div class="v" style="color:' +
@@ -1121,9 +1127,19 @@
         '<button type="button" class="mes-chip' + (provSolo === 'abiertos' ? ' on' : '') +
           '" data-alcance="abiertos">Solo pedidos abiertos</button>' +
         '<button type="button" class="mes-chip' + (provSolo === 'todos' ? ' on' : '') +
-          '" data-alcance="todos">Todo el histórico</button></div>' +
+          '" data-alcance="todos">Todo el histórico</button>' +
+        '<button type="button" class="mes-chip' + (provSaldo ? ' on' : '') +
+          '" data-saldo="1">Solo con saldo</button>' +
+        '<button type="button" class="mes-chip' + (provSaldo ? '' : ' on') +
+          '" data-saldo="0">Todos los proveedores</button></div>' +
         '<div class="cot-grid">';
-      provs.forEach(function (p) {
+      // Por defecto solo se ven los que deben o tienen a favor: son los que importan
+      var visibles = provs.filter(function (p) {
+        if (!provSaldo) return true;
+        var x = (provSolo === 'abiertos' && p.abiertos) ? p.abiertos : p.totales;
+        return Math.abs(x.porPagar) > 1;
+      });
+      visibles.forEach(function (p) {
         var t = (provSolo === 'abiertos' && p.abiertos) ? p.abiertos : p.totales;
         var ab = !!provAbierto[p.proveedor];
         var aFavor = t.porPagar < -0.5;
@@ -1185,9 +1201,12 @@
         h += '</div>';
       });
       document.getElementById('tableWrap').innerHTML = h + '</div>';
-      document.getElementById('count').textContent = provs.length + ' proveedores';
+      document.getElementById('count').textContent = visibles.length + ' de ' + provs.length + ' proveedores';
       document.querySelectorAll('#tableWrap [data-alcance]').forEach(function (b) {
         b.addEventListener('click', function () { provSolo = b.getAttribute('data-alcance'); loadProveedores(); });
+      });
+      document.querySelectorAll('#tableWrap [data-saldo]').forEach(function (b) {
+        b.addEventListener('click', function () { provSaldo = b.getAttribute('data-saldo') === '1'; loadProveedores(); });
       });
     }).catch(function (e) {
       document.getElementById('tableWrap').innerHTML =
@@ -1955,7 +1974,8 @@
 
   // Columnas filtrables por área. Si un área no está aquí, se pueden filtrar todas.
   var FILTER_FIELDS = {
-    prov_pedidos:  ['Fecha', 'Mes', 'Status', 'Proveedor', 'Pedido Proveedor', 'Folio cliente', 'Cliente', 'Productos', 'Material'],
+    prov_pedidos:  ['Fecha', 'Mes', 'Status', 'Proveedor', 'Pedido Proveedor', 'Folio cliente',
+                    'Cliente', 'Producto', 'Material'],
     prov_entradas: ['Mes', 'Pedido Proveedor', 'Proveedor', 'Pedido Cliente', 'Productos', 'Material', 'Status'],
     prov_salidas:  ['Proveedor', 'Folio cliente', 'Cliente', 'Pedido Proveedor', 'Productos', 'Material'],
     prov_envios:   ['Fecha', 'Mes', 'Status', 'Proveedor', 'Pedido'],
@@ -3743,7 +3763,7 @@
     if (!cPed) return null;
     var cProv = findHeaderByName('Proveedor'), cFec = findHeaderByName('Fecha');
     var cEst = findHeaderByName('Fecha Estimada de Entrega'), cSt = findHeaderByName('Status');
-    var cIt = findHeaderByName('Productos') || findHeaderByName('Item');
+    var cIt = findHeaderByName('Producto');
     var cMat = findHeaderByName('Material'), cCant = findHeaderByName('Cantidad');
     var cCU = findHeaderByName('Costo Unitario'), cIVA = findHeaderByName('Costo Total + IVA');
     var cFol = findHeaderByName('Folio cliente');
@@ -4024,6 +4044,7 @@
   var COMBO_FIELDS = {
     // Catálogo: listas de lo que ya existe, pero se puede escribir uno nuevo
     inventario: ['Productos', 'Material', 'Material Extra', 'Tipo de Producto'],
+    prov_pedidos: ['Proveedor', 'Cliente'],
     leads:      ['Contacto'],
     showroom:   ['Cliente', 'Despacho'],
     cotizaciones:    ['Cliente', 'Despacho', 'Vendedor'],
@@ -4115,9 +4136,12 @@
   var FORM_FIELDS = {
     // Vacío = cada área muestra todas sus columnas (en el orden de la hoja).
     // Pedidos a proveedores: primero el pedido, luego uno o varios productos
+    // Igual que Ventas: primero los datos del pedido, luego uno o varios productos.
+    // Mes, Año y Status no se preguntan: se ponen solos.
     prov_pedidos: [
-      'Fecha', 'Fecha Estimada de Entrega', 'Proveedor', 'Pedido Proveedor',
-      'Productos', 'Material', 'Tela', 'Especificaciones', 'Cantidad', 'Costo Unitario',
+      'Fecha', 'Fecha Estimada de Entrega', 'Pedido Proveedor', 'Proveedor',
+      'Folio cliente', 'Cliente', 'Dirección de Entrega',
+      'Producto', 'Material', 'Tela', 'Especificaciones', 'Cantidad', 'Costo Unitario',
       'Costo Total', 'Costo Total + IVA'
     ],
     // Leads: captura mínima a propósito. Si toma más de 15 segundos, nadie la va a llenar.
@@ -4156,9 +4180,9 @@
                         '% descuento', 'Descuentos'];
   var LINE_ITEMS = {
     // Un pedido a proveedor puede traer muchos productos
-    prov_pedidos: { line: ['Productos', 'Material', 'Tela', 'Especificaciones', 'Cantidad',
+    prov_pedidos: { line: ['Producto', 'Material', 'Tela', 'Especificaciones', 'Cantidad',
                            'Costo Unitario', 'Costo Total', 'Costo Total + IVA'],
-                    producto: 'Productos', precio: 'Costo Unitario', conIVA: 1.16 },
+                    producto: 'Producto', precio: 'Costo Unitario', conIVA: 1.16 },
     ventas_registro: { line: LINEA_PRODUCTO, envioOnce: 'Envio', producto: 'Producto', precio: 'Precio Unitario' },
     cotizaciones:    { line: LINEA_PRODUCTO, envioOnce: 'Envio', producto: 'Producto', precio: 'Precio Unitario' }
   };
@@ -4187,8 +4211,7 @@
     // Catálogo: el precio del año pasado y el IVA no se capturan en un producto nuevo
     inventario:       ['Precio de venta 2025', 'Precio de Venta 2025', 'IVA'],
     prov_pedidos:     ['Mes', 'Año', 'Status', 'Entradas', 'Pendientes por entregar',
-                       'Ventas + Exhibición', 'Stock', 'Valor', 'Folio cliente', 'Cliente',
-                       'Dirección de Entrega'],
+                       'Ventas + Exhibición', 'Stock', 'Valor'],
     ventas_registro:  ['Mes', 'Año1'],
     cotizaciones:     ['Mes', 'Año1'],
     compras_registro: ['Mes']
@@ -4282,7 +4305,7 @@
     inventario: ['No Producto', 'Productos', 'Material', 'Material Extra', 'Tipo de Producto',
                  'Costos Total', 'Precio', 'Descripción', 'Medidas'],
     prov_pedidos: ['Fecha Estimada de Entrega', 'Proveedor', 'Pedido Proveedor',
-                   'Productos', 'Material', 'Cantidad', 'Costo Unitario'],
+                   'Producto', 'Material', 'Cantidad', 'Costo Unitario'],
     leads:      ['Fecha', 'Contacto', 'Cómo llegó'],
     showroom:   ['Fecha', 'Cliente']
   };
@@ -5227,7 +5250,7 @@
   function abrirMandarAVenta(pedido) {
     aventaPedido = pedido;
     var cPed = findHeaderByName('Pedido Proveedor');
-    var cIt = findHeaderByName('Productos') || findHeaderByName('Item');
+    var cIt = findHeaderByName('Producto');
     var cMat = findHeaderByName('Material'), cCant = findHeaderByName('Cantidad');
     var cCU = findHeaderByName('Costo Unitario'), cProv = findHeaderByName('Proveedor');
     aventaLineas = (state.rows || []).filter(function (r) {
@@ -6161,7 +6184,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-97';
+    var mia = '2026.08.11-98';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
