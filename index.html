@@ -626,7 +626,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-103</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-104</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -4171,7 +4171,7 @@
     // Mes, Año y Status no se preguntan: se ponen solos.
     // El pedido a proveedor es general: a quién va cada pieza se decide en "Mandar a venta".
     prov_pedidos: [
-      'Fecha', 'Fecha Estimada de Entrega', 'Pedido Proveedor', 'Proveedor', 'Dirección de Entrega',
+      'Fecha', 'Fecha Estimada de Entrega', 'Pedido Proveedor', 'Proveedor',
       'Producto', 'Material', 'Tela', 'Especificaciones', 'Cantidad', 'Costo Unitario',
       'Costo Total', 'Costo Total + IVA'
     ],
@@ -4242,7 +4242,8 @@
     // Catálogo: el precio del año pasado y el IVA no se capturan en un producto nuevo
     inventario:       ['Precio de venta 2025', 'Precio de Venta 2025', 'IVA'],
     prov_pedidos:     ['Mes', 'Año', 'Status', 'Entradas', 'Pendientes por entregar',
-                       'Ventas + Exhibición', 'Stock', 'Valor', 'Folio cliente', 'Cliente'],
+                       'Ventas + Exhibición', 'Stock', 'Valor', 'Folio cliente', 'Cliente',
+                       'Dirección de Entrega'],
     ventas_registro:  ['Mes', 'Año1'],
     cotizaciones:     ['Mes', 'Año1'],
     compras_registro: ['Mes']
@@ -4482,6 +4483,38 @@
     recalcComputed();
     updateOrderTotal();
   }
+  // Tabla de consulta por varias llaves (costo unitario según producto + material + proveedor)
+  function tablaLU() {
+    return (state.lookups || []).filter(function (l) { return l.type === 'tabla'; })[0];
+  }
+  function aplicarTabla() {
+    var t = tablaLU();
+    if (!t) return;
+    var claves = t.campos.map(function (c) {
+      var el = fieldEl(c);
+      return norm(el ? el.value : '');
+    });
+    if (claves.some(function (v) { return !v; })) return;   // falta alguna llave
+    var k = claves.join('||');
+    var cands = t.filas.filter(function (f) { return f._k === k; });
+    if (!cands.length) return;
+    // Si la tabla distingue por año, gana el del año en curso; si no, el más reciente
+    if (t.conAnio) {
+      var hoy = new Date().getFullYear();
+      var delAnio = cands.filter(function (f) { return f._anio === hoy; });
+      cands = delAnio.length ? delAnio
+        : cands.slice().sort(function (a, b) { return (b._anio || 0) - (a._anio || 0); });
+    }
+    var fila = cands[0];
+    t.fills.forEach(function (campo) {
+      var el = fieldEl(campo);
+      if (!el || fila[campo] == null) return;
+      el.value = fila[campo];
+      el.dataset.deTabla = '1';
+    });
+    recalcComputed();
+  }
+
   function initCascade() {
     var c = cascadeLU(); if (!c) return;
     var s0 = cascElem(0);
@@ -4552,6 +4585,12 @@
     });
     avisoMargen();
     initCascade();
+    // El costo se recalcula al cambiar cualquiera de sus llaves
+    var tl = tablaLU();
+    if (tl) tl.campos.forEach(function (c) {
+      var el = fieldEl(c);
+      if (el) { el.addEventListener('change', aplicarTabla); el.addEventListener('input', aplicarTabla); }
+    });
     recalcComputed();
   }
   function lineResumen(rec) {
@@ -5105,6 +5144,12 @@
     });
     avisoMargen();
     initCascade();
+    // El costo se recalcula al cambiar cualquiera de sus llaves
+    var tl = tablaLU();
+    if (tl) tl.campos.forEach(function (c) {
+      var el = fieldEl(c);
+      if (el) { el.addEventListener('change', aplicarTabla); el.addEventListener('input', aplicarTabla); }
+    });
     // En cotizaciones la entrega se estima a 8 semanas (editable); en ventas se captura
     if (state.key === 'cotizaciones') {
       var fe = fieldEl('Fecha de entrega acordada');
@@ -6202,7 +6247,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-103';
+    var mia = '2026.08.11-104';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
