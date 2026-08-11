@@ -626,7 +626,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-91</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-92</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -5619,16 +5619,32 @@
       if (!Object.keys(rec).length) { cerrarConvertirVenta(); clientePost = null; return; }
       var btn2 = document.getElementById('ventaOk');
       btn2.disabled = true; btn2.textContent = 'Guardando...';
+      // El nombre del cliente puede vivir en distintas columnas según la hoja
+      var ALT_NOMBRE = ['Nombre/Razón Social', 'Nombre/Razon Social', 'Razón Social', 'Contacto', 'Nombre'];
       var accion = clientePost.esNuevo
         ? api('add', { token: state.token, key: 'ventas_clientes',
                        record: Object.assign({ 'Cliente': clientePost.cliente,
                                                'Nombre/Razón Social': clientePost.cliente }, rec) })
         : api('fill', { token: state.token, key: 'ventas_clientes',
-                        match: { col: 'Cliente', value: clientePost.cliente }, set: rec });
-      accion.then(function () { toast('Cliente actualizado.', 'ok'); })
-        .catch(fail)
-        .then(function () { cerrarConvertirVenta(); clientePost = null;
-                            btn2.disabled = false; btn2.textContent = 'Convertir en venta'; });
+                        match: { col: 'Cliente', colAlt: ALT_NOMBRE, value: clientePost.cliente },
+                        set: rec });
+      accion.then(function (out) {
+        if (out && out.filas === 0) {
+          avisoFijo('<b>No se encontró a "' + esc(clientePost.cliente) + '" en la Lista de Clientes.</b>' +
+            '<div style="margin-top:6px">Puede que esté escrito distinto ahí. Revísalo y vuelve a intentar, ' +
+            'o agrégalo desde el área Lista de clientes.</div>');
+        } else {
+          var n = (out && out.filas) ? out.filas : 1;
+          toast('Cliente actualizado (' + fmtNum(n) + (n === 1 ? ' renglón' : ' renglones') + ').', 'ok');
+        }
+      })
+        .catch(function (e) {
+          avisoFijo('<b>No se pudo guardar el cliente.</b><div style="margin-top:6px">' +
+            esc((e && e.message) || '') + '</div>' +
+            '<div style="margin-top:6px;color:var(--muted);font-size:12px">Los datos que capturaste siguen ' +
+            'en el formulario: ciérralo solo cuando queden guardados.</div>');
+        })
+        .then(function () { btn2.disabled = false; btn2.textContent = 'Guardar cliente'; });
       return;
     }
     // Modo "solo completar marketing" de una venta ya guardada
@@ -6038,7 +6054,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-91';
+    var mia = '2026.08.11-92';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
