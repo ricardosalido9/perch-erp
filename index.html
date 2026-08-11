@@ -621,7 +621,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-63</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-64</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1405,7 +1405,7 @@
   }
 
   // ===== Gastos Manuales contra EGRESOS =====
-  var conciAnio = 2026, conciVista = 'sinPar';
+  var conciAnio = 2026, conciVista = 'sinPar', conciOrden = 'fecha';
   function loadConciliacion() {
     document.getElementById('tableWrap').innerHTML =
       '<div class="state" style="padding:50px 0">Cruzando gastos manuales contra el banco…</div>';
@@ -1438,9 +1438,15 @@
       var h = '<div class="mes-chips">' +
         chip('sinPar', 'Capturados y no salieron del banco (' + fmtNum(t.sinPar) + ')') +
         chip('soloBanco', 'Salieron del banco y no están capturados (' + fmtNum(t.soloBanco) + ')') +
-        chip('conciliados', 'Conciliados (' + fmtNum(t.conciliados) + ')') + '</div>';
+        chip('conciliados', 'Conciliados (' + fmtNum(t.conciliados) + ')') +
+        '<button type="button" class="mes-chip' + (conciOrden === 'fecha' ? ' on' : '') +
+          '" data-orden="fecha">Por fecha</button>' +
+        '<button type="button" class="mes-chip' + (conciOrden === 'monto' ? ' on' : '') +
+          '" data-orden="monto">Por monto</button></div>';
 
-      var lista = d[conciVista] || [];
+      var lista = (d[conciVista] || []).slice();
+      if (conciOrden === 'monto') lista.sort(function (a, b) { return b.monto - a.monto; });
+      else lista.sort(function (a, b) { return (b.dia || 0) - (a.dia || 0); });
       if (conciVista === 'conciliados') {
         h += '<table class="mini-table"><thead><tr><th>Fecha manual</th><th>Fecha banco</th><th>Días</th>' +
           '<th>Proveedor</th><th>Descripción</th><th>Cuenta</th><th style="text-align:right">Monto</th>' +
@@ -1469,6 +1475,9 @@
       document.getElementById('count').textContent = lista.length + ' movimientos';
       document.querySelectorAll('#tableWrap [data-conci]').forEach(function (b) {
         b.addEventListener('click', function () { conciVista = b.getAttribute('data-conci'); loadConciliacion(); });
+      });
+      document.querySelectorAll('#tableWrap [data-orden]').forEach(function (b) {
+        b.addEventListener('click', function () { conciOrden = b.getAttribute('data-orden'); loadConciliacion(); });
       });
     }).catch(function (e) {
       document.getElementById('tableWrap').innerHTML =
@@ -5275,7 +5284,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-63';
+    var mia = '2026.08.11-64';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
