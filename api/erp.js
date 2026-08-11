@@ -34,7 +34,8 @@ const RUTAS = {
   'conci-traza':  require('../lib/handlers/conci-traza'),
   'inv-prov':     require('../lib/handlers/inventario-prov'),
   clientes:       require('../lib/handlers/clientes'),
-  csf:            require('../lib/handlers/csf')
+  csf:            require('../lib/handlers/csf'),
+  'prov-export':  require('../lib/handlers/prov-export')
 };
 
 module.exports = async (req, res) => {

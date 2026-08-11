@@ -626,7 +626,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-98</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-100</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -671,6 +671,7 @@
         <button id="catViewBtn" type="button" style="display:none">Ver como tabla</button>
         <button id="driveCostosBtn" type="button" style="display:none">Actualizar en Drive</button>
         <button id="driveStockBtn" type="button" style="display:none">Recalcular stock</button>
+        <button id="driveProvBtn" type="button" style="display:none">Exportar a Drive</button>
         <button id="downloadBtn" type="button">Descargar</button>
         <span class="count" id="count"></span>
       </div>
@@ -1086,6 +1087,7 @@
   // ===== Estado de cuenta por proveedor (vista propia, no es una hoja) =====
   var provAbierto = {}, provSolo = 'abiertos', provSaldo = true;
   function loadProveedores() {
+    document.getElementById('driveProvBtn').style.display = '';
     document.getElementById('tableWrap').innerHTML =
       '<div class="state" style="padding:50px 0">Armando el estado de cuenta…</div>';
     document.getElementById('summary').innerHTML = '';
@@ -1810,6 +1812,7 @@
       }
       document.getElementById('driveCostosBtn').style.display = (state.key === 'costos') ? '' : 'none';
       document.getElementById('driveStockBtn').style.display = (state.key === 'op_stock') ? '' : 'none';
+      document.getElementById('driveProvBtn').style.display = (state.key === 'proveedores') ? '' : 'none';
       var cvb = document.getElementById('catViewBtn');
       cvb.style.display = ['inventario','cotizaciones','prov_pedidos'].indexOf(state.key) !== -1 ? '' : 'none';
       cvb.textContent = catalogoAgrupado ? 'Ver como tabla' : 'Ver por producto';
@@ -6184,7 +6187,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-98';
+    var mia = '2026.08.11-100';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
@@ -6251,6 +6254,15 @@
   document.getElementById('search').addEventListener('input', renderTable);
   document.getElementById('driveCostosBtn').addEventListener('click', function () {
     subirCostosADrive(this);
+  });
+  document.getElementById('driveProvBtn').addEventListener('click', function () {
+    var b = this, t = b.textContent;
+    b.disabled = true; b.textContent = 'Escribiendo en Drive...';
+    api('prov-export', { token: state.token }).then(function (o) {
+      toast('Listo: ' + fmtNum(o.proveedores) + ' proveedores, ' + fmtNum(o.pedidos) + ' pedidos y ' +
+            fmtNum(o.pagos) + ' pagos.', 'ok');
+      if (o.archivo) window.open(o.archivo, '_blank');
+    }).catch(fail).then(function () { b.disabled = false; b.textContent = t; });
   });
   document.getElementById('driveStockBtn').addEventListener('click', function () {
     var b = this, t = b.textContent;
