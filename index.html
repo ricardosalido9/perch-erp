@@ -626,7 +626,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-85</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-86</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -2311,6 +2311,7 @@
     return '<div class="mes-chips">' + chip('', 'Todas (' + fmtNum(n) + ')') +
         chip('abiertas', 'Pendientes (' + fmtNum(abiertas) + ')') +
         chip('vendidas', 'Vendidas (' + fmtNum(vend) + ')') + chip('rechazadas', 'Rechazadas (' + fmtNum(rech) + ')') +
+        chip('volver', 'Por volver a buscar (' + fmtNum(volver) + ')') +
       '</div><div class="summary-cards">' +
       card('Cotizaciones', fmtNum(n), fmtNum(rows.length) + ' renglones · ' + fmtNum(piezas) + ' piezas') +
       card('Valor cotizado', esc(formatMoney(valor))) +
@@ -3824,13 +3825,21 @@
 
   // Si la hoja usa otro nombre para el mismo dato, aquí se reconoce igual
   var ALIAS_CAMPOS = {
+    'Cómo Llego':        ['Como llego', 'Cómo llegó', 'Forma de Contacto', 'Canal', 'Origen'],
+    'Línea de Negocio':  ['Linea de Negocio', 'Línea de negocio'],
+    'Tipo de Línea':     ['Tipo de Linea', 'Tipo de línea', 'TIPO CLIENTE', 'Tipo de Cliente'],
+    'Showroom':          ['Visito Showroom', 'Visitó Showroom', 'Visito showroom'],
+    'Notas':             ['NOTAS', 'Comentarios', 'Observaciones'],
+    'Ciudad':            ['CIUDAD'],
+    'Proyecto':          ['PROYECTO'],
+    'Happening':         ['HAPPENING'],
     'Productos':         ['Producto', 'Item'],
     'Producto':          ['Productos', 'Item'],
     'Item':              ['Productos', 'Producto'],
     'Costo Unitario':    ['Costos Total', 'Costo unitario'],
-    'TIPO CLIENTE':      ['Tipo de Cliente', 'Tipo Cliente', 'TIPO DE CLIENTE'],
-    'Forma de Contacto': ['Como llego', 'Cómo llegó', 'Forma de contacto', 'Canal', 'Origen'],
-    'Visito Showroom':   ['Visitó Showroom', 'Visito showroom', 'Showroom'],
+    'TIPO CLIENTE':      ['Tipo de Línea', 'Tipo de Cliente', 'Tipo Cliente'],
+    'Forma de Contacto': ['Cómo Llego', 'Como llego', 'Cómo llegó', 'Canal', 'Origen'],
+    'Visito Showroom':   ['Showroom', 'Visitó Showroom', 'Visito showroom'],
     'NOTAS':             ['Notas', 'Comentarios', 'Observaciones']
   };
   function headerConAlias(nombre) {
@@ -3984,13 +3993,13 @@
       'Costo Total', 'Costo Total + IVA'
     ],
     // Leads: captura mínima a propósito. Si toma más de 15 segundos, nadie la va a llenar.
-    leads: ['Fecha', 'Contacto', 'Cómo llegó', 'Notas'],
+    leads: ['Fecha', 'Contacto', 'Cómo Llego', 'Notas'],
     // Showroom: la visita se registra sola, venga o no de una cotización
-    showroom: ['Fecha', 'Cliente', 'Despacho', 'TIPO CLIENTE', 'Cómo llegó', 'Notas'],
+    showroom: ['Fecha', 'Cliente', 'Despacho', 'Ciudad', 'Cómo Llego', 'Línea de Negocio', 'Tipo de Línea', 'Notas'],
     // Cotizaciones: mismos campos que una venta + la encuesta comercial
     cotizaciones: [
       'Fecha del Cierre', 'Cliente', 'Despacho', 'Vendedor', 'Fecha de entrega acordada',
-      'TIPO CLIENTE', 'Forma de Contacto', 'Visito Showroom', 'NOTAS',
+      'Ciudad', 'Proyecto', 'Cómo Llego', 'Línea de Negocio', 'Tipo de Línea', 'Showroom', 'Happening', 'Notas',
       'Direccion de envio', 'Telefono', 'Cantidad', 'Producto', 'Material', 'Material Extra',
       'Tipo de Producto', 'Tela', 'Descripción', 'Medidas', 'Especificaciones',
       'Precio Unitario', '% descuento', 'Descuentos', 'Envio'
@@ -5249,10 +5258,16 @@
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   }
   // Campos de marketing que deben quedar completos al cerrar la venta
+  // Las mismas preguntas del registro de ventas. Las respuestas salen de la pestaña Categorías.
   var CAMPOS_MKT = [
-    { campo: 'TIPO CLIENTE',      label: 'Tipo de cliente' },
-    { campo: 'Forma de Contacto', label: 'Cómo llegó' },
-    { campo: 'Visito Showroom',   label: '¿Visitó el showroom?' }
+    { campo: 'Ciudad',            label: 'Ciudad' },
+    { campo: 'Proyecto',          label: 'Proyecto' },
+    { campo: 'Cómo Llego',        label: 'Cómo llegó' },
+    { campo: 'Línea de Negocio',  label: 'Línea de negocio' },
+    { campo: 'Tipo de Línea',     label: 'Tipo de línea' },
+    { campo: 'Showroom',          label: '¿Visitó el showroom?' },
+    { campo: 'Happening',         label: 'Happening' },
+    { campo: 'Notas',             label: 'Notas' }
   ];
   // Modal chico para completar los datos de marketing de una venta ya guardada
   function pedirMarketing(folio, faltan, area) {
@@ -5692,7 +5707,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-85';
+    var mia = '2026.08.11-86';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
