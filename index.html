@@ -621,7 +621,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-70</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-71</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1427,6 +1427,9 @@
         '<div class="sum-card"><div class="k">En el banco sin capturar</div><div class="v">' +
           fmtNum(t.soloBanco) + '</div><div class="k" style="text-transform:none;letter-spacing:0">' +
           esc(fmtMoneyShort(t.montoSoloBanco)) + '</div></div>' +
+        (t.noPagados ? '<div class="sum-card"><div class="k">Sin pagar</div><div class="v">' +
+          fmtNum(t.noPagados) + '</div><div class="k" style="text-transform:none;letter-spacing:0">' +
+          esc(fmtMoneyShort(t.montoNoPagados)) + ' comprometido</div></div>' : '') +
         (t.ajustes ? '<div class="sum-card"><div class="k">Ajustes apartados</div><div class="v">' +
           fmtNum(t.ajustes) + '</div><div class="k" style="text-transform:none;letter-spacing:0">' +
           esc(fmtMoneyShort(t.montoAjustes)) + '</div></div>' : '') +
@@ -1442,6 +1445,7 @@
         chip('sinPar', 'Capturados y no salieron del banco (' + fmtNum(t.sinPar) + ')') +
         chip('soloBanco', 'Salieron del banco y no están capturados (' + fmtNum(t.soloBanco) + ')') +
         chip('conciliados', 'Conciliados (' + fmtNum(t.conciliados) + ')') +
+        chip('noPagados', 'Todavía sin pagar (' + fmtNum(t.noPagados || 0) + ')') +
         chip('ajustes', 'Ajustes de Gastos Manuales (' + fmtNum(t.ajustes || 0) + ')') +
         '<button type="button" class="mes-chip' + (conciOrden === 'fecha' ? ' on' : '') +
           '" data-orden="fecha">Por fecha</button>' +
@@ -1469,6 +1473,20 @@
               '<td class="num">' + esc(formatMoney(r.monto)) + '</td>' +
               '<td class="num">' + (Math.abs(dif) > 0.02 ? esc(formatMoney(dif)) : '') + '</td>' +
               '<td>' + esc(r.nivel) + '</td></tr>';
+          }).join('') + '</tbody></table>';
+      } else if (conciVista === 'noPagados') {
+        h += '<div class="s" style="margin:8px 0;color:var(--muted)">Gastos capturados con <b>Pagado = FALSE</b>. ' +
+          'Son compromisos registrados que todavía no salen del banco, así que no entran a la conciliación. ' +
+          'Sirven para saber cuánto se debe.</div>' +
+          '<table class="mini-table"><thead><tr><th>Fila</th><th>Fecha</th><th>Proveedor</th>' +
+          '<th>Concepto</th><th>Descripción</th><th>Pedido</th>' +
+          '<th style="text-align:right">Monto</th></tr></thead><tbody>' +
+          lista.map(function (r) {
+            return '<tr><td>' + fmtNum(r.fila) + '</td><td>' + esc(formatDateCell(r.fecha)) + '</td>' +
+              '<td>' + esc(r.proveedor || '—') + '</td><td>' + esc(r.concepto || '') + '</td>' +
+              '<td title="' + esc(r.descripcion) + '">' + esc((r.descripcion || '').slice(0, 46)) + '</td>' +
+              '<td>' + esc(r.pedido || '') + '</td>' +
+              '<td class="num">' + esc(formatMoney(r.monto)) + '</td></tr>';
           }).join('') + '</tbody></table>';
       } else if (conciVista === 'ajustes') {
         h += '<div class="s" style="margin:8px 0;color:var(--muted)">Renglones de <b>Gastos Manuales</b> que ' +
@@ -5326,7 +5344,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-70';
+    var mia = '2026.08.11-71';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
