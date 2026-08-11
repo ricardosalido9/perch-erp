@@ -543,6 +543,8 @@
   .cot-total { font-size:17px; font-weight:600; color:var(--ink); white-space:nowrap; }
   .cot-body { border-top:1px solid var(--line); padding:14px 18px; background:var(--paper); }
   .cot-body .mini-table { background:var(--surface); border-radius:10px; }
+  .cot-body tr.fila-edit { background:var(--amber-bg); }
+  .cot-body .row-btn { padding:3px 9px; font-size:12px; }
   .cot-acciones { display:flex; gap:10px; align-items:center; margin-top:12px; flex-wrap:wrap; }
   .prov-cifras { display:flex; gap:26px; flex:none; }
   .prov-cifras > div { text-align:right; min-width:110px; display:flex; flex-direction:column; gap:2px; }
@@ -638,7 +640,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-109</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-110</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -3735,6 +3737,7 @@
     return '<select class="cot-status" data-folio="' + esc(folio).replace(/"/g, '&quot;') + '">' + html + '</select>';
   }
 
+  var filaEditando = -1;
   function renderCotizaciones(rows) {
     var cRef = findHeaderByName('No. de Referencia') || findHeaderByName('Folio');
     if (!cRef) return null;
@@ -3782,17 +3785,35 @@
         h += '<div class="cot-body">' +
           '<table class="mini-table"><thead><tr><th>Producto</th><th>Material</th>' +
           '<th style="text-align:right">Cantidad</th><th style="text-align:right">Precio Unitario</th>' +
-          '<th style="text-align:right">Importe</th></tr></thead><tbody>';
+          '<th style="text-align:right">Importe</th><th></th></tr></thead><tbody>';
         items.forEach(function (r) {
           var c = parseNumber(cCant ? r[cCant] : null) || 0;
           var p = parseNumber(cPU ? r[cPU] : null) || 0;
-          h += '<tr><td>' + esc(r[cProd] || '') + '</td><td>' + esc(cMat ? (r[cMat] || '') : '') + '</td>' +
-            '<td class="num">' + fmtNum(c) + '</td><td class="num">' + esc(formatMoney(p)) + '</td>' +
-            '<td class="num">' + esc(formatMoney(c * p)) + '</td></tr>';
+          var enEd = (filaEditando === r._row);
+          if (enEd) {
+            // Se editan los campos que se cambian de verdad: cantidad, precio y material
+            h += '<tr class="fila-edit"><td>' + esc(r[cProd] || '') + '</td>' +
+              '<td><input class="row-input ed-campo" data-col="' + esc(cMat || '') + '" value="' +
+                esc(cMat ? (r[cMat] || '') : '') + '" style="width:120px"></td>' +
+              '<td><input class="row-input ed-campo" type="number" min="0" data-col="' + esc(cCant || '') +
+                '" value="' + esc(c) + '" style="width:70px;text-align:right"></td>' +
+              '<td><input class="row-input ed-campo" type="number" step="0.01" data-col="' + esc(cPU || '') +
+                '" value="' + esc(p) + '" style="width:100px;text-align:right"></td>' +
+              '<td class="num">' + esc(formatMoney(c * p)) + '</td>' +
+              '<td style="white-space:nowrap"><button type="button" class="row-btn primary ed-ok" data-row="' +
+                r._row + '">Guardar</button> ' +
+              '<button type="button" class="row-btn ed-no">Cancelar</button></td></tr>';
+          } else {
+            h += '<tr><td>' + esc(r[cProd] || '') + '</td><td>' + esc(cMat ? (r[cMat] || '') : '') + '</td>' +
+              '<td class="num">' + fmtNum(c) + '</td><td class="num">' + esc(formatMoney(p)) + '</td>' +
+              '<td class="num">' + esc(formatMoney(c * p)) + '</td>' +
+              '<td><button type="button" class="row-btn ed-abrir" data-row="' + r._row +
+              '" title="Corregir este producto">Editar</button></td></tr>';
+          }
         });
         if (envio) {
           h += '<tr><td colspan="4" style="text-align:right">Envío del pedido</td>' +
-               '<td class="num">' + esc(formatMoney(envio)) + '</td></tr>';
+               '<td class="num">' + esc(formatMoney(envio)) + '</td><td></td></tr>';
         }
         h += '</tbody></table>' +
           '<div class="cot-acciones">' +
@@ -6322,7 +6343,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-109';
+    var mia = '2026.08.11-110';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
@@ -6458,6 +6479,27 @@
           loadArea();
         })
         .catch(function (err) { fail(err); sv.disabled = false; sv.textContent = 'Aplicar'; });
+      return;
+    }
+    var edA = e.target.closest('.ed-abrir');
+    if (edA) { filaEditando = parseInt(edA.getAttribute('data-row'), 10); renderTable(); return; }
+    var edN = e.target.closest('.ed-no');
+    if (edN) { filaEditando = -1; renderTable(); return; }
+    var edO = e.target.closest('.ed-ok');
+    if (edO) {
+      var fila = parseInt(edO.getAttribute('data-row'), 10);
+      var tr = edO.closest('tr');
+      var orig = (state.rows || []).filter(function (r) { return r._row === fila; })[0] || {};
+      var rec = {};
+      state.headers.forEach(function (h2) { rec[h2] = (orig[h2] != null) ? orig[h2] : ''; });
+      tr.querySelectorAll('.ed-campo').forEach(function (inp) {
+        var col = inp.getAttribute('data-col');
+        if (col) rec[col] = inp.value;
+      });
+      edO.disabled = true; edO.textContent = 'Guardando...';
+      api('update', { token: state.token, key: state.key, row: fila, record: rec })
+        .then(function () { toast('Producto corregido.', 'ok'); filaEditando = -1; loadArea(); })
+        .catch(function (er) { fail(er); edO.disabled = false; edO.textContent = 'Guardar'; });
       return;
     }
     var av = e.target.closest('.aventa-btn');
