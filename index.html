@@ -311,6 +311,12 @@
   #lineItemsBox { margin-top:18px; border-top:1px dashed var(--line); padding-top:14px; }
   #lineItemsBox .li-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
   #lineItemsBox .li-title { font-weight:600; color:var(--ink); font-size:14px; }
+  #lineItemsBox .li-cant { flex:none; display:flex; align-items:center; gap:3px; color:var(--muted); font-size:13px; }
+  #lineItemsBox .li-qty { width:58px; text-align:right; padding:4px 6px; font-size:13px;
+    border:1px solid var(--line); border-radius:6px; background:var(--surface); }
+  #lineItemsBox .li-qty:focus { border-color:var(--accent-ink); outline:none; }
+  #lineItemsBox .li-imp { flex:none; font-weight:600; min-width:92px; text-align:right; }
+  #lineItemsBox .li-row.editando { background:var(--amber-bg); border-radius:8px; }
   #lineItemsBox .li-edit { background:transparent; border:0; color:var(--muted); font-size:15px;
     cursor:pointer; padding:2px 6px; }
   #lineItemsBox .li-edit:hover { color:var(--accent-ink); border-color:transparent; }
@@ -558,6 +564,12 @@
 
   /* ---------- Detalles heredados ---------- */
   #lineItemsBox .li-row .li-n { background:var(--primary); color:#fff; }
+  #lineItemsBox .li-cant { flex:none; display:flex; align-items:center; gap:3px; color:var(--muted); font-size:13px; }
+  #lineItemsBox .li-qty { width:58px; text-align:right; padding:4px 6px; font-size:13px;
+    border:1px solid var(--line); border-radius:6px; background:var(--surface); }
+  #lineItemsBox .li-qty:focus { border-color:var(--accent-ink); outline:none; }
+  #lineItemsBox .li-imp { flex:none; font-weight:600; min-width:92px; text-align:right; }
+  #lineItemsBox .li-row.editando { background:var(--amber-bg); border-radius:8px; }
   #lineItemsBox .li-edit { background:transparent; border:0; color:var(--muted); font-size:15px;
     cursor:pointer; padding:2px 6px; }
   #lineItemsBox .li-edit:hover { color:var(--accent-ink); border-color:transparent; }
@@ -626,7 +638,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-104</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-107</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -652,6 +664,7 @@
         <div>
           <h1 class="ph-t" id="pageTitle"></h1>
           <div class="ph-s" id="pageSub"></div>
+          <div class="ph-s" id="areaFuente" style="font-size:12px;margin-top:3px;opacity:.85"></div>
         </div>
         <div class="ph-actions" id="pageActions">
           <button class="btn-add" id="openAddBtn" type="button">
@@ -1824,6 +1837,14 @@
       var lk = r[2]; state.lookups = (lk && lk.lookups) ? lk.lookups : [];
       state.headers = data.headers || []; state.rows = data.rows || [];
       state.fileId = data.fileId || ''; state.sheetName = data.sheetName || '';
+      // Siempre visible: dónde se lee y dónde se escribe esta área
+      var fuente = document.getElementById('areaFuente');
+      if (fuente) {
+        fuente.innerHTML = (data.sheetName && data.archivoUrl)
+          ? 'Se guarda en <a href="' + esc(data.archivoUrl) + '" target="_blank">' +
+            esc(data.sheetName) + '</a>'
+          : '';
+      }
       var vinoFiltrado = aplicarFiltroPendiente();
       // Si la hoja trae celdas con error de fórmula, se avisa en vez de mostrarlas como datos
       if (data.errores) {
@@ -4649,6 +4670,7 @@
     if (!c || !c.envioOnce) return null;
     return findHeaderByName(c.envioOnce) || null;
   }
+  var lineaEditando = -1;
   function renderLineList() {
     var addBtn = document.getElementById('addLineBtn');
     var qBtn = document.getElementById('saveQuoteBtn');
@@ -4683,10 +4705,17 @@
     } else {
       items.forEach(function (rec, i) {
         var r = lineResumen(rec);
-        html += '<div class="li-row"><span class="li-n">' + (i + 1) + '</span>' +
+        var colCant = findHeaderByName('Cantidad');
+        var cant = colCant ? (rec[colCant] || '') : '';
+        html += '<div class="li-row' + (lineaEditando === i ? ' editando' : '') + '">' +
+                '<span class="li-n">' + (i + 1) + '</span>' +
                 '<span class="li-txt">' + esc(r.titulo) + (r.sub ? ' <small>' + esc(r.sub) + '</small>' : '') + '</span>' +
-                '<span class="li-txt" style="flex:none;font-weight:600">$' + fmtMoney(lineTotal(rec)) + '</span>' +
-                '<button type="button" class="li-edit" data-i="' + i + '" title="Editar">✎</button>' +
+                (colCant
+                  ? '<span class="li-cant">×<input type="number" min="0" step="1" class="li-qty" ' +
+                    'data-i="' + i + '" value="' + esc(cant) + '" title="Cambia la cantidad aquí"></span>'
+                  : '') +
+                '<span class="li-txt li-imp">$' + fmtMoney(lineTotal(rec)) + '</span>' +
+                '<button type="button" class="li-edit" data-i="' + i + '" title="Editar todo el producto">✎</button>' +
                 '<button type="button" class="li-del" data-i="' + i + '" title="Quitar">✕</button></div>';
       });
     }
@@ -4705,6 +4734,22 @@
     if (envInp) envInp.addEventListener('input', function () {
       envioValor = envInp.value; updateOrderTotal();
     });
+    // Cambiar la cantidad aquí mismo, sin abrir nada
+    Array.prototype.forEach.call(box.querySelectorAll('.li-qty'), function (inp) {
+      inp.addEventListener('input', function () {
+        var i = parseInt(inp.getAttribute('data-i'), 10);
+        var rec = state.lineItems[i];
+        if (!rec) return;
+        var cc = findHeaderByName('Cantidad');
+        if (cc) rec[cc] = inp.value;
+        // Se recalculan los totales de esa línea con la cantidad nueva
+        recalcRecord(rec);
+        var fila = inp.closest('.li-row');
+        var imp = fila ? fila.querySelector('.li-imp') : null;
+        if (imp) imp.textContent = '$' + fmtMoney(lineTotal(rec));
+        updateOrderTotal();
+      });
+    });
     Array.prototype.forEach.call(box.querySelectorAll('.li-del'), function (b) {
       b.addEventListener('click', function () {
         state.lineItems.splice(parseInt(b.getAttribute('data-i'), 10), 1);
@@ -4721,8 +4766,11 @@
         if (pend && pend.ok && pend.cantidad) state.lineItems.push(pend.rec);   // no se pierde lo escrito
         cargarLineaEnFormulario(rec);
         state.lineItems.splice(i, 1);
+        lineaEditando = -1;
         renderLineList();
-        toast('Corrige el producto y vuelve a tocar "Agregar producto al pedido".', 'ok');
+        var ba = document.getElementById('addLineBtn');
+        if (ba) ba.textContent = 'Guardar cambios del producto';
+        toast('Corrige lo que necesites y toca "Guardar cambios del producto".', 'ok');
       });
     });
     updateOrderTotal();
@@ -4754,6 +4802,8 @@
   }
 
   function addProductLine() {
+    var ba0 = document.getElementById('addLineBtn');
+    if (ba0) ba0.textContent = '+ Agregar producto al pedido';
     var falta = cascadeLevelsMissing();
     if (falta) { toast('Falta elegir: ' + falta, 'err'); return; }
     var info = readLineFromForm();
@@ -4824,6 +4874,31 @@
     box.addEventListener('input', calcular);
     box.addEventListener('change', calcular);
     calcular();
+  }
+
+  // Recalcula los campos derivados de un producto YA agregado (al cambiarle la cantidad)
+  function recalcRecord(rec) {
+    var defs = COMPUTED_FIELDS[state.key]; if (!defs || !rec) return;
+    var val = function (campo) {
+      if (typeof campo === 'number') return campo;
+      var real = findHeaderByName(campo);
+      return real ? rec[real] : null;
+    };
+    Object.keys(defs).forEach(function (target) {
+      var d = defs[target];
+      var real = findHeaderByName(target); if (!real) return;
+      if (d.op === 'mul') {
+        var a = toNum(val(d.a)), b = (typeof d.b === 'number') ? d.b : toNum(val(d.b));
+        rec[real] = (a && b) ? Math.round(a * b * 100) / 100 : '';
+        return;
+      }
+      if (d.op === 'copy') { rec[real] = val(d.a); return; }
+      if (d.op === 'sum') {
+        var t = 0;
+        (d.fields || []).forEach(function (f) { t += toNum(val(f)); });
+        rec[real] = Math.round(t * 100) / 100;
+      }
+    });
   }
 
   function recalcComputed() {
@@ -6247,7 +6322,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-104';
+    var mia = '2026.08.11-107';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
