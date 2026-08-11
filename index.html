@@ -626,7 +626,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-100</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-101</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1085,7 +1085,9 @@
   }
 
   // ===== Estado de cuenta por proveedor (vista propia, no es una hoja) =====
-  var provAbierto = {}, provSolo = 'abiertos', provSaldo = true;
+  // El histórico manda: un pedido entregado sigue debiéndose hasta que se paga.
+  // Filtrar por "abiertos" esconde el costo pero no los pagos, y el saldo sale falso.
+  var provAbierto = {}, provSolo = 'todos', provSaldo = true;
   function loadProveedores() {
     document.getElementById('driveProvBtn').style.display = '';
     document.getElementById('tableWrap').innerHTML =
@@ -1126,10 +1128,11 @@
           '<div class="k" style="text-transform:none;letter-spacing:0">sin leer EGRESOS</div></div>');
 
       var h = '<div class="mes-chips">' +
-        '<button type="button" class="mes-chip' + (provSolo === 'abiertos' ? ' on' : '') +
-          '" data-alcance="abiertos">Solo pedidos abiertos</button>' +
         '<button type="button" class="mes-chip' + (provSolo === 'todos' ? ' on' : '') +
-          '" data-alcance="todos">Todo el histórico</button>' +
+          '" data-alcance="todos">Todos los pedidos</button>' +
+        '<button type="button" class="mes-chip' + (provSolo === 'abiertos' ? ' on' : '') +
+          '" data-alcance="abiertos" title="Ojo: esconde los pedidos entregados pero no sus pagos">' +
+          'Solo por entregar</button>' +
         '<button type="button" class="mes-chip' + (provSaldo ? ' on' : '') +
           '" data-saldo="1">Solo con saldo</button>' +
         '<button type="button" class="mes-chip' + (provSaldo ? '' : ' on') +
@@ -1164,7 +1167,12 @@
             '<span class="cat-chev">' + (ab ? '▲' : '▼') + '</span>' +
           '</button>';
         if (ab) {
-          h += '<div class="cot-body">';
+          h += '<div class="cot-body">' +
+            (provSolo === 'abiertos'
+              ? '<div class="s" style="color:var(--amber);margin-bottom:10px">Estás viendo solo los pedidos ' +
+                'por entregar. El saldo no es el real: los pedidos entregados también se deben hasta ' +
+                'que se pagan.</div>'
+              : '');
           p.pedidos.filter(function (d2) { return provSolo !== 'abiertos' || d2.abierto; })
                    .forEach(function (d2) {
             h += '<div style="margin-bottom:14px">' +
@@ -6187,7 +6195,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-100';
+    var mia = '2026.08.11-101';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
