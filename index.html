@@ -626,7 +626,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-94</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-97</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -5207,13 +5207,13 @@
           var c = findHeaderByName(mk.campo);
           return !c || !String(order[c] || '').trim();
         }));
-        if (faltanMkt.length) pedirMarketing(folioNuevo, faltanMkt, 'ventas_registro', datosMkt);
+        if (faltanMkt.length) encolar(function () { pedirMarketing(folioNuevo, faltanMkt, 'ventas_registro', datosMkt); });
         else registrarMarketing(folioNuevo, datosMkt);
       }
       // Cuentas por Cobrar y factura son cosa de VENTAS. Un pedido a proveedor no las lleva.
       if (areaDestino === 'ventas_registro') {
         resumenPedido.folio = folioNuevo;
-        registrarEnCxc(resumenPedido);
+        encolar(function () { registrarEnCxc(resumenPedido); });
       }
       loadArea();
     }).catch(function (e) {
@@ -5422,8 +5422,8 @@
   function registrarVisitaShowroom(cliente, despacho, folio, order) {
     api('clientes', { token: state.token, buscar: cliente }).then(function (d) {
       var c = (d.clientes || []).filter(function (x) { return norm(x.cliente) === norm(cliente); })[0];
-      preguntarVisita(cliente, despacho, folio, order, (c && c.detalleVisitas) || []);
-    }).catch(function () { preguntarVisita(cliente, despacho, folio, order, []); });
+      encolar(function () { preguntarVisita(cliente, despacho, folio, order, (c && c.detalleVisitas) || []); });
+    }).catch(function () { encolar(function () { preguntarVisita(cliente, despacho, folio, order, []); }); });
   }
 
   // Se elige a cuál visita corresponde esta cotización: una que ya existe, o una nueva.
@@ -5531,6 +5531,19 @@
       .catch(function () {});
   }
 
+  // ===== Cola de pasos después de guardar =====
+  // Varios pasos usan la misma ventana (datos del cliente, visita, marketing, factura).
+  // Se encolan y se abren uno tras otro, en vez de pisarse.
+  var colaPasos = [], pasoEnCurso = false;
+  function encolar(fn) { colaPasos.push(fn); if (!pasoEnCurso) siguientePaso(); }
+  function siguientePaso() {
+    var f = colaPasos.shift();
+    if (!f) { pasoEnCurso = false; return; }
+    pasoEnCurso = true;
+    try { f(); } catch (e) { console.error(e); pasoEnCurso = false; siguientePaso(); }
+  }
+  function terminarPaso() { pasoEnCurso = false; setTimeout(siguientePaso, 250); }
+
   // Datos que un cliente debe tener completos para poder facturarle y entregarle
   var CLIENTE_OBLIGATORIO = ['Teléfono', 'Despacho', 'Dirección de envío'];
   // Se completan solos al subir la CSF
@@ -5541,8 +5554,8 @@
     api('clientes', { token: state.token, buscar: nombre }).then(function (d) {
       var c = (d.clientes || []).filter(function (x) { return norm(x.cliente) === norm(nombre); })[0];
       if (!c) return;
-      if (!c.enLista) { pedirDatosCliente(nombre, CLIENTE_OBLIGATORIO, true); return; }
-      if (c.faltan && c.faltan.length) pedirDatosCliente(nombre, c.faltan, false);
+      if (!c.enLista) { encolar(function () { pedirDatosCliente(nombre, CLIENTE_OBLIGATORIO, true); }); return; }
+      if (c.faltan && c.faltan.length) encolar(function () { pedirDatosCliente(nombre, c.faltan, false); });
     }).catch(function () {});
   }
 
@@ -5556,42 +5569,15 @@
         return '<div class="fld"><label>' + esc(f) + '</label>' +
           '<input class="cli-dato" type="text" data-campo="' + esc(f) + '"></div>';
       }).join('') + '</div>' +
-      '<div style="margin-top:16px;padding-top:14px;border-top:1px dashed var(--line)">' +
-        '<div style="font-size:13px;color:var(--slate);margin-bottom:8px">' +
-        '¿Va a pedir factura? Sube la Constancia de Situación Fiscal y se llenan solos ' +
-        'Razón Social, RFC, Tipo de Persona y Régimen fiscal.</div>' +
-        '<input type="file" id="cliCsf" accept="application/pdf" style="font:inherit;font-size:13px">' +
-        '<div id="cliCsfNota" class="s" style="color:var(--muted);margin-top:6px"></div>' +
-        '<div class="form-grid" id="cliFiscal" style="margin-top:10px"></div>' +
-      '</div>';
+      '<div class="s" style="margin-top:12px;color:var(--muted)">Los datos fiscales ' +
+      '(Razón Social, RFC, Régimen) se completan solos cuando subas la CSF en el paso de facturación.</div>';
     document.getElementById('ventaResumen').innerHTML = h;
     document.getElementById('ventaMkt').innerHTML = '';
     document.querySelector('#ventaModal h3').textContent = 'Datos del cliente';
     document.getElementById('ventaOk').textContent = 'Guardar cliente';
     document.getElementById('ventaModal').classList.add('on');
     clientePost = { cliente: nombre, esNuevo: esNuevo };
-    marketingPost = null; cotAConvertir = null;
-
-    var fi = document.getElementById('cliCsf');
-    fi.addEventListener('change', function () {
-      var f = fi.files && fi.files[0];
-      if (!f) return;
-      var nota = document.getElementById('cliCsfNota');
-      nota.textContent = 'Leyendo ' + f.name + '…';
-      var rd = new FileReader();
-      rd.onload = function () {
-        api('csf', { token: state.token, data: String(rd.result).split(',')[1] }).then(function (o) {
-          if (!o.ok) { nota.textContent = o.motivo || 'No se pudieron leer los datos.'; return; }
-          nota.textContent = 'Datos leídos de la constancia. Revísalos antes de guardar.';
-          document.getElementById('cliFiscal').innerHTML = CLIENTE_FISCAL.map(function (c) {
-            return '<div class="fld"><label>' + esc(c) + '</label>' +
-              '<input class="cli-dato" type="text" data-campo="' + esc(c) + '" value="' +
-              esc(o.datos[c] || '') + '"></div>';
-          }).join('');
-        }).catch(function (e) { nota.textContent = (e && e.message) || 'No se pudo leer el PDF.'; });
-      };
-      rd.readAsDataURL(f);
-    });
+    marketingPost = null; cotAConvertir = null; visitaPost = null;
   }
   var clientePost = null;
 
@@ -5653,7 +5639,8 @@
   }
   function cerrarConvertirVenta() {
     document.getElementById('ventaModal').classList.remove('on');
-    cotAConvertir = null;
+    cotAConvertir = null; marketingPost = null; clientePost = null; visitaPost = null;
+    terminarPaso();
   }
   function convertirEnVenta() {
     // Modo "registrar la visita al showroom"
@@ -5992,13 +5979,34 @@
     document.getElementById('facArchivo').value = '';
     document.getElementById('facLink').value = '';
     document.getElementById('facArchivoNota').textContent = 'PDF o imagen, hasta 4 MB. Se guarda en la carpeta del pedido.';
+    csfLeida = null;
     document.getElementById('facModal').classList.add('on');
   }
+  // Datos fiscales sacados de la CSF, para guardarlos en la ficha del cliente
+  var csfLeida = null;
   function cerrarPasoFactura() {
     document.getElementById('facModal').classList.remove('on');
     pedidoPendiente = null; cxcFila = null; cxcRec = null;
+    terminarPaso();
   }
   // Lee el archivo elegido y lo convierte a base64 para mandarlo al servidor
+  // Al elegir la CSF se leen sus datos fiscales y se ofrecen para la ficha del cliente
+  function analizarCsf(file, cliente) {
+    if (!file || !/pdf$/i.test(file.type || file.name || '')) return;
+    var nota = document.getElementById('facArchivoNota');
+    var antes = nota.textContent;
+    nota.textContent = 'Leyendo los datos fiscales de la constancia…';
+    leerArchivo(file).then(function (b64) {
+      return api('csf', { token: state.token, data: b64 });
+    }).then(function (o) {
+      if (!o.ok) { nota.textContent = o.motivo || antes; return; }
+      csfLeida = o.datos;
+      nota.innerHTML = 'Datos leídos: <b>' + esc(o.datos['Razón Social'] || '') + '</b> · RFC ' +
+        esc(o.datos['RFC'] || '') + ' · ' + esc(o.datos['Régimen fiscal'] || '') +
+        '<div style="margin-top:4px">Se guardarán en la ficha de ' + esc(cliente || 'el cliente') + '.</div>';
+    }).catch(function () { nota.textContent = antes; });
+  }
+
   function leerArchivo(file) {
     return new Promise(function (resolve, reject) {
       var r = new FileReader();
@@ -6008,6 +6016,21 @@
     });
   }
   // Sube la CSF a la carpeta del pedido. Devuelve el link de la carpeta (o '' si no hay archivo).
+  // Guarda en la Lista de Clientes lo que se leyó de la CSF
+  function guardarFiscalDelCliente(cliente) {
+    if (!csfLeida || !cliente) return Promise.resolve();
+    var set = {};
+    ['Razón Social', 'RFC', 'Tipo de Persona', 'Régimen fiscal'].forEach(function (c) {
+      if (csfLeida[c]) set[c] = csfLeida[c];
+    });
+    if (!Object.keys(set).length) return Promise.resolve();
+    return api('fill', { token: state.token, key: 'ventas_clientes',
+      match: { col: 'Cliente', colAlt: ['Nombre/Razón Social', 'Nombre/Razon Social', 'Razón Social', 'Contacto'],
+               value: cliente },
+      set: set }).then(function () { toast('Datos fiscales guardados en la ficha del cliente.', 'ok'); })
+      .catch(function () {});
+  }
+
   function subirCsf(p) {
     var inp = document.getElementById('facArchivo');
     var file = (inp && inp.files && inp.files[0]) ? inp.files[0] : null;
@@ -6017,6 +6040,7 @@
     }
     var nota = document.getElementById('facArchivoNota');
     if (nota) nota.textContent = 'Subiendo ' + file.name + '...';
+    guardarFiscalDelCliente(p.cliente);
     return leerArchivo(file).then(function (b64) {
       return api('upload', {
         token: state.token, folio: p.folio, cliente: p.cliente,
@@ -6137,7 +6161,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-94';
+    var mia = '2026.08.11-97';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
@@ -6176,6 +6200,10 @@
   document.getElementById('ventaOk').addEventListener('click', convertirEnVenta);
   document.getElementById('ventaSabeFecha').addEventListener('change', function () {
     if (this.value === 'no') document.getElementById('ventaFecha').value = masSemanas(8);
+  });
+  document.getElementById('facArchivo').addEventListener('change', function () {
+    var f = this.files && this.files[0];
+    if (f) analizarCsf(f, pedidoPendiente ? pedidoPendiente.cliente : '');
   });
   document.getElementById('facClose').addEventListener('click', cerrarPasoFactura);
   document.getElementById('facSkip').addEventListener('click', cerrarPasoFactura);
