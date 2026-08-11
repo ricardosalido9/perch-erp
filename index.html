@@ -621,7 +621,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-67</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-68</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1463,7 +1463,9 @@
               '<td class="num">' + (r.dias === null ? '' : fmtNum(r.dias)) + '</td>' +
               '<td>' + esc(r.proveedor || '—') + '</td><td>' + esc(r.pedido || '') + '</td>' +
               '<td title="' + esc(r.descripcion) + '">' + esc((r.descripcion || '').slice(0, 32)) + '</td>' +
-              '<td>' + esc((r.metodo || '').slice(0, 18)) + '</td>' +
+              '<td title="' + esc(r.metodoManual || '') + '">' + esc((r.metodo || '').slice(0, 18)) +
+                (r.metodoManual ? ' <span class="s" style="color:var(--muted)">· ' +
+                  esc(r.metodoManual.slice(0, 18)) + '</span>' : '') + '</td>' +
               '<td class="num">' + esc(formatMoney(r.monto)) + '</td>' +
               '<td class="num">' + (Math.abs(dif) > 0.02 ? esc(formatMoney(dif)) : '') + '</td>' +
               '<td>' + esc(r.nivel) + '</td></tr>';
@@ -1482,24 +1484,26 @@
           }).join('') + '</tbody></table>';
       } else {
         var esBanco = (conciVista === 'soloBanco');
-        h += (esBanco && (d.porMetodo || []).length
+        var resumenMet = esBanco ? (d.porMetodo || []) : (d.porMetodoManual || []);
+        h += (resumenMet.length
           ? '<div class="s" style="margin:8px 0"><b>Por método de pago:</b> ' +
-            (d.porMetodo || []).map(function (m) {
-              return esc(m.metodo) + ' · ' + fmtNum(m.n) + ' (' + esc(fmtMoneyShort(m.monto)) + ')';
+            resumenMet.map(function (m) {
+              return esc((m.metodo || '').slice(0, 30)) + ' · ' + fmtNum(m.n) + ' (' + esc(fmtMoneyShort(m.monto)) + ')';
             }).join('  ·  ') + '</div>'
           : '') +
           '<table class="mini-table"><thead><tr><th>Fila</th><th>Fecha</th><th>Proveedor</th>' +
-          '<th>' + (esBanco ? 'Método de pago' : 'Concepto') + '</th><th>Descripción</th>' +
-          '<th>Pedido</th>' + (esBanco ? '<th>Cuenta</th>' : '') +
+          (esBanco ? '' : '<th>Concepto</th>') + '<th>Descripción</th><th>Pedido</th>' +
+          '<th>Método de pago</th>' + (esBanco ? '<th>Cuenta</th>' : '') +
           '<th style="text-align:right">Monto</th></tr></thead><tbody>' +
           lista.map(function (r) {
             var efe = /efectivo|caja/i.test(r.metodo || '') || /efectivo|caja/i.test(r.cuenta || '');
-            return '<tr' + (esBanco && efe ? ' style="background:var(--amber-bg)"' : '') + '>' +
+            return '<tr' + (efe ? ' style="background:var(--amber-bg)"' : '') + '>' +
               '<td>' + fmtNum(r.fila) + '</td><td>' + esc(formatDateCell(r.fecha)) + '</td>' +
               '<td>' + esc(r.proveedor || '—') + '</td>' +
-              '<td>' + esc(esBanco ? (r.metodo || '—') : (r.concepto || '')) + '</td>' +
-              '<td title="' + esc(r.descripcion) + '">' + esc((r.descripcion || '').slice(0, 40)) + '</td>' +
+              (esBanco ? '' : '<td>' + esc(r.concepto || '') + '</td>') +
+              '<td title="' + esc(r.descripcion) + '">' + esc((r.descripcion || '').slice(0, 38)) + '</td>' +
               '<td>' + esc(r.pedido || '') + '</td>' +
+              '<td title="' + esc(r.metodo) + '">' + esc((r.metodo || '—').slice(0, 26)) + '</td>' +
               (esBanco ? '<td>' + esc(r.cuenta || '') + '</td>' : '') +
               '<td class="num">' + esc(formatMoney(r.monto)) + '</td></tr>';
           }).join('') + '</tbody></table>';
@@ -5317,7 +5321,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-67';
+    var mia = '2026.08.11-68';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
