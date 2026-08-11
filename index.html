@@ -626,7 +626,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-88</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-89</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -4014,8 +4014,7 @@
     // Cotizaciones: mismos campos que una venta + la encuesta comercial
     cotizaciones: [
       'Fecha del Cierre', 'Cliente', 'Despacho', 'Vendedor', 'Fecha de entrega acordada',
-      'Ciudad', 'Tipo de Proyecto', 'Cómo Llego', 'Línea de Negocio', 'Tipo de Línea de Negocio',
-      'HAPPENING', 'Showroom', 'Notas',
+      'TIPO CLIENTE', 'Cómo Llego', 'Showroom', 'Notas',
       'Direccion de envio', 'Telefono', 'Cantidad', 'Producto', 'Material', 'Material Extra',
       'Tipo de Producto', 'Tela', 'Descripción', 'Medidas', 'Especificaciones',
       'Precio Unitario', '% descuento', 'Descuentos', 'Envio'
@@ -5083,22 +5082,21 @@
         // El PDF con formato Perch solo aplica a cotizaciones y ventas
         generarPdfCotizacion(folioNuevo, !esCotiza, true).catch(function () {});
       }
-      // El renglón de Marketing se crea con lo que ya se sabe
+      // Datos de marketing que ya se conocen de la venta
+      var datosMkt = { 'No. de Referencia': folioNuevo };
       if (areaDestino === 'ventas_registro' && folioNuevo) {
-        var datosMkt = { 'No. de Referencia': folioNuevo };
         state.headers.forEach(function (h) { if (order[h] != null) datosMkt[h] = order[h]; });
         datosMkt['Productos'] = resumenPedido.piezas;
         datosMkt['Total Pedido'] = resumenPedido.totalPedido;
         datosMkt['Envio'] = resumenPedido.envio;
-        registrarMarketing(folioNuevo, datosMkt);
       }
-      // Si la venta se capturó directo y quedaron datos de marketing vacíos, se piden
       if (areaDestino === 'ventas_registro' && folioNuevo) {
-        var faltanMkt = CAMPOS_MKT.filter(function (mk) {
+        var faltanMkt = CAMPOS_MKT_VENTA.concat(CAMPOS_MKT_COT.filter(function (mk) {
           var c = findHeaderByName(mk.campo);
-          return c && !String(order[c] || '').trim();
-        });
-        if (faltanMkt.length) pedirMarketing(folioNuevo, faltanMkt, 'ventas_registro');
+          return !c || !String(order[c] || '').trim();
+        }));
+        if (faltanMkt.length) pedirMarketing(folioNuevo, faltanMkt, 'ventas_registro', datosMkt);
+        else registrarMarketing(folioNuevo, datosMkt);
       }
       // Cuentas por Cobrar y factura son cosa de VENTAS. Un pedido a proveedor no las lleva.
       if (areaDestino === 'ventas_registro') {
@@ -5314,49 +5312,81 @@
   }
   // Campos de marketing que deben quedar completos al cerrar la venta
   // Las mismas preguntas del registro de ventas. Las respuestas salen de la pestaña Categorías.
-  // Los nombres son los de la pestaña Categorías. Showroom no está ahí: se responde Sí/No.
-  var CAMPOS_MKT = [
-    { campo: 'Ciudad',                    label: 'Ciudad' },
-    { campo: 'Tipo de Proyecto',          label: 'Tipo de proyecto' },
-    { campo: 'Cómo Llego',                label: 'Cómo llegó' },
-    { campo: 'Línea de Negocio',          label: 'Línea de negocio' },
-    { campo: 'Tipo de Línea de Negocio',  label: 'Tipo de línea de negocio' },
-    { campo: 'HAPPENING',                 label: 'Happening' },
-    { campo: 'Showroom',                  label: '¿Visitó el showroom?' },
-    { campo: 'Notas',                     label: 'Notas' }
+  // Lo que se pregunta DESDE LA COTIZACIÓN (poco, para no frenar la venta)
+  var CAMPOS_MKT_COT = [
+    { campo: 'TIPO CLIENTE',  label: 'Tipo de cliente', mkt: 'Tipo de Línea' },
+    { campo: 'Cómo Llego',    label: 'Cómo llegó',      mkt: 'Cómo Llego' },
+    { campo: 'Showroom',      label: '¿Visitó el showroom?', mkt: 'Showroom' },
+    { campo: 'Notas',         label: 'Notas',           mkt: 'Notas' }
   ];
+  // Lo que se pregunta AL CERRAR LA VENTA. Sale de la pestaña Categorías y NO necesita
+  // existir como columna en VENTAS: se guarda directo en la pestaña Marketing.
+  var CAMPOS_MKT_VENTA = [
+    { campo: 'Ciudad',                   label: 'Ciudad',                mkt: 'Ciudad' },
+    { campo: 'Tipo de Proyecto',         label: 'Tipo de proyecto',      mkt: 'Proyecto' },
+    { campo: 'Línea de Negocio',         label: 'Línea de negocio',      mkt: 'Línea de Negocio' },
+    { campo: 'Tipo de Línea de Negocio', label: 'Tipo de línea',         mkt: 'Tipo de Línea' },
+    { campo: 'HAPPENING',                label: 'Happening',             mkt: 'Happening' }
+  ];
+  var CAMPOS_MKT = CAMPOS_MKT_COT.concat(CAMPOS_MKT_VENTA);
   // Un renglón por venta en la pestaña Marketing, con lo que ya se capturó
+  // Respuestas posibles de una pregunta de marketing: primero Categorías, luego el menú fijo
+  function opcionesMkt(campo) {
+    var cats = state.categories || {};
+    var k = Object.keys(cats).filter(function (x) { return norm(x) === norm(campo); })[0];
+    if (!k) {
+      var alt = ALIAS_CAMPOS[campo] || [];
+      k = Object.keys(cats).filter(function (x) {
+        return alt.some(function (a) { return norm(a) === norm(x); });
+      })[0];
+    }
+    if (k && cats[k] && cats[k].length) return cats[k];
+    return optionsFor(campo) || [];
+  }
+
   function registrarMarketing(folio, datos) {
     if (!folio) return Promise.resolve();
-    var rec = { 'No. de Referencia': folio, 'Folio': folio };
-    // Lo que viene de la venta
-    ['Fecha del Cierre', 'Cliente', 'Despacho', 'Productos', 'Total Pedido', 'Envio', 'Mes']
+    // Columnas de la pestaña Marketing:
+    // Mes · Fecha del Cierre · No. de Referencia · Cliente · Despacho · Ciudad · Proyecto ·
+    // Notas · Cómo Llego · Línea de Negocio · Tipo de Línea · Showroom · Happening ·
+    // Productos · Total Pedido · Envio
+    var rec = { 'No. de Referencia': folio };
+    ['Mes', 'Fecha del Cierre', 'Cliente', 'Despacho', 'Productos', 'Total Pedido', 'Envio']
       .forEach(function (c) { if (datos[c] != null && datos[c] !== '') rec[c] = datos[c]; });
-    // Y las respuestas de marketing
+    if (!rec['Mes'] && rec['Fecha del Cierre']) {
+      var d = parseDate(rec['Fecha del Cierre']);
+      if (d !== null) rec['Mes'] = Math.floor(d / 100) % 100;
+    }
+    // Cada pregunta se guarda con el nombre que usa la pestaña Marketing
     CAMPOS_MKT.forEach(function (m) {
       var v = datos[m.campo];
-      if (v != null && String(v).trim() !== '') rec[m.campo] = v;
+      if (v == null || String(v).trim() === '') v = datos[m.mkt];
+      if (v != null && String(v).trim() !== '') rec[m.mkt] = v;
     });
-    return api('add', { token: state.token, key: 'marketing', record: rec }).catch(function () {});
+    return api('add', { token: state.token, key: 'marketing', record: rec })
+      .then(function () { toast('Registrado en Marketing.', 'ok'); })
+      .catch(function () {});
   }
 
   // Modal chico para completar los datos de marketing de una venta ya guardada
-  function pedirMarketing(folio, faltan, area) {
+  function pedirMarketing(folio, faltan, area, datos) {
     var html = '<div style="font-size:13px;color:var(--slate);margin-bottom:10px">' +
       'Completa estos datos de <b>' + esc(folio) + '</b> para que la base quede llena.</div>' +
       '<div class="form-grid">' + faltan.map(function (m) {
-        var col = findHeaderByName(m.campo);
-        var opts = optionsFor(col) || optionsFor(m.campo) || [];
+        var opts = opcionesMkt(m.campo);
         return '<div class="fld"><label>' + esc(m.label) + '</label>' +
-          '<select class="mkt-post" data-col="' + esc(col) + '"><option value=""></option>' +
-          opts.map(function (o) { return '<option>' + esc(o) + '</option>'; }).join('') + '</select></div>';
+          (opts.length
+            ? '<select class="mkt-post" data-campo="' + esc(m.campo) + '"><option value=""></option>' +
+              opts.map(function (o) { return '<option>' + esc(o) + '</option>'; }).join('') + '</select>'
+            : '<input class="mkt-post" type="text" data-campo="' + esc(m.campo) + '">') +
+          '</div>';
       }).join('') + '</div>';
     document.getElementById('ventaResumen').innerHTML = html;
     document.getElementById('ventaMkt').innerHTML = '';
     document.querySelector('#ventaModal h3').textContent = 'Datos de marketing';
     document.getElementById('ventaOk').textContent = 'Guardar';
     document.getElementById('ventaModal').classList.add('on');
-    marketingPost = { folio: folio, area: area };
+    marketingPost = { folio: folio, area: area, datos: datos || {} };
   }
   var marketingPost = null;
 
@@ -5370,20 +5400,22 @@
       var c = findHeaderByName('No. de Referencia') || findHeaderByName('Folio');
       return c && String(r[c] || '').trim() === folio;
     })[0] || {};
-    var faltan = CAMPOS_MKT.filter(function (m) {
+    // Las de la venta se preguntan siempre; las de la cotización solo si quedaron vacías
+    var faltan = CAMPOS_MKT_VENTA.concat(CAMPOS_MKT_COT.filter(function (m) {
       var col = findHeaderByName(m.campo);
-      return col && !String(fila[col] || '').trim();
-    });
+      return !col || !String(fila[col] || '').trim();
+    }));
     document.getElementById('ventaMkt').innerHTML = faltan.length
       ? '<div style="grid-column:1/-1;font-size:13px;color:var(--slate);margin-bottom:2px">' +
         'Antes de cerrar, completa estos datos para que la base quede llena:</div>' +
         faltan.map(function (m) {
-          var opts = optionsFor(findHeaderByName(m.campo)) || [];
+          var opts = opcionesMkt(m.campo);
           return '<div class="fld"><label>' + esc(m.label) + '</label>' +
-            '<select class="venta-mkt" data-col="' + esc(findHeaderByName(m.campo)) + '">' +
-            '<option value=""></option>' +
-            opts.map(function (o) { return '<option>' + esc(o) + '</option>'; }).join('') +
-            '</select></div>';
+            (opts.length
+              ? '<select class="venta-mkt" data-campo="' + esc(m.campo) + '"><option value=""></option>' +
+                opts.map(function (o) { return '<option>' + esc(o) + '</option>'; }).join('') + '</select>'
+              : '<input class="venta-mkt" type="text" data-campo="' + esc(m.campo) + '">') +
+            '</div>';
         }).join('')
       : '';
     document.getElementById('ventaResumen').innerHTML =
@@ -5400,14 +5432,27 @@
     // Modo "solo completar marketing" de una venta ya guardada
     if (marketingPost) {
       var set = {};
+      var datosM = {};
       document.querySelectorAll('.mkt-post').forEach(function (sel) {
-        if (sel.value) set[sel.getAttribute('data-col')] = sel.value;
+        if (sel.value) datosM[sel.getAttribute('data-campo')] = sel.value;
+      });
+      // Lo que sí tiene columna en la hoja se guarda ahí; todo va también a Marketing
+      Object.keys(datosM).forEach(function (campo) {
+        var c = findHeaderByName(campo);
+        if (c) set[c] = datosM[campo];
       });
       var cRef3 = findHeaderByName('No. de Referencia') || findHeaderByName('Folio');
-      if (!Object.keys(set).length || !cRef3) { cerrarConvertirVenta(); marketingPost = null; return; }
-      api('fill', { token: state.token, key: marketingPost.area,
-                    match: { col: cRef3, value: marketingPost.folio }, set: set })
-        .then(function () { toast('Datos guardados.', 'ok'); loadArea(); })
+      if (!cRef3) { cerrarConvertirVenta(); marketingPost = null; return; }
+      var guardar = Object.keys(set).length
+        ? api('fill', { token: state.token, key: marketingPost.area,
+                        match: { col: cRef3, value: marketingPost.folio }, set: set })
+        : Promise.resolve();
+      guardar
+        .then(function () {
+          return registrarMarketing(marketingPost.folio,
+            Object.assign({}, marketingPost.datos || {}, datosM));
+        })
+        .then(function () { loadArea(); })
         .catch(fail)
         .then(function () { cerrarConvertirVenta(); marketingPost = null; });
       return;
@@ -5791,7 +5836,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-88';
+    var mia = '2026.08.11-89';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
