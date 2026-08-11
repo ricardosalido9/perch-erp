@@ -626,7 +626,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-92</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-94</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -5182,18 +5182,13 @@
       // ¿Le faltan datos a este cliente? Se piden ahora, no después
       var colCli = findHeaderByName('Cliente');
       if (colCli && order[colCli]) setTimeout(function () { revisarCliente(order[colCli]); }, 400);
-      // Si la encuesta dice que visitó el showroom, la visita se registra sola
-      var visito = order[findHeaderByName('Visito Showroom')] || '';
-      if (norm(visito) === 'si') {
-        api('add', { token: state.token, key: 'showroom', record: {
-          'Fecha': order[findHeaderByName('Fecha del Cierre')] || '',
-          'Cliente': resumenPedido.cliente,
-          'Despacho': resumenPedido.despacho,
-          'TIPO CLIENTE': order[findHeaderByName('TIPO CLIENTE')] || '',
-          'Cómo llegó': order[findHeaderByName('Forma de Contacto')] || '',
-          'Notas': order[findHeaderByName('NOTAS')] || '',
-          'Cotización': folioNuevo
-        } }).catch(function () {});
+      // "Visitó el showroom" no quiere decir que la visita haya sido hoy: un mismo
+      // cliente puede pedir varias cotizaciones después de una sola visita. Se registra
+      // solo si no tiene ya una visita, y en ese caso se pregunta cuándo fue.
+      var colSR = findHeaderByName('Showroom') || findHeaderByName('Visito Showroom');
+      var visito = colSR ? String(order[colSR] || '') : '';
+      if (norm(visito) === 'si' && resumenPedido.cliente) {
+        registrarVisitaShowroom(resumenPedido.cliente, resumenPedido.despacho, folioNuevo, order);
       }
       if (folioNuevo && (esCotiza || areaDestino === 'ventas_registro')) {
         // El PDF con formato Perch solo aplica a cotizaciones y ventas
@@ -5421,6 +5416,57 @@
     }, 50);
   }
 
+  // ===== Visita al showroom sin duplicar =====
+  // Si el cliente ya tiene una visita registrada, no se crea otra: solo se le liga
+  // esta cotización. Si no tiene ninguna, se pregunta cuándo fue.
+  function registrarVisitaShowroom(cliente, despacho, folio, order) {
+    api('clientes', { token: state.token, buscar: cliente }).then(function (d) {
+      var c = (d.clientes || []).filter(function (x) { return norm(x.cliente) === norm(cliente); })[0];
+      preguntarVisita(cliente, despacho, folio, order, (c && c.detalleVisitas) || []);
+    }).catch(function () { preguntarVisita(cliente, despacho, folio, order, []); });
+  }
+
+  // Se elige a cuál visita corresponde esta cotización: una que ya existe, o una nueva.
+  function preguntarVisita(cliente, despacho, folio, order, visitas) {
+    var hoy = new Date();
+    var iso = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0') + '-' +
+              String(hoy.getDate()).padStart(2, '0');
+    var h = '<div style="font-size:13px;color:var(--slate);margin-bottom:12px">' +
+      '<b>' + esc(cliente) + '</b> visitó el showroom. ¿A cuál visita corresponde esta cotización?</div>';
+    if (visitas.length) {
+      h += '<div class="fld"><label>Visita</label><select id="visitaCual">' +
+        visitas.map(function (v, i) {
+          return '<option value="' + i + '">' + esc(formatDateCell(v.fecha) || 'sin fecha') +
+            (v.notas ? ' · ' + esc(v.notas.slice(0, 40)) : '') + '</option>';
+        }).join('') +
+        '<option value="nueva">Es una visita nueva</option></select></div>' +
+        '<div class="s" style="color:var(--muted);margin-top:6px">Si ya está en la lista, no se ' +
+        'registra otra vez: solo se liga esta cotización a esa visita.</div>';
+    } else {
+      h += '<div class="s" style="color:var(--muted);margin-bottom:10px">No tiene ninguna visita ' +
+        'registrada todavía. Pon la fecha en que fue: si fue hace tiempo, no la cuentes como de hoy.</div>';
+    }
+    h += '<div class="form-grid" id="visitaNueva"' + (visitas.length ? ' style="display:none"' : '') + '>' +
+      '<div class="fld"><label>Fecha de la visita</label>' +
+      '<input type="date" id="visitaFecha" value="' + iso + '"></div>' +
+      '<div class="fld"><label>Notas de la visita</label>' +
+      '<input type="text" id="visitaNotas" placeholder="opcional"></div></div>';
+    document.getElementById('ventaResumen').innerHTML = h;
+    document.getElementById('ventaMkt').innerHTML = '';
+    document.querySelector('#ventaModal h3').textContent = 'Visita al showroom';
+    document.getElementById('ventaOk').textContent = visitas.length ? 'Ligar a esta visita' : 'Registrar visita';
+    document.getElementById('ventaModal').classList.add('on');
+    visitaPost = { cliente: cliente, despacho: despacho, folio: folio, order: order || {}, visitas: visitas };
+    marketingPost = null; clientePost = null; cotAConvertir = null;
+    var sel = document.getElementById('visitaCual');
+    if (sel) sel.addEventListener('change', function () {
+      var nueva = (sel.value === 'nueva');
+      document.getElementById('visitaNueva').style.display = nueva ? '' : 'none';
+      document.getElementById('ventaOk').textContent = nueva ? 'Registrar visita' : 'Ligar a esta visita';
+    });
+  }
+  var visitaPost = null;
+
   // ===== Cotización -> Venta =====
   var cotAConvertir = null;
   function masSemanas(n) {
@@ -5572,7 +5618,7 @@
   var marketingPost = null;
 
   function abrirConvertirVenta(folio, cliente) {
-    marketingPost = null; clientePost = null;
+    marketingPost = null; clientePost = null; visitaPost = null;
     document.querySelector('#ventaModal h3').textContent = 'Convertir en venta';
     document.getElementById('ventaOk').textContent = 'Convertir en venta';
     cotAConvertir = folio;
@@ -5610,6 +5656,43 @@
     cotAConvertir = null;
   }
   function convertirEnVenta() {
+    // Modo "registrar la visita al showroom"
+    if (visitaPost) {
+      var v = visitaPost; visitaPost = null;
+      var selV = document.getElementById('visitaCual');
+      // Ya existe esa visita: solo se le anota esta cotización, no se crea otra
+      if (selV && selV.value !== 'nueva') {
+        var vi = v.visitas[+selV.value];
+        if (vi) {
+          api('fill', { token: state.token, key: 'showroom',
+                        match: { col: 'Cliente', colAlt: ['Contacto', 'Nombre'], value: v.cliente },
+                        set: { 'Cotización': v.folio } })
+            .then(function () { toast('Cotización ligada a la visita del ' +
+                                      (formatDateCell(vi.fecha) || 'showroom') + '.', 'ok'); })
+            .catch(function () {})
+            .then(function () { cerrarConvertirVenta(); });
+          return;
+        }
+      }
+      var f = document.getElementById('visitaFecha');
+      var nt = document.getElementById('visitaNotas');
+      var rec = {
+        'Fecha': f && f.value ? isoToLargo(f.value) : '',
+        'Cliente': v.cliente, 'Despacho': v.despacho || '',
+        'Cotización': v.folio || '',
+        'Notas': nt ? nt.value : ''
+      };
+      // Lo que ya se capturó en la cotización se arrastra a la visita
+      ['Ciudad', 'Cómo Llego', 'Línea de Negocio', 'Tipo de Línea de Negocio'].forEach(function (c) {
+        var col = findHeaderByName(c);
+        if (col && v.order[col]) rec[c] = v.order[col];
+      });
+      api('add', { token: state.token, key: 'showroom', record: rec })
+        .then(function () { toast('Visita registrada.', 'ok'); })
+        .catch(fail)
+        .then(function () { cerrarConvertirVenta(); });
+      return;
+    }
     // Modo "completar la ficha del cliente"
     if (clientePost) {
       var rec = {};
@@ -6054,7 +6137,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-92';
+    var mia = '2026.08.11-94';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
