@@ -29,7 +29,8 @@ const RUTAS = {
   'costos-export': require('../lib/handlers/costos-export'),
   version:        require('../lib/handlers/version'),
   'stock-export': require('../lib/handlers/stock-export'),
-  folio:          require('../lib/handlers/folio')
+  folio:          require('../lib/handlers/folio'),
+  conciliacion:   require('../lib/handlers/conciliacion')
 };
 
 module.exports = async (req, res) => {
