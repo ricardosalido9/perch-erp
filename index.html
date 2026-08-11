@@ -626,7 +626,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-80</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-81</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -706,6 +706,7 @@
       </div>
       <div class="modal-body">
         <div id="ventaResumen" style="background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:18px;font-size:14px"></div>
+        <div class="form-grid" id="ventaMkt"></div>
         <div class="form-grid">
           <div class="fld">
             <label>¿Ya hay fecha de entrega acordada?</label>
@@ -2188,7 +2189,8 @@
     var c = findHeaderByName('Status');
     if (!c) return;
     filters = filters.filter(function (f) { return f.col !== c; });
-    if (cual === 'vendidas') filters.push({ col: c, type: 'contiene', texto: 'Vendida' });
+    if (cual === 'volver') filters.push({ col: c, type: 'contiene', texto: 'volver a buscar' });
+    else if (cual === 'vendidas') filters.push({ col: c, type: 'contiene', texto: 'Vendida' });
     else if (cual === 'rechazadas') filters.push({ col: c, type: 'contiene', texto: 'Rechazada' });
     else if (cual === 'abiertas') filters.push({ col: c, type: 'noContiene', textos: ['Vendida', 'Rechazada'] });
     renderFilterBar(); renderTable();
@@ -2210,21 +2212,24 @@
       if (!g[k].st && cSt && r[cSt]) g[k].st = String(r[cSt]);
     });
     var folios = Object.keys(g);
-    var n = folios.length, piezas = 0, valor = 0, vend = 0, valorVend = 0, rech = 0, abiertas = 0, valorAbierto = 0;
+    var n = folios.length, piezas = 0, valor = 0, vend = 0, valorVend = 0, rech = 0, abiertas = 0, valorAbierto = 0, volver = 0;
     folios.forEach(function (k) {
       var q = g[k];
       piezas += q.piezas; valor += q.total;
       if (/vendida/i.test(q.st)) { vend++; valorVend += q.total; }
       else if (/rechazad/i.test(q.st)) { rech++; }
-      else { abiertas++; valorAbierto += q.total; }
+      else { abiertas++; valorAbierto += q.total; if (/volver a buscar/i.test(q.st)) volver++; }
     });
+    // La conversión se mide contra TODAS las cotizaciones enviadas, no solo las cerradas
+    var enviadas = n - (rech ? 0 : 0);
+    var tasa = n ? (vend / n) * 100 : 0;
     var cerradas = vend + rech;
-    var tasa = cerradas ? (vend / cerradas) * 100 : 0;
     var ticket = n ? valor / n : 0;
 
     var f = filters.filter(function (x) { return x.col === cSt; })[0];
     var activo = !f ? '' : (f.type === 'noContiene' ? 'abiertas'
-      : (/vendida/i.test(f.texto || '') ? 'vendidas' : 'rechazadas'));
+      : (/volver/i.test(f.texto || '') ? 'volver'
+      : (/vendida/i.test(f.texto || '') ? 'vendidas' : 'rechazadas')));
     var chip = function (k, t) {
       return '<button type="button" class="mes-chip' + (activo === k ? ' on' : '') + '" data-cot="' + k + '">' + t + '</button>';
     };
@@ -2239,8 +2244,8 @@
       card('Cotizaciones', fmtNum(n), fmtNum(rows.length) + ' renglones · ' + fmtNum(piezas) + ' piezas') +
       card('Valor cotizado', esc(formatMoney(valor))) +
       card('Ticket promedio', esc(formatMoney(ticket))) +
-      card('Tasa de conversión', (cerradas ? tasa.toFixed(0) + '%' : '—'),
-           cerradas ? fmtNum(vend) + ' de ' + fmtNum(cerradas) + ' cerradas' : 'sin cotizaciones cerradas') +
+      card('Tasa de conversión', (n ? tasa.toFixed(0) + '%' : '—'),
+           fmtNum(vend) + ' vendidas de ' + fmtNum(n) + ' cotizaciones') +
       card('Valor ganado', esc(formatMoney(valorVend))) +
       card('En pipeline', esc(formatMoney(valorAbierto)), fmtNum(abiertas) + ' abiertas') +
       '</div>';
@@ -3818,7 +3823,8 @@
     inventario: ['Productos', 'Material', 'Material Extra', 'Tipo de Producto'],
     leads:      ['Contacto'],
     showroom:   ['Cliente', 'Despacho'],
-    cotizaciones: ['Cliente', 'Despacho'],
+    cotizaciones:    ['Cliente', 'Despacho', 'Vendedor'],
+    ventas_registro: ['Cliente', 'Despacho', 'Vendedor'],
     funnel: ['Cliente', 'Despacho', 'Estatus'],
     fin_cxc: ['Cliente', 'Despacho', 'FORMA DE PAGO', 'Comentarios (uso de CFDI)']
   };
@@ -3924,7 +3930,7 @@
   function isDiscValField(h) { var s = specialCfg(); return !!(s && s.descuento && norm(s.descuento.val) === norm(h)); }
   // Campos que NO se muestran en "Agregar registro" (el resto sí). Por área.
   // Campos que se llenan con la fecha de hoy y no se editan
-  var AUTOFECHA_FIELDS = { prov_pedidos: ['Fecha'] };
+  var AUTOFECHA_FIELDS = { prov_pedidos: ['Fecha'], leads: ['Fecha'], showroom: ['Fecha'] };
   function esAutoFecha(h) {
     return (AUTOFECHA_FIELDS[state.key] || []).some(function (f) { return norm(f) === norm(h); });
   }
@@ -4234,7 +4240,8 @@
       if (el && !el.value) {
         var d = new Date();
         el.value = d.getDate() + ' ' + MESES_ES[d.getMonth()].toLowerCase() + ' ' + d.getFullYear();
-        el.readOnly = true; el.tabIndex = -1;
+        // En Leads y Showroom la fecha se puede corregir; en pedidos queda fija
+        if (state.key === 'prov_pedidos') { el.readOnly = true; el.tabIndex = -1; }
       }
     });
     avisoMargen();
@@ -4745,7 +4752,8 @@
       if (el && !el.value) {
         var d = new Date();
         el.value = d.getDate() + ' ' + MESES_ES[d.getMonth()].toLowerCase() + ' ' + d.getFullYear();
-        el.readOnly = true; el.tabIndex = -1;
+        // En Leads y Showroom la fecha se puede corregir; en pedidos queda fija
+        if (state.key === 'prov_pedidos') { el.readOnly = true; el.tabIndex = -1; }
       }
     });
     avisoMargen();
@@ -5009,8 +5017,35 @@
     var d = new Date(); d.setDate(d.getDate() + n * 7);
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   }
+  // Campos de marketing que deben quedar completos al cerrar la venta
+  var CAMPOS_MKT = [
+    { campo: 'TIPO CLIENTE',      label: 'Tipo de cliente' },
+    { campo: 'Forma de Contacto', label: 'Cómo llegó' },
+    { campo: 'Visito Showroom',   label: '¿Visitó el showroom?' }
+  ];
   function abrirConvertirVenta(folio, cliente) {
     cotAConvertir = folio;
+    // Solo se preguntan los que estén vacíos en la cotización
+    var fila = (state.rows || []).filter(function (r) {
+      var c = findHeaderByName('No. de Referencia') || findHeaderByName('Folio');
+      return c && String(r[c] || '').trim() === folio;
+    })[0] || {};
+    var faltan = CAMPOS_MKT.filter(function (m) {
+      var col = findHeaderByName(m.campo);
+      return col && !String(fila[col] || '').trim();
+    });
+    document.getElementById('ventaMkt').innerHTML = faltan.length
+      ? '<div style="grid-column:1/-1;font-size:13px;color:var(--slate);margin-bottom:2px">' +
+        'Antes de cerrar, completa estos datos para que la base quede llena:</div>' +
+        faltan.map(function (m) {
+          var opts = optionsFor(findHeaderByName(m.campo)) || [];
+          return '<div class="fld"><label>' + esc(m.label) + '</label>' +
+            '<select class="venta-mkt" data-col="' + esc(findHeaderByName(m.campo)) + '">' +
+            '<option value=""></option>' +
+            opts.map(function (o) { return '<option>' + esc(o) + '</option>'; }).join('') +
+            '</select></div>';
+        }).join('')
+      : '';
     document.getElementById('ventaResumen').innerHTML =
       '<b>' + esc(folio) + '</b>' + (cliente ? ' · ' + esc(cliente) : '');
     document.getElementById('ventaSabeFecha').value = 'no';
@@ -5026,7 +5061,18 @@
     var btn = document.getElementById('ventaOk');
     var iso = document.getElementById('ventaFecha').value;
     btn.disabled = true; btn.textContent = 'Convirtiendo...';
-    api('to-sale', { token: state.token, folio: cotAConvertir, fechaEntrega: iso ? isoToLargo(iso) : '' })
+    // Lo que se capturó de marketing se guarda primero en la cotización
+    var mkt = {};
+    document.querySelectorAll('.venta-mkt').forEach(function (sel) {
+      if (sel.value) mkt[sel.getAttribute('data-col')] = sel.value;
+    });
+    var cRef2 = findHeaderByName('No. de Referencia') || findHeaderByName('Folio');
+    var previo = Object.keys(mkt).length && cRef2
+      ? api('fill', { token: state.token, key: 'cotizaciones',
+                      match: { col: cRef2, value: cotAConvertir }, set: mkt }).catch(function () {})
+      : Promise.resolve();
+    previo.then(function () {
+    return api('to-sale', { token: state.token, folio: cotAConvertir, fechaEntrega: iso ? isoToLargo(iso) : '' })
       .then(function (out) {
         toast('Venta creada · Folio ' + out.folio + ' (' + out.filas +
               (out.filas === 1 ? ' producto' : ' productos') + ')', 'ok');
@@ -5049,6 +5095,7 @@
       })
       .catch(function (e) { fail(e); })
       .then(function () { btn.disabled = false; btn.textContent = 'Convertir en venta'; });
+    });
   }
 
   // ===== Cotización con el formato de Perch (se guarda como PDF desde el navegador) =====
@@ -5376,7 +5423,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-80';
+    var mia = '2026.08.11-81';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
