@@ -626,7 +626,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-78</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-80</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1081,7 +1081,7 @@
   }
 
   // ===== Estado de cuenta por proveedor (vista propia, no es una hoja) =====
-  var provAbierto = {};
+  var provAbierto = {}, provSolo = 'abiertos';
   function loadProveedores() {
     document.getElementById('tableWrap').innerHTML =
       '<div class="state" style="padding:50px 0">Armando el estado de cuenta…</div>';
@@ -1091,8 +1091,9 @@
       var provs = d.proveedores || [];
       var tot = { costo: 0, pagado: 0, porPagar: 0, pend: 0 };
       provs.forEach(function (p) {
-        tot.costo += p.totales.costo; tot.pagado += p.totales.pagado;
-        tot.porPagar += p.totales.porPagar; tot.pend += p.totales.pendientes;
+        var x = (provSolo === 'abiertos' && p.abiertos) ? p.abiertos : p.totales;
+        tot.costo += x.costo; tot.pagado += x.pagado;
+        tot.porPagar += x.porPagar; tot.pend += x.pendientes;
       });
       var box = document.getElementById('summary');
       box.style.display = 'flex';
@@ -1113,9 +1114,15 @@
         (d.conPagos ? '' : '<div class="sum-card"><div class="k">Pagos</div><div class="v">—</div>' +
           '<div class="k" style="text-transform:none;letter-spacing:0">sin leer EGRESOS</div></div>');
 
-      var h = '<div class="cot-grid">';
+      var h = '<div class="mes-chips">' +
+        '<button type="button" class="mes-chip' + (provSolo === 'abiertos' ? ' on' : '') +
+          '" data-alcance="abiertos">Solo pedidos abiertos</button>' +
+        '<button type="button" class="mes-chip' + (provSolo === 'todos' ? ' on' : '') +
+          '" data-alcance="todos">Todo el histórico</button></div>' +
+        '<div class="cot-grid">';
       provs.forEach(function (p) {
-        var t = p.totales, ab = !!provAbierto[p.proveedor];
+        var t = (provSolo === 'abiertos' && p.abiertos) ? p.abiertos : p.totales;
+        var ab = !!provAbierto[p.proveedor];
         var aFavor = t.porPagar < -0.5;
         h += '<div class="cot-card' + (ab ? ' open' : '') + '">' +
           '<button type="button" class="cot-head" data-prov="' + esc(p.proveedor).replace(/"/g, '&quot;') + '">' +
@@ -1137,10 +1144,11 @@
           '</button>';
         if (ab) {
           h += '<div class="cot-body">';
-          p.pedidos.forEach(function (d2) {
+          p.pedidos.filter(function (d2) { return provSolo !== 'abiertos' || d2.abierto; })
+                   .forEach(function (d2) {
             h += '<div style="margin-bottom:14px">' +
               '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:6px">' +
-                '<b>' + esc(d2.pedido) + '</b>' +
+                '<b>' + esc(d2.pedido) + '</b>' + (d2.status ? ' ' + pillHTML(d2.status) : '') +
                 '<span class="s">' + esc(d2.fecha) + (d2.estimada ? ' · estimada ' + esc(d2.estimada) : '') + '</span>' +
                 '<span>' + esc(formatMoney(d2.costo)) + ' · pagado ' + esc(formatMoney(d2.pagado)) +
                 (d2.ajustes ? ' (incluye ' + esc(formatMoney(d2.ajustes)) + ' de ajustes)' : '') +
@@ -1175,6 +1183,9 @@
       });
       document.getElementById('tableWrap').innerHTML = h + '</div>';
       document.getElementById('count').textContent = provs.length + ' proveedores';
+      document.querySelectorAll('#tableWrap [data-alcance]').forEach(function (b) {
+        b.addEventListener('click', function () { provSolo = b.getAttribute('data-alcance'); loadProveedores(); });
+      });
     }).catch(function (e) {
       document.getElementById('tableWrap').innerHTML =
         '<div class="state">' + esc((e && e.message) || 'No se pudo armar el estado de cuenta.') + '</div>';
@@ -5365,7 +5376,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-78';
+    var mia = '2026.08.11-80';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
