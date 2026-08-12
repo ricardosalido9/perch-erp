@@ -38,7 +38,8 @@ const RUTAS = {
   'prov-export':  require('../lib/handlers/prov-export'),
   memoria:        require('../lib/handlers/memoria'),
   'lookup-debug': require('../lib/handlers/lookup-debug'),
-  'pago-traza':   require('../lib/handlers/pago-traza')
+  'pago-traza':   require('../lib/handlers/pago-traza'),
+  'prov-pdf':     require('../lib/handlers/prov-pdf')
 };
 
 module.exports = async (req, res) => {

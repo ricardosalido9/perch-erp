@@ -652,7 +652,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-136</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-138</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1635,7 +1635,7 @@
   }
 
   // ===== Qué tiene guardado cada proveedor =====
-  var invProvAbierto = {};
+  var invProvAbierto = {}, invLineaAbierta = {};
   function loadInvProv() {
     document.getElementById('tableWrap').innerHTML =
       '<div class="state" style="padding:50px 0">Revisando lo que tiene cada proveedor…</div>';
@@ -1670,8 +1670,11 @@
             '<th style="text-align:right">Entregó</th><th style="text-align:right">Salieron</th>' +
             '<th style="text-align:right">Tiene guardadas</th><th style="text-align:right">Por fabricar</th>' +
             '<th>Pedidos</th></tr></thead><tbody>' +
-            p.lineas.map(function (l) {
-              return '<tr><td>' + esc(l.producto) + '</td><td>' + esc(l.material || '—') + '</td>' +
+            p.lineas.map(function (l, li) {
+              var kl = p.proveedor + '||' + l.producto + '||' + l.material;
+              var ab2 = !!invLineaAbierta[kl];
+              var fila = '<tr class="inv-linea" data-linea="' + esc(kl).replace(/"/g, '&quot;') +
+                '" style="cursor:pointer"><td>' + (ab2 ? '▾ ' : '▸ ') + esc(l.producto) + '</td><td>' + esc(l.material || '—') + '</td>' +
                 '<td class="num">' + fmtNum(l.pedidas) + '</td>' +
                 '<td class="num">' + fmtNum(l.entregadas) + '</td>' +
                 '<td class="num">' + fmtNum(l.salidas) + '</td>' +
@@ -1679,8 +1682,34 @@
                   fmtNum(l.disponible) + '</b></td>' +
                 '<td class="num">' + (l.porFabricar ? '<span style="color:var(--amber)">' +
                   fmtNum(l.porFabricar) + '</span>' : '') + '</td>' +
-                '<td class="s">' + esc(l.pedidos.map(function (x) { return x.pedido; }).slice(0, 4).join(' · ')) + '</td></tr>';
-            }).join('') + '</tbody></table></div>';
+                '<td class="s">' + fmtNum(l.pedidos.length) +
+                  (l.pedidos.length === 1 ? ' pedido' : ' pedidos') + '</td></tr>';
+              if (ab2) {
+                fila += '<tr><td colspan="8" style="background:var(--paper);padding:10px 14px">' +
+                  '<table class="mini-table" style="background:var(--surface)"><thead><tr>' +
+                  '<th>Pedido</th><th>Status</th><th>Fecha</th>' +
+                  '<th style="text-align:right">Le pedí</th><th style="text-align:right">Llegaron</th>' +
+                  '<th style="text-align:right">Salieron</th><th style="text-align:right">Le quedan</th>' +
+                  '<th style="text-align:right">Por fabricar</th></tr></thead><tbody>' +
+                  l.pedidos.map(function (q) {
+                    return '<tr><td><b>' + esc(q.pedido) + '</b></td>' +
+                      '<td>' + (q.status ? pillHTML(q.status) : '') + '</td>' +
+                      '<td>' + esc(q.fecha ? formatDateCell(q.fecha) : '') + '</td>' +
+                      '<td class="num">' + fmtNum(q.pedidas) + '</td>' +
+                      '<td class="num">' + fmtNum(q.entregadas) + '</td>' +
+                      '<td class="num">' + fmtNum(q.salidas) + '</td>' +
+                      '<td class="num"><b' + (q.disponibles > 0 ? ' style="color:var(--success)"' : '') + '>' +
+                        fmtNum(q.disponibles) + '</b></td>' +
+                      '<td class="num">' + (q.porFabricar ? '<span style="color:var(--amber)">' +
+                        fmtNum(q.porFabricar) + '</span>' : '') + '</td></tr>';
+                  }).join('') + '</tbody></table></td></tr>';
+              }
+              return fila;
+            }).join('') + '</tbody></table>' +
+            '<div class="cot-acciones"><button type="button" class="primary pdf-prov" data-prov="' +
+              esc(p.proveedor).replace(/"/g, '&quot;') + '">Estado de cuenta en PDF</button>' +
+              '<span class="s" style="color:var(--muted)">Para mandárselo al proveedor</span></div>' +
+            '</div>';
         }
         h += '</div>';
       });
@@ -1691,6 +1720,31 @@
           var k = b.getAttribute('data-invprov');
           invProvAbierto[k] = !invProvAbierto[k];
           loadInvProv();
+        });
+      });
+      document.querySelectorAll('#tableWrap .inv-linea').forEach(function (tr) {
+        tr.addEventListener('click', function () {
+          var k = tr.getAttribute('data-linea');
+          invLineaAbierta[k] = !invLineaAbierta[k];
+          loadInvProv();
+        });
+      });
+      document.querySelectorAll('#tableWrap .pdf-prov').forEach(function (b) {
+        b.addEventListener('click', function (e) {
+          e.stopPropagation();
+          var prov = b.getAttribute('data-prov');
+          b.disabled = true; b.textContent = 'Armando el PDF...';
+          api('prov-pdf', { token: state.token, proveedor: prov }).then(function (o) {
+            if (o.pdf) {
+              var a = document.createElement('a');
+              a.href = 'data:application/pdf;base64,' + o.pdf;
+              a.download = 'Estado de cuenta - ' + prov + '.pdf';
+              a.click();
+            }
+            if (o.link) window.open(o.link, '_blank');
+          }).catch(fail).then(function () {
+            b.disabled = false; b.textContent = 'Estado de cuenta en PDF';
+          });
         });
       });
     }).catch(function (e) {
@@ -3921,7 +3975,10 @@
               ' <button type="button" class="row-btn ed-abrir" data-row="' + r._row +
               '" title="Corregir este producto">Editar</button></td></tr>';
           }).join('') + '</tbody></table>' +
-          '<div class="cot-acciones"><button type="button" class="primary aventa-btn" data-ped="' +
+          '<div class="cot-acciones">' +
+            '<button type="button" class="primary llegaron-btn" data-ped="' +
+              esc(k).replace(/"/g, '&quot;') + '">Ya llegaron</button>' +
+            '<button type="button" class="aventa-btn" data-ped="' +
             esc(k).replace(/"/g, '&quot;') + '">Mandar a venta</button>' +
             '<span class="s" style="color:var(--muted)">Asigna piezas de este pedido a folios de venta</span>' +
           '</div></div>';
@@ -5667,6 +5724,115 @@
     }).then(function () { btn.disabled = false; btn.textContent = etiqueta; });
   }
 
+  // ===== Registrar la llegada de un pedido =====
+  // Se pregunta cuántas llegaron de cada mueble y a dónde. Se escribe la entrada,
+  // se actualiza el status y, si alguna ya tenía folio de cliente, se ofrece la salida.
+  var entradaPedido = null, entradaLineas = [];
+  function abrirEntrada(pedido) {
+    var cPed = findHeaderByName('Pedido Proveedor');
+    var cIt = findHeaderByName('Producto');
+    var cMat = findHeaderByName('Material'), cCant = findHeaderByName('Cantidad');
+    var cEnt = findHeaderByName('Entradas'), cProv = findHeaderByName('Proveedor');
+    var cFol = findHeaderByName('Folio cliente'), cCU = findHeaderByName('Costo Unitario');
+    entradaPedido = pedido;
+    entradaLineas = (state.rows || []).filter(function (r) {
+      return String(r[cPed] || '').trim() === pedido;
+    }).map(function (r) {
+      var pedidas = parseNumber(r[cCant]) || 0;
+      var yaEntro = cEnt ? (parseNumber(r[cEnt]) || 0) : 0;
+      return { fila: r._row, producto: String(r[cIt] || '').trim(),
+               material: String(r[cMat] || '').trim(), proveedor: String(r[cProv] || '').trim(),
+               folio: cFol ? String(r[cFol] || '').trim() : '',
+               costo: parseNumber(r[cCU]) || 0,
+               pedidas: pedidas, yaEntro: yaEntro, faltan: Math.max(0, pedidas - yaEntro) };
+    }).filter(function (l) { return l.producto; });
+    if (!entradaLineas.length) { toast('Ese pedido no tiene productos.', 'err'); return; }
+
+    var hoy = new Date();
+    var iso = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0') + '-' +
+              String(hoy.getDate()).padStart(2, '0');
+    var h = '<div style="display:flex;gap:14px;align-items:end;flex-wrap:wrap;margin-bottom:14px">' +
+      '<div class="fld" style="margin:0"><label>¿Qué día llegaron?</label>' +
+      '<input type="date" id="entFecha" value="' + iso + '"></div>' +
+      '<div class="fld" style="margin:0"><label>¿Dónde quedaron?</label>' +
+      '<select id="entDonde"><option>Bodega Perch</option><option>Proveedor</option>' +
+      '<option>Showroom</option></select></div></div>' +
+      '<table class="mini-table"><thead><tr><th>Mueble</th><th>Material</th>' +
+      '<th style="text-align:right">Pedidas</th><th style="text-align:right">Ya llegaron</th>' +
+      '<th style="text-align:right">Llegaron ahora</th><th>Ya tiene dueño</th></tr></thead><tbody>' +
+      entradaLineas.map(function (l, i) {
+        return '<tr><td>' + esc(l.producto) + '</td><td>' + esc(l.material || '—') + '</td>' +
+          '<td class="num">' + fmtNum(l.pedidas) + '</td>' +
+          '<td class="num">' + fmtNum(l.yaEntro) + '</td>' +
+          '<td><input class="row-input ent-cant" data-i="' + i + '" type="number" min="0" max="' +
+            l.faltan + '" value="' + l.faltan + '" style="width:80px;text-align:right"></td>' +
+          '<td>' + (l.folio ? pillHTML(l.folio) : '<span class="s" style="color:var(--muted)">stock</span>') +
+          '</td></tr>';
+      }).join('') + '</tbody></table>' +
+      '<div class="s" style="margin-top:10px;color:var(--muted)">Se registra la entrada y se actualiza ' +
+      'el status del pedido. Lo que ya tiene folio de cliente se ofrece para darle salida.</div>';
+    document.getElementById('aventaTitulo').textContent = 'Ya llegaron · ' + pedido;
+    document.getElementById('aventaCuerpo').innerHTML = h;
+    document.getElementById('aventaOk').textContent = 'Registrar la entrada';
+    document.getElementById('aventaCancel').textContent = 'Cancelar';
+    document.getElementById('aventaModal').classList.add('on');
+    aventaPedido = null;
+  }
+
+  function registrarEntrada() {
+    var f = document.getElementById('entFecha');
+    var donde = document.getElementById('entDonde');
+    var fecha = f && f.value ? isoToLargo(f.value) : '';
+    var ubi = donde ? donde.value : '';
+    var entradas = [], fills = [], conDueno = [];
+    document.querySelectorAll('.ent-cant').forEach(function (inp) {
+      var i = +inp.getAttribute('data-i');
+      var c = parseFloat(inp.value || '0');
+      if (!c) return;
+      var l = entradaLineas[i];
+      entradas.push({ 'Fecha': fecha, 'Pedido Proveedor': entradaPedido, 'Pedido': entradaPedido,
+        'Proveedor': l.proveedor, 'Producto': l.producto, 'Item': l.producto, 'Productos': l.producto,
+        'Material': l.material, 'Cantidad': c, 'Ubicación': ubi, 'Ubicacion': ubi,
+        'Status': 'RECIBIDO', 'Comentarios': '' });
+      fills.push({ fila: l.fila, total: (l.yaEntro || 0) + c });
+      if (l.folio) conDueno.push(l);
+    });
+    if (!entradas.length) { toast('No pusiste cantidades.', 'err'); return; }
+    var btn = document.getElementById('aventaOk');
+    btn.disabled = true; btn.textContent = 'Registrando...';
+    Promise.all(entradas.map(function (e) {
+      return api('add', { token: state.token, key: 'prov_entradas', record: e });
+    })).then(function () {
+      // La columna Entradas del pedido se actualiza fila por fila
+      return Promise.all(fills.map(function (x) {
+        var orig = (state.rows || []).filter(function (r) { return r._row === x.fila; })[0] || {};
+        var rec = {};
+        state.headers.forEach(function (h2) { rec[h2] = (orig[h2] != null) ? orig[h2] : ''; });
+        var cE = findHeaderByName('Entradas');
+        if (cE) rec[cE] = x.total;
+        var cS = findHeaderByName('Status');
+        var cC = findHeaderByName('Cantidad');
+        if (cS && cC) {
+          rec[cS] = (x.total >= (parseNumber(orig[cC]) || 0)) ? 'ENTREGADO' : 'ENTREGA PARCIAL';
+        }
+        return api('update', { token: state.token, key: state.key, row: x.fila, record: rec })
+          .catch(function () {});
+      }));
+    }).then(function () {
+      toast('Entrada registrada: ' + fmtNum(entradas.length) +
+            (entradas.length === 1 ? ' mueble.' : ' muebles.'), 'ok');
+      var ped = entradaPedido;
+      cerrarMandarAVenta();
+      loadArea();
+      // Si algo ya tenía folio de cliente, se ofrece darle salida ahora
+      if (conDueno.length) {
+        setTimeout(function () { encolar(function () { abrirMandarAVenta(ped); }); }, 600);
+      }
+    }).catch(fail).then(function () {
+      btn.disabled = false; btn.textContent = 'Registrar la entrada';
+    });
+  }
+
   // ===== Mandar piezas de un pedido a una venta =====
   var aventaPedido = null, aventaLineas = [], aventaPend = [];
   function abrirMandarAVenta(pedido) {
@@ -5797,6 +5963,8 @@
     document.getElementById('aventaCancel').textContent = 'Cerrar';
     terminarPaso();
     aventaPedido = null; aventaLineas = []; aventaPend = []; aventaDest = {};
+    entradaPedido = null; entradaLineas = [];
+    document.getElementById('aventaOk').textContent = 'Registrar salidas';
   }
   function registrarSalidas() {
     var envs = [];
@@ -6695,7 +6863,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-136';
+    var mia = '2026.08.11-138';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
@@ -6728,7 +6896,10 @@
   document.getElementById('addModalClose').addEventListener('click', cerrarModalAlta);
   document.getElementById('aventaClose').addEventListener('click', cerrarMandarAVenta);
   document.getElementById('aventaCancel').addEventListener('click', cerrarMandarAVenta);
-  document.getElementById('aventaOk').addEventListener('click', registrarSalidas);
+  document.getElementById('aventaOk').addEventListener('click', function () {
+    if (document.getElementById('entFecha')) registrarEntrada();
+    else registrarSalidas();
+  });
   document.getElementById('ventaClose').addEventListener('click', cerrarConvertirVenta);
   document.getElementById('ventaCancel').addEventListener('click', cerrarConvertirVenta);
   document.getElementById('ventaOk').addEventListener('click', convertirEnVenta);
@@ -6802,6 +6973,8 @@
   });
   document.getElementById('tableWrap').addEventListener('click', function (e) {
     // Editar un producto dentro de la tarjeta de una venta o cotización
+    var lleg = e.target.closest('.llegaron-btn');
+    if (lleg) { abrirEntrada(lleg.getAttribute('data-ped')); return; }
     var edA = e.target.closest('.ed-abrir');
     if (edA) { filaEditando = parseInt(edA.getAttribute('data-row'), 10); renderTable(); return; }
     var edN = e.target.closest('.ed-no');
@@ -6923,6 +7096,8 @@
   });
   document.getElementById('tableWrap').addEventListener('click', function (e) {
     // Editar un producto dentro de la tarjeta de una venta o cotización
+    var lleg = e.target.closest('.llegaron-btn');
+    if (lleg) { abrirEntrada(lleg.getAttribute('data-ped')); return; }
     var edA = e.target.closest('.ed-abrir');
     if (edA) { filaEditando = parseInt(edA.getAttribute('data-row'), 10); renderTable(); return; }
     var edN = e.target.closest('.ed-no');
