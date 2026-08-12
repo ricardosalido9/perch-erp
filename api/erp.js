@@ -36,7 +36,8 @@ const RUTAS = {
   clientes:       require('../lib/handlers/clientes'),
   csf:            require('../lib/handlers/csf'),
   'prov-export':  require('../lib/handlers/prov-export'),
-  memoria:        require('../lib/handlers/memoria')
+  memoria:        require('../lib/handlers/memoria'),
+  'lookup-debug': require('../lib/handlers/lookup-debug')
 };
 
 module.exports = async (req, res) => {

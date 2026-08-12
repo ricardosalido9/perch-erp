@@ -640,7 +640,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-118</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-119</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -4446,17 +4446,35 @@
     for (var i = 0; i < list.length; i++) if (list[i].type === 'cascade') return list[i];
     return null;
   }
+  // ¿Son el mismo campo? Se aceptan los alias: Producto = Productos = Item
+  function mismoCampo(a, b) {
+    if (norm(a) === norm(b)) return true;
+    var alt = (ALIAS_CAMPOS[a] || []).concat(ALIAS_CAMPOS[b] || []);
+    return alt.some(function (x) { return norm(x) === norm(a) || norm(x) === norm(b); }) &&
+           (ALIAS_CAMPOS[a] || []).concat([a]).some(function (x) {
+             return (ALIAS_CAMPOS[b] || []).concat([b]).some(function (y) { return norm(x) === norm(y); });
+           });
+  }
   function cascadeLevelIndex(h) {
     var c = cascadeLU(); if (!c) return -1;
-    for (var i = 0; i < c.levels.length; i++) if (norm(c.levels[i]) === norm(h)) return i;
+    for (var i = 0; i < c.levels.length; i++) if (mismoCampo(c.levels[i], h)) return i;
     return -1;
   }
   function isCascadeFill(h) {
     var c = cascadeLU(); if (!c) return false;
-    return (c.fills || []).some(function (f) { return norm(f) === norm(h); });
+    return (c.fills || []).some(function (f) { return mismoCampo(f, h); });
   }
   function closestFld(el) { while (el && !(el.classList && el.classList.contains('fld'))) el = el.parentNode; return el; }
   function cascElem(level) { return document.querySelector('#formFields [data-casc-level="' + level + '"]'); }
+  // El valor de un nivel dentro de una fila del catálogo, aceptando alias
+  function valorNivel(fila, nombre) {
+    if (fila[nombre] != null && String(fila[nombre]).trim() !== '') return fila[nombre];
+    var alt = ALIAS_CAMPOS[nombre] || [];
+    for (var i = 0; i < alt.length; i++) {
+      if (fila[alt[i]] != null && String(fila[alt[i]]).trim() !== '') return fila[alt[i]];
+    }
+    return '';
+  }
   function cascFillElem(name) {
     var real = findHeaderByName(name) || name;   // puede no existir en la hoja (Descripción, Medidas)
     return document.querySelector('#formFields [data-col="' + real + '"]');
@@ -4471,8 +4489,8 @@
   function cascDistinct(c, chosen, level) {
     var seen = {}, out = [];
     c.rows.forEach(function (r) {
-      for (var k = 0; k < level; k++) { if (norm(r[c.levels[k]] || '') !== norm(chosen[k] || '')) return; }
-      var v = r[c.levels[level]] || '';
+      for (var k = 0; k < level; k++) { if (norm(valorNivel(r, c.levels[k])) !== norm(chosen[k] || '')) return; }
+      var v = valorNivel(r, c.levels[level]);
       if (v && !seen[norm(v)]) { seen[norm(v)] = 1; out.push(v); }
     });
     out.sort(function (a, b) { return a.localeCompare(b, 'es'); });
@@ -4495,8 +4513,8 @@
   function cascDistinctByProduct(c, prod, d) {
     var seen = {}, out = [];
     c.rows.forEach(function (r) {
-      if (norm(r[c.levels[0]] || '') !== norm(prod || '')) return;
-      var v = r[c.levels[d]] || '';
+      if (norm(valorNivel(r, c.levels[0])) !== norm(prod || '')) return;
+      var v = valorNivel(r, c.levels[d]);
       if (v && !seen[norm(v)]) { seen[norm(v)] = 1; out.push(v); }
     });
     out.sort(function (a, b) { return a.localeCompare(b, 'es'); });
@@ -4508,7 +4526,7 @@
     for (var i = 0; i < c.levels.length; i++) { var el = cascElem(i); chosen[i] = el ? el.value : ''; }
     var matches = c.rows.filter(function (r) {
       for (var k = 0; k < c.levels.length; k++) {
-        if (chosen[k] && norm(r[c.levels[k]] || '') !== norm(chosen[k])) return false;
+        if (chosen[k] && norm(valorNivel(r, c.levels[k])) !== norm(chosen[k])) return false;
       }
       return true;
     });
@@ -6513,7 +6531,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-118';
+    var mia = '2026.08.11-119';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
