@@ -640,7 +640,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-119</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-120</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1100,8 +1100,8 @@
   }
 
   // ===== Estado de cuenta por proveedor (vista propia, no es una hoja) =====
-  // Solo los pedidos ACTIVOS: los entregados y cancelados ya no cuentan.
-  var provAbierto = {}, provSolo = 'abiertos', provSaldo = true;
+  // Todos los pedidos que están en la pestaña. El filtro de activos es opcional.
+  var provAbierto = {}, provSolo = 'todos', provSaldo = false;
   function loadProveedores() {
     document.getElementById('driveProvBtn').style.display = '';
     document.getElementById('tableWrap').innerHTML =
@@ -1142,10 +1142,10 @@
           '<div class="k" style="text-transform:none;letter-spacing:0">sin leer EGRESOS</div></div>');
 
       var h = '<div class="mes-chips">' +
-        '<button type="button" class="mes-chip' + (provSolo === 'abiertos' ? ' on' : '') +
-          '" data-alcance="abiertos">Pedidos activos</button>' +
         '<button type="button" class="mes-chip' + (provSolo === 'todos' ? ' on' : '') +
-          '" data-alcance="todos">Todo el histórico</button>' +
+          '" data-alcance="todos">Todos los pedidos</button>' +
+        '<button type="button" class="mes-chip' + (provSolo === 'abiertos' ? ' on' : '') +
+          '" data-alcance="abiertos">Solo activos</button>' +
         '<button type="button" class="mes-chip' + (provSaldo ? ' on' : '') +
           '" data-saldo="1">Solo con saldo</button>' +
         '<button type="button" class="mes-chip' + (provSaldo ? '' : ' on') +
@@ -6531,7 +6531,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-119';
+    var mia = '2026.08.11-120';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
