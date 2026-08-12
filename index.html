@@ -652,7 +652,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-132</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-134</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -4664,40 +4664,6 @@
     var tn = document.querySelector('#formFields input[placeholder="Nombre de la tela"]'); if (tn) tn.style.display = 'none';
     var dt = document.querySelector('#formFields .disc-type'); if (dt) dt.value = '';
     var da = document.querySelector('#formFields .disc-amt'); if (da) { da.value = ''; da.disabled = true; }
-    if (faltantes.length) {
-      var av = document.createElement('div');
-      av.style.cssText = 'grid-column:1/-1;padding:12px 14px;border-radius:10px;background:var(--amber-bg);' +
-        'border:1px solid var(--amber);color:var(--amber);font-size:13px';
-      av.innerHTML = '<b>Faltan columnas en la hoja.</b> Estos campos no se pueden capturar porque la pestaña ' +
-        '<b>' + esc(state.sheetName || state.label) + '</b> no las tiene. Agrégalas en la fila 1 con este nombre exacto:' +
-        '<div style="margin-top:6px">' + faltantes.map(function (f) {
-          return '<code style="background:var(--surface);padding:2px 6px;border-radius:5px;margin-right:6px;' +
-                 'display:inline-block;margin-bottom:4px">' + esc(f) + '</code>';
-        }).join('') + '</div>';
-      box.insertBefore(av, box.firstChild);
-    }
-    (AUTOFECHA_FIELDS[state.key] || []).forEach(function (f) {
-      var el = fieldEl(f);
-      if (el && !el.value) {
-        var d = new Date();
-        // Un input type="date" solo acepta AAAA-MM-DD; uno de texto, la fecha larga
-        el.value = (el.type === 'date')
-          ? d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' +
-            String(d.getDate()).padStart(2, '0')
-          : d.getDate() + ' ' + MESES_ES[d.getMonth()].toLowerCase() + ' ' + d.getFullYear();
-        // En Leads y Showroom la fecha se puede corregir; en pedidos queda fija
-        if (state.key === 'prov_pedidos') { el.readOnly = true; el.tabIndex = -1; }
-      }
-    });
-    avisoMargen();
-    initCascade();
-    // El costo se recalcula al cambiar cualquiera de sus llaves
-    var tl = tablaLU();
-    if (tl) tl.campos.forEach(function (c) {
-      var el = fieldEl(c);
-      if (el) { el.addEventListener('change', aplicarTabla); el.addEventListener('input', aplicarTabla); }
-    });
-    recalcComputed();
   }
   function lineResumen(rec) {
     var prod = rec[findHeaderByName('Producto')] || '';
@@ -4827,6 +4793,23 @@
   }
   var lineaEditando = -1;
   function renderLineList() {
+    try { renderLineListInterno(); }
+    catch (e) {
+      var b = document.getElementById('lineItemsBox');
+      if (b) {
+        b.style.display = '';
+        b.innerHTML = '<div class="li-head"><span class="li-title">Productos del pedido</span></div>' +
+          '<div style="background:var(--danger-bg);border:1px solid var(--danger);border-radius:10px;' +
+          'padding:12px 14px;font-size:13px;color:var(--danger)">' +
+          '<b>No se pudo dibujar la lista de productos.</b>' +
+          '<div style="margin-top:6px;font-family:monospace;font-size:12px">' + esc(e && e.message) + '</div>' +
+          '<div style="margin-top:6px;color:var(--muted)">Tus productos siguen guardados (' +
+          ((state.lineItems || []).length) + '). Mándale esta pantalla a quien mantiene el ERP.</div></div>';
+      }
+      console.error('renderLineList:', e);
+    }
+  }
+  function renderLineListInterno() {
     var addBtn = document.getElementById('addLineBtn');
     var qBtn = document.getElementById('saveQuoteBtn');
     var sBtn = document.getElementById('saveBtn');
@@ -6660,7 +6643,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-132';
+    var mia = '2026.08.11-134';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
