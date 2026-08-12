@@ -640,7 +640,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-117</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-118</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -5384,6 +5384,9 @@
     }
     if (!lines.length) { toast('Agrega al menos un producto a la venta.', 'err'); return; }
 
+    // El descuento del pedido se reparte ahora, por si se agregaron productos después
+    aplicarDescuentoPedido();
+
     // 4) Arma una fila por producto (envío solo en la primera)
     var envioCol = lc.envioOnce ? findHeaderByName(lc.envioOnce) : null;
     var envInp3 = document.getElementById('envioPedido');
@@ -6510,7 +6513,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-117';
+    var mia = '2026.08.11-118';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
@@ -6616,6 +6619,28 @@
       .catch(function (err) { fail(err); sel.disabled = false; });
   });
   document.getElementById('tableWrap').addEventListener('click', function (e) {
+    // Editar un producto dentro de la tarjeta de una venta o cotización
+    var edA = e.target.closest('.ed-abrir');
+    if (edA) { filaEditando = parseInt(edA.getAttribute('data-row'), 10); renderTable(); return; }
+    var edN = e.target.closest('.ed-no');
+    if (edN) { filaEditando = -1; renderTable(); return; }
+    var edO = e.target.closest('.ed-ok');
+    if (edO) {
+      var filaEd = parseInt(edO.getAttribute('data-row'), 10);
+      var trEd = edO.closest('tr');
+      var origEd = (state.rows || []).filter(function (r) { return r._row === filaEd; })[0] || {};
+      var recEd = {};
+      state.headers.forEach(function (h2) { recEd[h2] = (origEd[h2] != null) ? origEd[h2] : ''; });
+      trEd.querySelectorAll('.ed-campo').forEach(function (inp) {
+        var col = inp.getAttribute('data-col');
+        if (col) recEd[col] = inp.value;
+      });
+      edO.disabled = true; edO.textContent = 'Guardando...';
+      api('update', { token: state.token, key: state.key, row: filaEd, record: recEd })
+        .then(function () { toast('Producto corregido.', 'ok'); filaEditando = -1; loadArea(); })
+        .catch(function (er) { fail(er); edO.disabled = false; edO.textContent = 'Guardar'; });
+      return;
+    }
     if (!e.target.closest) return;
     var cz = e.target.closest('.cotizar-btn');
     if (cz) {
@@ -6646,27 +6671,6 @@
           loadArea();
         })
         .catch(function (err) { fail(err); sv.disabled = false; sv.textContent = 'Aplicar'; });
-      return;
-    }
-    var edA = e.target.closest('.ed-abrir');
-    if (edA) { filaEditando = parseInt(edA.getAttribute('data-row'), 10); renderTable(); return; }
-    var edN = e.target.closest('.ed-no');
-    if (edN) { filaEditando = -1; renderTable(); return; }
-    var edO = e.target.closest('.ed-ok');
-    if (edO) {
-      var fila = parseInt(edO.getAttribute('data-row'), 10);
-      var tr = edO.closest('tr');
-      var orig = (state.rows || []).filter(function (r) { return r._row === fila; })[0] || {};
-      var rec = {};
-      state.headers.forEach(function (h2) { rec[h2] = (orig[h2] != null) ? orig[h2] : ''; });
-      tr.querySelectorAll('.ed-campo').forEach(function (inp) {
-        var col = inp.getAttribute('data-col');
-        if (col) rec[col] = inp.value;
-      });
-      edO.disabled = true; edO.textContent = 'Guardando...';
-      api('update', { token: state.token, key: state.key, row: fila, record: rec })
-        .then(function () { toast('Producto corregido.', 'ok'); filaEditando = -1; loadArea(); })
-        .catch(function (er) { fail(er); edO.disabled = false; edO.textContent = 'Guardar'; });
       return;
     }
     var av = e.target.closest('.aventa-btn');
@@ -6736,6 +6740,28 @@
       .catch(function (err) { fail(err); sel.disabled = false; });
   });
   document.getElementById('tableWrap').addEventListener('click', function (e) {
+    // Editar un producto dentro de la tarjeta de una venta o cotización
+    var edA = e.target.closest('.ed-abrir');
+    if (edA) { filaEditando = parseInt(edA.getAttribute('data-row'), 10); renderTable(); return; }
+    var edN = e.target.closest('.ed-no');
+    if (edN) { filaEditando = -1; renderTable(); return; }
+    var edO = e.target.closest('.ed-ok');
+    if (edO) {
+      var filaEd = parseInt(edO.getAttribute('data-row'), 10);
+      var trEd = edO.closest('tr');
+      var origEd = (state.rows || []).filter(function (r) { return r._row === filaEd; })[0] || {};
+      var recEd = {};
+      state.headers.forEach(function (h2) { recEd[h2] = (origEd[h2] != null) ? origEd[h2] : ''; });
+      trEd.querySelectorAll('.ed-campo').forEach(function (inp) {
+        var col = inp.getAttribute('data-col');
+        if (col) recEd[col] = inp.value;
+      });
+      edO.disabled = true; edO.textContent = 'Guardando...';
+      api('update', { token: state.token, key: state.key, row: filaEd, record: recEd })
+        .then(function () { toast('Producto corregido.', 'ok'); filaEditando = -1; loadArea(); })
+        .catch(function (er) { fail(er); edO.disabled = false; edO.textContent = 'Guardar'; });
+      return;
+    }
     var t = e.target;
     var th = t.closest ? t.closest('th.sortable') : null;
     if (th) {
