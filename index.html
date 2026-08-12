@@ -640,7 +640,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-115</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-117</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -4049,6 +4049,10 @@
       'TIPO CLIENTE':      TIPOS_CLIENTE
     },
     // Para cambiar la lista de status, edita este renglón y listo.
+    prov_pedidos: {
+      'Destino': ['Bodega Perch', 'Proveedor'],
+      'Status':  ['PENDIENTE COMPLETO', 'EN PROCESO', 'ENTREGADO', 'CANCELADO']
+    },
     ventas_registro: {
       // Mismos valores que la validación de datos de la hoja
       'Status': ['Por entregar', 'En proceso', 'Stand by', 'Entregado'],
@@ -4193,7 +4197,7 @@
     prov_pedidos: [
       'Fecha', 'Fecha Estimada de Entrega', 'Pedido Proveedor', 'Proveedor',
       'Producto', 'Material', 'Tela', 'Especificaciones', 'Cantidad', 'Costo Unitario',
-      'Costo Total', 'Costo Total + IVA'
+      'Costo Total', 'Costo Total + IVA', 'Destino'
     ],
     // Leads: captura mínima a propósito. Si toma más de 15 segundos, nadie la va a llenar.
     leads: ['Fecha', 'Contacto', 'Cómo Llego', 'Notas'],
@@ -4232,7 +4236,7 @@
   var LINE_ITEMS = {
     // Un pedido a proveedor puede traer muchos productos
     prov_pedidos: { line: ['Producto', 'Material', 'Tela', 'Especificaciones', 'Cantidad',
-                           'Costo Unitario', 'Costo Total', 'Costo Total + IVA'],
+                           'Costo Unitario', 'Costo Total', 'Costo Total + IVA', 'Destino'],
                     producto: 'Producto', precio: 'Costo Unitario', conIVA: 1.16 },
     ventas_registro: { line: LINEA_PRODUCTO, envioOnce: 'Envio', producto: 'Producto', precio: 'Precio Unitario' },
     cotizaciones:    { line: LINEA_PRODUCTO, envioOnce: 'Envio', producto: 'Producto', precio: 'Precio Unitario' }
@@ -4244,6 +4248,7 @@
   }
   // Campos especiales: Tela (Sí/No + nombre) y Descuento (% o valor). Iguales en Ventas y Cotizaciones.
   var SPECIAL_FIELDS = {
+    prov_pedidos:    { tela: 'Tela' },
     ventas_registro: { tela: 'Tela', descuento: { pct: '% descuento', val: 'Descuentos' } },
     cotizaciones:    { tela: 'Tela', descuento: { pct: '% descuento', val: 'Descuentos' } }
   };
@@ -4262,6 +4267,19 @@
   }
   function isDiscValField(h) { var s = specialCfg(); return !!(s && s.descuento && norm(s.descuento.val) === norm(h)); }
   // Campos que NO se muestran en "Agregar registro" (el resto sí). Por área.
+  // Columnas que el ERP calcula al guardar, sin preguntarlas
+  var AUTO_AL_GUARDAR = {
+    prov_pedidos: function (rec) {
+      var f = rec[findHeaderByName('Fecha')] || '';
+      var d = parseDate(f);
+      var cMes = findHeaderByName('Mes'), cAnio = findHeaderByName('Año');
+      if (d !== null) {
+        if (cMes) rec[cMes] = Math.floor(d / 100) % 100;
+        if (cAnio) rec[cAnio] = Math.floor(d / 10000);
+      }
+    }
+  };
+
   // Campos que se llenan con la fecha de hoy y no se editan
   var AUTOFECHA_FIELDS = { prov_pedidos: ['Fecha'], leads: ['Fecha'], showroom: ['Fecha'] };
   function esAutoFecha(h) {
@@ -4273,7 +4291,7 @@
     inventario:       ['Precio de venta 2025', 'Precio de Venta 2025', 'IVA'],
     prov_pedidos:     ['Mes', 'Año', 'Status', 'Entradas', 'Pendientes por entregar',
                        'Ventas + Exhibición', 'Stock', 'Valor', 'Folio cliente', 'Cliente',
-                       'Dirección de Entrega'],
+                       'Dirección de Entrega', 'Ubicación'],
     ventas_registro:  ['Mes', 'Año1'],
     cotizaciones:     ['Mes', 'Año1'],
     compras_registro: ['Mes']
@@ -5376,6 +5394,9 @@
       Object.keys(ln).forEach(function (k) { rec[k] = ln[k]; });
       // El envío es del pedido: va solo en la primera fila
       if (envioCol) rec[envioCol] = (idx === 0) ? envioDelPedido : '';
+      // Columnas que el ERP calcula solo (Mes, Año…)
+      var auto = AUTO_AL_GUARDAR[state.key];
+      if (auto) auto(rec);
       return rec;
     });
 
@@ -5434,6 +5455,11 @@
       if (folioNuevo && (esCotiza || areaDestino === 'ventas_registro')) {
         // El PDF con formato Perch solo aplica a cotizaciones y ventas
         generarPdfCotizacion(folioNuevo, !esCotiza, true).catch(function () {});
+      }
+      // Un pedido a proveedor puede ir ligado a ventas: se pregunta al terminar
+      if (areaDestino === 'prov_pedidos') {
+        var pedProv = order[findHeaderByName('Pedido Proveedor')] || '';
+        if (pedProv) encolar(function () { preguntarLigarAVenta(pedProv, records); });
       }
       // Datos de marketing que ya se conocen de la venta
       var datosMkt = { 'No. de Referencia': folioNuevo };
@@ -5584,6 +5610,8 @@
   }
   function cerrarMandarAVenta() {
     document.getElementById('aventaModal').classList.remove('on');
+    document.getElementById('aventaCancel').textContent = 'Cerrar';
+    terminarPaso();
     aventaPedido = null; aventaLineas = []; aventaPend = []; aventaDest = {};
   }
   function registrarSalidas() {
@@ -5655,6 +5683,43 @@
         b.textContent = 'Copiado';
       });
     }, 50);
+  }
+
+  // ===== ¿Este pedido va ligado a una venta? =====
+  // Al guardar un pedido a proveedor se pregunta si alguna de sus piezas ya tiene dueño.
+  // Si sí, se abre el mismo reparto de "Mandar a venta" y se generan las salidas.
+  function preguntarLigarAVenta(pedido, records) {
+    var cProd = findHeaderByName('Producto');
+    var cMat = findHeaderByName('Material');
+    var cCant = findHeaderByName('Cantidad');
+    var cCU = findHeaderByName('Costo Unitario');
+    var cProv = findHeaderByName('Proveedor');
+    aventaPedido = pedido;
+    aventaLineas = (records || []).map(function (r) {
+      return { producto: String(r[cProd] || '').trim(), material: String(r[cMat] || '').trim(),
+               cantidad: parseNumber(r[cCant]) || 0, costo: parseNumber(r[cCU]) || 0,
+               proveedor: String(r[cProv] || '').trim() };
+    }).filter(function (l) { return l.producto && l.cantidad; });
+    if (!aventaLineas.length) { terminarPaso(); return; }
+    aventaDest = {};
+    document.getElementById('aventaTitulo').textContent = '¿Este pedido va para alguna venta? · ' + pedido;
+    document.getElementById('aventaCuerpo').innerHTML =
+      '<div class="state" style="padding:30px 0">Buscando ventas que pidieron estos productos…</div>';
+    document.getElementById('aventaCancel').textContent = 'No, es para stock';
+    document.getElementById('aventaModal').classList.add('on');
+    api('pendientes', { token: state.token,
+        productos: aventaLineas.map(function (l) { return l.producto; }) })
+      .then(function (d) {
+        aventaPend = d.pendientes || [];
+        if (!aventaPend.length) {
+          document.getElementById('aventaCuerpo').innerHTML =
+            '<div class="state" style="padding:24px 0">Ninguna venta pendiente pidió estos productos. ' +
+            'El pedido se queda en stock.</div>';
+          return;
+        }
+        pintarMandarAVenta();
+      })
+      .catch(function () { cerrarMandarAVenta(); });
   }
 
   // ===== Visita al showroom sin duplicar =====
@@ -5975,23 +6040,28 @@
         : api('fill', { token: state.token, key: 'ventas_clientes',
                         match: { col: 'Cliente', colAlt: ALT_NOMBRE, value: clientePost.cliente },
                         set: rec });
+      var falló = false;
       accion.then(function (out) {
         if (out && out.filas === 0) {
+          falló = true;
           avisoFijo('<b>No se encontró a "' + esc(clientePost.cliente) + '" en la Lista de Clientes.</b>' +
             '<div style="margin-top:6px">Puede que esté escrito distinto ahí. Revísalo y vuelve a intentar, ' +
             'o agrégalo desde el área Lista de clientes.</div>');
         } else {
           var n = (out && out.filas) ? out.filas : 1;
-          toast('Cliente actualizado (' + fmtNum(n) + (n === 1 ? ' renglón' : ' renglones') + ').', 'ok');
+          toast('Cliente guardado.', 'ok');
         }
       })
         .catch(function (e) {
+          falló = true;
           avisoFijo('<b>No se pudo guardar el cliente.</b><div style="margin-top:6px">' +
-            esc((e && e.message) || '') + '</div>' +
-            '<div style="margin-top:6px;color:var(--muted);font-size:12px">Los datos que capturaste siguen ' +
-            'en el formulario: ciérralo solo cuando queden guardados.</div>');
+            esc((e && e.message) || '') + '</div>');
         })
-        .then(function () { btn2.disabled = false; btn2.textContent = 'Guardar cliente'; });
+        .then(function () {
+          btn2.disabled = false; btn2.textContent = 'Guardar cliente';
+          // Si salió bien se cierra; si falló se queda abierto para no perder lo capturado
+          if (!falló) { clientePost = null; cerrarConvertirVenta(); }
+        });
       return;
     }
     // Modo "solo completar marketing" de una venta ya guardada
@@ -6440,7 +6510,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-115';
+    var mia = '2026.08.11-117';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
