@@ -640,7 +640,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-113</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-114</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1740,7 +1740,9 @@
               '<div><span class="k">Cotizado</span><b>' + esc(fmtMoneyShort(c.montoCotizado)) + '</b></div>' +
               '<div><span class="k">Vendido</span><b>' + esc(fmtMoneyShort(c.montoVendido)) + '</b></div>' +
               '<div><span class="k">Conversión</span><b>' +
-                (c.conversion === null ? '—' : c.conversion + '%') + '</b></div>' +
+                (c.conversion === null ? '—' : c.conversion + '%') + '</b>' +
+                (c.ventasSinCotizar ? '<span class="k">' + fmtNum(c.ventasSinCotizar) +
+                  ' venta' + (c.ventasSinCotizar === 1 ? '' : 's') + ' sin cotizar</span>' : '') + '</div>' +
             '</div><span class="cat-chev">' + (ab ? '▲' : '▼') + '</span></button>';
         if (ab) {
           h += '<div class="cot-body">' +
@@ -1839,7 +1841,7 @@
       document.getElementById('driveStockBtn').style.display = (state.key === 'op_stock') ? '' : 'none';
       document.getElementById('driveProvBtn').style.display = (state.key === 'proveedores') ? '' : 'none';
       var cvb = document.getElementById('catViewBtn');
-      cvb.style.display = ['inventario','cotizaciones','prov_pedidos'].indexOf(state.key) !== -1 ? '' : 'none';
+      cvb.style.display = ['inventario','cotizaciones','ventas_registro','prov_pedidos'].indexOf(state.key) !== -1 ? '' : 'none';
       cvb.textContent = catalogoAgrupado ? 'Ver como tabla' : 'Ver por producto';
       if (!data.connected) {
         document.getElementById('tableWrap').innerHTML =
@@ -3792,10 +3794,12 @@
         h += '</tbody></table>' +
           '<div class="cot-acciones">' +
             '<button type="button" class="pdf-btn" data-folio="' + esc(k).replace(/"/g, '&quot;') + '">Ver PDF</button>' +
-            (vendida ? '<span class="s" style="color:var(--success)">Ya se convirtió en venta</span>'
+            (state.key === 'ventas_registro'
+              ? (cSt ? '<span class="cot-st"><label>Status</label>' + selectStatusCot(k, st) + '</span>' : '')
+              : ((vendida ? '<span class="s" style="color:var(--success)">Ya se convirtió en venta</span>'
                      : '<button type="button" class="primary vender-btn" data-folio="' + esc(k).replace(/"/g, '&quot;') +
                        '" data-cliente="' + esc(r0[cCli] || '').replace(/"/g, '&quot;') + '">Marcar como vendida</button>') +
-            (cSt && !vendida ? '<span class="cot-st"><label>Status</label>' + selectStatusCot(k, st) + '</span>' : '') +
+                (cSt && !vendida ? '<span class="cot-st"><label>Status</label>' + selectStatusCot(k, st) + '</span>' : ''))) +
           '</div></div>';
       }
       h += '</div>';
@@ -3875,7 +3879,7 @@
       var hp = renderPedidosProv(rows);
       if (hp) { document.getElementById('tableWrap').innerHTML = hp; return; }
     }
-    if (state.key === 'cotizaciones' && catalogoAgrupado) {
+    if ((state.key === 'cotizaciones' || state.key === 'ventas_registro') && catalogoAgrupado) {
       var hq = renderCotizaciones(rows);
       if (hq) { document.getElementById('tableWrap').innerHTML = hq; return; }
     }
@@ -5583,6 +5587,22 @@
   }
 
   // Se elige a cuál visita corresponde esta cotización: una que ya existe, o una nueva.
+  // La visita puede traer la fecha como texto o como número de serie de Sheets
+  function fechaVisita(v) {
+    var t = String(v.fecha == null ? '' : v.fecha).trim();
+    if (t && !/^\d+([.,]\d+)?$/.test(t)) return formatDateCell(t) || t;
+    var n = parseFloat(t.replace(',', '.'));
+    if (!isNaN(n) && n > 20000 && n < 80000) {          // serie de Google Sheets
+      var d = new Date(Date.UTC(1899, 11, 30) + n * 86400000);
+      return d.getUTCDate() + ' ' + MESES_ES[d.getUTCMonth()].toLowerCase() + ' ' + d.getUTCFullYear();
+    }
+    if (v.d) {                                           // AAAAMMDD
+      var a = Math.floor(v.d / 10000), m = Math.floor(v.d / 100) % 100, dd = v.d % 100;
+      return dd + ' ' + (MESES_ES[m - 1] || '').toLowerCase() + ' ' + a;
+    }
+    return t;
+  }
+
   function preguntarVisita(cliente, despacho, folio, order, visitas) {
     var hoy = new Date();
     var iso = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0') + '-' +
@@ -5592,7 +5612,7 @@
     if (visitas.length) {
       h += '<div class="fld"><label>Visita</label><select id="visitaCual">' +
         visitas.map(function (v, i) {
-          return '<option value="' + i + '">' + esc(formatDateCell(v.fecha) || 'sin fecha') +
+          return '<option value="' + i + '">' + esc(fechaVisita(v) || 'sin fecha') +
             (v.notas ? ' · ' + esc(v.notas.slice(0, 40)) : '') + '</option>';
         }).join('') +
         '<option value="nueva">Es una visita nueva</option></select></div>' +
@@ -5942,6 +5962,8 @@
             if (mkt[col]) dm[m.campo] = mkt[col];
           });
           registrarMarketing(folioVenta, dm);
+          // ¿Al cliente le faltan datos? Se piden después de cerrar la venta
+          if (q.cliente) encolar(function () { revisarCliente(q.cliente); });
           registrarEnCxc({
             folio: folioVenta, cliente: q.cliente, despacho: q.despacho,
             fechaCierre: q.fecha, mes: '', entregaTexto: iso ? isoToLargo(iso) : '', entregaISO: iso || '',
@@ -6317,7 +6339,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-113';
+    var mia = '2026.08.11-114';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
