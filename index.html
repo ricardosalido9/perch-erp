@@ -652,7 +652,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-134</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-135</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -897,6 +897,14 @@
     proveedores:         'Cuánto se le pidió a cada proveedor, qué llegó y cuánto se le debe.',
     costos:              'La venta contra tres costos: el real, el de la hoja y el del catálogo.',
     conciliacion:        'Lo que Nico captura a mano contra lo que de verdad salió del banco.',
+    fac_complementos:    'A quién le falta el complemento de pago después de que ya pagó.',
+    fac_proveedores:     'Qué facturas nos deben los proveedores de lo que ya les pagamos.',
+    fac_impuestos:       'Impuestos por mes: base, tasa, a cargo, a favor y si ya se pagó.',
+    fin_efectivo:        'Movimientos en efectivo, para pasarlos después a ingresos y egresos.',
+    fin_gastos_op:       'Gastos de operación por categoría: renta, servicios, sueldos, marketing.',
+    fin_estados:         'Estado de resultados por mes.',
+    rh_personal:         'Quién trabaja aquí, desde cuándo y bajo qué esquema.',
+    rh_nomina:           'Lo que se paga cada periodo, con sus deducciones.',
     inv_prov:            'Qué tiene terminado cada proveedor, qué falta por fabricar y a dónde se fue.',
     expediente:          'Todo de cada cliente: desde el primer contacto hasta la última venta.',
     op_stock:            'Lo disponible por producto y material, con lo que está por llegar.',
@@ -1830,6 +1838,39 @@
           ? 'Se guarda en <a href="' + esc(data.archivoUrl) + '" target="_blank">' +
             esc(data.sheetName) + '</a>'
           : '';
+      }
+      // Área creada pero sin archivo: se explica qué falta en vez de salir vacía
+      if (data.sinArchivo) {
+        var cols = data.columnasSugeridas || [];
+        document.getElementById('tableWrap').innerHTML =
+          '<div style="max-width:760px;margin:20px auto;background:var(--surface);border:1px solid var(--line);' +
+          'border-radius:14px;padding:26px 28px">' +
+          '<h3 style="margin:0 0 8px;color:var(--accent-ink);font-size:18px">Esta área todavía no está conectada</h3>' +
+          '<p style="margin:0 0 18px;color:var(--slate);font-size:14px">Ya está lista para usarse. Solo falta ' +
+          'crear la pestaña <b>' + esc(data.sheetName || '') + '</b> y decirme en qué archivo quedó.</p>' +
+          (cols.length
+            ? '<div style="font-size:13px;color:var(--slate);margin-bottom:8px"><b>Columnas propuestas</b> ' +
+              '— cópialas en la fila 1. Puedes quitar o agregar las que quieras:</div>' +
+              '<div style="background:var(--paper);border-radius:10px;padding:14px 16px;margin-bottom:16px">' +
+              cols.map(function (c) {
+                return '<code style="background:var(--surface);padding:3px 8px;border-radius:6px;margin:0 6px 6px 0;' +
+                       'display:inline-block;font-size:12.5px">' + esc(c) + '</code>';
+              }).join('') + '</div>' +
+              '<button type="button" id="copiarCols" class="primary" style="font-size:13px">Copiar los encabezados</button>' +
+              '<span id="copiadoNota" class="s" style="margin-left:10px;color:var(--success)"></span>'
+            : '') +
+          '</div>';
+        var bc = document.getElementById('copiarCols');
+        if (bc) bc.addEventListener('click', function () {
+          var t = cols.join('\t');
+          if (navigator.clipboard) navigator.clipboard.writeText(t);
+          document.getElementById('copiadoNota').textContent =
+            'Listo. Pégalos en la fila 1 de tu hoja (van en columnas separadas).';
+        });
+        document.getElementById('count').textContent = 'sin conectar';
+        document.getElementById('summary').style.display = 'none';
+        mostrarAlta(false);
+        return;
       }
       var vinoFiltrado = aplicarFiltroPendiente();
       // Si la hoja trae celdas con error de fórmula, se avisa en vez de mostrarlas como datos
@@ -6643,7 +6684,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-134';
+    var mia = '2026.08.11-135';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
