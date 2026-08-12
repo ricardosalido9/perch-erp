@@ -317,6 +317,12 @@
   #lineItemsBox .li-qty:focus { border-color:var(--accent-ink); outline:none; }
   #lineItemsBox .li-imp { flex:none; font-weight:600; min-width:92px; text-align:right; }
   #lineItemsBox .li-row.editando { background:var(--amber-bg); border-radius:8px; }
+  #lineItemsBox .li-row.pendiente { background:var(--amber-bg); border-radius:8px;
+    border:1px dashed var(--amber); }
+  #lineItemsBox .li-add-ya { background:var(--accent-ink); color:#fff; border:0; border-radius:6px;
+    padding:4px 12px; font-size:12px; cursor:pointer; }
+  #lineItemsBox .li-limpiar { background:transparent; border:0; color:var(--muted);
+    font-size:14px; cursor:pointer; padding:2px 6px; }
   #lineItemsBox .li-edit { background:transparent; border:0; color:var(--muted); font-size:15px;
     cursor:pointer; padding:2px 6px; }
   #lineItemsBox .li-edit:hover { color:var(--accent-ink); border-color:transparent; }
@@ -572,6 +578,12 @@
   #lineItemsBox .li-qty:focus { border-color:var(--accent-ink); outline:none; }
   #lineItemsBox .li-imp { flex:none; font-weight:600; min-width:92px; text-align:right; }
   #lineItemsBox .li-row.editando { background:var(--amber-bg); border-radius:8px; }
+  #lineItemsBox .li-row.pendiente { background:var(--amber-bg); border-radius:8px;
+    border:1px dashed var(--amber); }
+  #lineItemsBox .li-add-ya { background:var(--accent-ink); color:#fff; border:0; border-radius:6px;
+    padding:4px 12px; font-size:12px; cursor:pointer; }
+  #lineItemsBox .li-limpiar { background:transparent; border:0; color:var(--muted);
+    font-size:14px; cursor:pointer; padding:2px 6px; }
   #lineItemsBox .li-edit { background:transparent; border:0; color:var(--muted); font-size:15px;
     cursor:pointer; padding:2px 6px; }
   #lineItemsBox .li-edit:hover { color:var(--accent-ink); border-color:transparent; }
@@ -640,7 +652,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-128</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-129</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -4825,11 +4837,24 @@
     }
     box.style.display = '';
     var items = state.lineItems || [];
+    // Lo que está a medio capturar arriba también se muestra, para que se vea completo
+    var pendiente = currentLineRec();
     var html = '<div class="li-head"><span class="li-title">Productos del pedido</span></div>';
     html += '<div class="li-list">';
-    if (!items.length) {
+    if (!items.length && !pendiente) {
       html += '<div class="li-empty">Elige un producto arriba. Toca “Agregar producto al pedido” para sumar otro; al guardar se crea una fila por producto con el mismo folio.</div>';
     } else {
+      if (pendiente) {
+        var rp = lineResumen(pendiente);
+        html += '<div class="li-row pendiente">' +
+                '<span class="li-n">•</span>' +
+                '<span class="li-txt">' + esc(rp.titulo) +
+                  (rp.sub ? ' <small>' + esc(rp.sub) + '</small>' : '') +
+                  ' <small style="color:var(--amber)">— lo estás capturando arriba</small></span>' +
+                '<span class="li-txt li-imp">$' + fmtMoney(lineTotal(pendiente)) + '</span>' +
+                '<button type="button" class="li-add-ya" title="Agregarlo al pedido">Agregar</button>' +
+                '<button type="button" class="li-limpiar" title="Descartarlo">✕</button></div>';
+      }
       items.forEach(function (rec, i) {
         var r = lineResumen(rec);
         var colCant = findHeaderByName('Cantidad');
@@ -4889,6 +4914,13 @@
     var envInp = document.getElementById('envioPedido');
     if (envInp) envInp.addEventListener('input', function () {
       envioValor = envInp.value; updateOrderTotal();
+    });
+    // El producto que se está capturando: agregarlo o descartarlo desde la lista
+    Array.prototype.forEach.call(box.querySelectorAll('.li-add-ya'), function (b) {
+      b.addEventListener('click', function () { addProductLine(); });
+    });
+    Array.prototype.forEach.call(box.querySelectorAll('.li-limpiar'), function (b) {
+      b.addEventListener('click', function () { limpiarCamposDeProducto(); renderLineList(); });
     });
     // Cambiar la cantidad aquí mismo, sin abrir nada
     Array.prototype.forEach.call(box.querySelectorAll('.li-qty'), function (inp) {
@@ -6598,7 +6630,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-128';
+    var mia = '2026.08.11-129';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
