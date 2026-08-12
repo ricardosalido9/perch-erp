@@ -640,7 +640,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-120</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-122</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -4681,7 +4681,7 @@
     var precio = toNum(rec[findHeaderByName(lc.precio || 'Precio Unitario')]);
     var cant = toNum(rec[findHeaderByName('Cantidad')]); if (cant <= 0) cant = 1;
     var base = precio * cant;
-    var pct = toNum(rec[findHeaderByName('% descuento')]);
+    var pct = pctNumero(rec[findHeaderByName('% descuento')]);
     var desc = toNum(rec[findHeaderByName('Descuentos')]);
     if (pct > 0) base = base * (1 - pct / 100);
     else if (desc > 0) base = base - desc;
@@ -4715,6 +4715,15 @@
   function aplicarDescuentoPedido() {
     var cfg = specialCfg();
     if (!cfg || !cfg.descuento) return;
+    // Si el descuento se puso arriba (en el producto que se está capturando) y abajo
+    // no hay nada, se toma el de arriba como descuento del pedido.
+    if (!descPedido.tipo) {
+      var dt = document.querySelector('#formFields .disc-type');
+      var da = document.querySelector('#formFields .disc-amt');
+      if (dt && dt.value && da && da.value) {
+        descPedido = { tipo: dt.value, monto: String(da.value).replace('%', '') };
+      }
+    }
     var cPct = findHeaderByName(cfg.descuento.pct);
     var cVal = findHeaderByName(cfg.descuento.val);
     var items = state.lineItems || [];
@@ -4740,6 +4749,28 @@
       });
     }
   }
+  // El descuento del pedido también se pone en el producto que se está capturando,
+  // para que el primero no se quede sin él.
+  function espejoDescuentoArriba() {
+    var dt = document.querySelector('#formFields .disc-type');
+    var da = document.querySelector('#formFields .disc-amt');
+    if (!dt || !da) return;
+    dt.value = descPedido.tipo || '';
+    da.disabled = !descPedido.tipo;
+    da.value = descPedido.tipo ? (descPedido.monto || '') : '';
+    if (dt.onchange) dt.onchange();
+    var ev = document.createEvent ? null : null;
+    // Se dispara el mismo camino que usa el campo al escribirse
+    var cfg = specialCfg();
+    if (cfg && cfg.descuento) {
+      var hP = document.querySelector('#formFields [data-col="' + (findHeaderByName(cfg.descuento.pct) || '') + '"]');
+      var hV = document.querySelector('#formFields [data-col="' + (findHeaderByName(cfg.descuento.val) || '') + '"]');
+      var a = String(descPedido.monto || '').trim();
+      if (hP) hP.value = (descPedido.tipo === 'pct' && a) ? (/%$/.test(a) ? a : a + '%') : '';
+      if (hV) hV.value = (descPedido.tipo === 'val') ? a : '';
+    }
+  }
+
   // Importe de un producto SIN descuento
   function lineTotalBruto(rec) {
     var lc = lineCfg() || {};
@@ -4831,13 +4862,14 @@
     if (dpT) dpT.addEventListener('change', function () {
       descPedido.tipo = dpT.value;
       if (!dpT.value) descPedido.monto = '';
+      espejoDescuentoArriba();
       aplicarDescuentoPedido();
       renderLineList();
     });
     if (dpM) dpM.addEventListener('input', function () {
       descPedido.monto = dpM.value;
+      espejoDescuentoArriba();
       aplicarDescuentoPedido();
-      var t = document.querySelector('.li-total-val');
       updateOrderTotal();
     });
     var envInp = document.getElementById('envioPedido');
@@ -4872,10 +4904,14 @@
         var i = parseInt(b.getAttribute('data-i'), 10);
         var rec = state.lineItems[i];
         if (!rec) return;
-        var pend = readLineFromForm();
-        if (pend && pend.ok && pend.cantidad) state.lineItems.push(pend.rec);   // no se pierde lo escrito
-        cargarLineaEnFormulario(rec);
+        // 1) Se saca PRIMERO el que se va a editar, para que los índices no se muevan
         state.lineItems.splice(i, 1);
+        // 2) Lo que estuviera a medio capturar arriba no se pierde: se agrega
+        var pend = readLineFromForm();
+        if (pend && pend.ok && pend.cantidad) state.lineItems.push(pend.rec);
+        // 3) Y el que se edita pasa a los campos de arriba
+        limpiarCamposDeProducto();
+        cargarLineaEnFormulario(rec);
         lineaEditando = -1;
         renderLineList();
         var ba = document.getElementById('addLineBtn');
@@ -4885,6 +4921,17 @@
     });
     updateOrderTotal();
   }
+  // Deja en blanco los campos del producto, sin tocar los datos del pedido
+  function limpiarCamposDeProducto() {
+    var c = lineCfg(); if (!c) return;
+    c.line.forEach(function (campo) {
+      var real = findHeaderByName(campo);
+      if (!real) return;
+      var el = document.querySelector('#formFields [data-col="' + real + '"]');
+      if (el) el.value = '';
+    });
+  }
+
   // Vuelve a poner un producto de la lista en los campos de arriba
   function cargarLineaEnFormulario(rec) {
     var c = lineCfg(); if (!c) return;
@@ -6531,7 +6578,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-120';
+    var mia = '2026.08.11-122';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
