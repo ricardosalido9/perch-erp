@@ -652,7 +652,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-135</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-136</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -4833,6 +4833,8 @@
     return findHeaderByName(c.envioOnce) || null;
   }
   var lineaEditando = -1;
+  // Está en true mientras un producto salió de la lista y se está corrigiendo arriba
+  var editandoProducto = false;
   function renderLineList() {
     try { renderLineListInterno(); }
     catch (e) {
@@ -4862,7 +4864,13 @@
       if (sBtn) sBtn.textContent = 'Guardar registro';
       box.style.display = 'none'; box.innerHTML = ''; return;
     }
-    if (addBtn) addBtn.style.display = '';
+    if (addBtn) {
+      addBtn.style.display = '';
+      // Solo dice "Guardar cambios" mientras se esté editando un producto
+      addBtn.textContent = editandoProducto
+        ? 'Guardar cambios del producto'
+        : '+ Agregar producto al pedido';
+    }
     // El botón de cotización solo tiene sentido entre Ventas y Cotizaciones
     if (qBtn && sBtn) {
       var enCot = (state.key === 'cotizaciones');
@@ -4890,9 +4898,13 @@
                 '<span class="li-n">•</span>' +
                 '<span class="li-txt">' + esc(rp.titulo) +
                   (rp.sub ? ' <small>' + esc(rp.sub) + '</small>' : '') +
-                  ' <small style="color:var(--amber)">— lo estás capturando arriba</small></span>' +
+                  ' <small style="color:var(--amber)">— ' +
+                  (editandoProducto ? 'lo estás corrigiendo arriba' : 'lo estás capturando arriba') +
+                  '</small></span>' +
                 '<span class="li-txt li-imp">$' + fmtMoney(lineTotal(pendiente)) + '</span>' +
-                '<button type="button" class="li-add-ya" title="Agregarlo al pedido">Agregar</button>' +
+                '<button type="button" class="li-add-ya" title="' +
+                  (editandoProducto ? 'Guardar los cambios' : 'Agregarlo al pedido') + '">' +
+                  (editandoProducto ? 'Guardar' : 'Agregar') + '</button>' +
                 '<button type="button" class="li-limpiar" title="Descartarlo">✕</button></div>';
       }
       items.forEach(function (rec, i) {
@@ -4999,9 +5011,8 @@
         limpiarCamposDeProducto();
         cargarLineaEnFormulario(rec);
         lineaEditando = -1;
+        editandoProducto = true;
         renderLineList();
-        var ba = document.getElementById('addLineBtn');
-        if (ba) ba.textContent = 'Guardar cambios del producto';
         toast('Corrige lo que necesites y toca "Guardar cambios del producto".', 'ok');
       });
     });
@@ -5045,8 +5056,7 @@
   }
 
   function addProductLine() {
-    var ba0 = document.getElementById('addLineBtn');
-    if (ba0) ba0.textContent = '+ Agregar producto al pedido';
+    editandoProducto = false;
     var falta = cascadeLevelsMissing();
     if (falta) { toast('Falta elegir: ' + falta, 'err'); return; }
     var info = readLineFromForm();
@@ -5602,6 +5612,7 @@
       toast((esCotiza ? 'Cotización guardada: ' : 'Venta guardada: ') + n +
             (n === 1 ? ' producto' : ' productos') + folio + '.', 'ok');
       state.lineItems = []; envioValor = ''; descPedido = { tipo: '', monto: '' };
+    editandoProducto = false; lineaEditando = -1;
       cerrarModalAlta();
       var folioNuevo = (out && out.folio) ? out.folio : '';
       // ¿Le faltan datos a este cliente? Se piden ahora, no después
@@ -6684,7 +6695,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-135';
+    var mia = '2026.08.11-136';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
