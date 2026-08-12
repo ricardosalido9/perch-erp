@@ -652,7 +652,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-130</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-132</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -4584,10 +4584,26 @@
       var el = fieldEl(c);
       return norm(el ? el.value : '');
     });
-    if (claves.some(function (v) { return !v; })) return;   // falta alguna llave
+    var aviso = document.getElementById('avisoCosto');
+    if (claves.some(function (v) { return !v; })) { if (aviso) aviso.textContent = ''; return; }
     var k = claves.join('||');
     var cands = t.filas.filter(function (f) { return f._k === k; });
-    if (!cands.length) return;
+    if (!cands.length) {
+      // Ese proveedor no tiene precio para esa combinación: se limpia y se dice
+      t.fills.forEach(function (campo) {
+        var el = fieldEl(campo);
+        if (el) { el.value = ''; }
+      });
+      if (aviso) {
+        aviso.innerHTML = '<b>' + esc(claves[2] ? (fieldEl(t.campos[2]) || {}).value || '' : '') +
+          '</b> no tiene precio registrado para ' +
+          esc(((fieldEl(t.campos[0]) || {}).value || '') + ' · ' + ((fieldEl(t.campos[1]) || {}).value || '')) +
+          '. Captura el costo a mano.';
+      }
+      recalcComputed();
+      return;
+    }
+    if (aviso) aviso.textContent = '';
     // Si la tabla distingue por año, gana el del año en curso; si no, el más reciente
     if (t.conAnio) {
       var hoy = new Date().getFullYear();
@@ -5212,6 +5228,19 @@
         csel.innerHTML = '<option value="">— elegir —</option>';
         csel.addEventListener('change', function () { onCascadeChange(cLevel); });
         wrap.appendChild(csel);
+        box.appendChild(wrap);
+        return;
+      }
+      // Aviso bajo el Costo Unitario cuando el proveedor no surte ese mueble
+      if (tablaLU() && (tablaLU().fills || []).some(function (f) { return mismoCampo(f, h); })) {
+        var cin = document.createElement('input');
+        cin.type = 'number'; cin.step = '0.01';
+        cin.setAttribute('data-col', h);
+        cin.addEventListener('input', recalcComputed);
+        var av = document.createElement('div');
+        av.id = 'avisoCosto'; av.className = 's';
+        av.style.cssText = 'color:var(--amber);margin-top:4px;font-size:12px';
+        wrap.appendChild(cin); wrap.appendChild(av);
         box.appendChild(wrap);
         return;
       }
@@ -6631,7 +6660,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-130';
+    var mia = '2026.08.11-132';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
