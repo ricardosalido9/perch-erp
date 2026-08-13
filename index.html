@@ -652,7 +652,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-145</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-146</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -925,7 +925,20 @@
   function esLector() {
     return state.rol === 'lector' || state.rol === 'viewer' || state.rol === 'lectura';
   }
-  function esSoloLectura(key) { return esLector() || READ_ONLY_AREAS.indexOf(key) !== -1; }
+  // El rol también decide si se puede capturar
+  function rolPuedeEditar(key) {
+    var r = String(state.rol || '').toLowerCase();
+    if (!r || r === 'admin' || r === 'administrador') return true;
+    if (r === 'comercial') {
+      return ['ventas_registro', 'cotizaciones', 'leads', 'showroom', 'ventas_clientes'].indexOf(key) !== -1;
+    }
+    if (r === 'operativo') {
+      return ['prov_pedidos', 'prov_entradas', 'prov_salidas'].indexOf(key) !== -1;
+    }
+    return true;
+  }
+  function esSoloLectura(key) {
+    if (!rolPuedeEditar(key)) return true; return esLector() || READ_ONLY_AREAS.indexOf(key) !== -1; }
   var appEl = function(){ return document.getElementById('appView'); };
   function closeNav(){ appEl().classList.remove('nav-open'); }
 
@@ -2833,6 +2846,8 @@
   // Columnas que van primero en cada área
   var COLUMN_ORDER = { inventario: ['Fotos', 'Foto'] };
   function visibleHeaders() {
+    // El rol puede esconder columnas (costos y utilidad para comercial)
+    var oc = (state.ocultarColumnas || []).map(norm);
     var hide = HIDE_COLUMNS[state.key] || [];
     var cols = !hide.length ? state.headers.slice() : state.headers.filter(function (h) {
       return !hide.some(function (x) { return norm(x) === norm(h); });
@@ -6945,7 +6960,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-145';
+    var mia = '2026.08.11-146';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
