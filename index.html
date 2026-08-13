@@ -652,7 +652,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-146</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-147</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -2660,7 +2660,9 @@
     return findHeaderByName('Comentarios') || findHeaderByName('Diferencias') ||
            findHeaderByName('Comentario') || findHeaderByName('Status') || '';
   }
-  var ES_AJUSTE = /ajuste/i;
+  // Solo "ajuste manual" cuenta como resuelto. Un comentario que solo menciona
+  // un ajuste puede estar describiendo un pago que todavía falta registrar.
+  var ES_AJUSTE = /ajustes?\s+manual(es)?/i;
   var ES_BIEN = /\bbien\b/i;
   function claseRevision(r) {
     var c = colComentario();
@@ -2685,12 +2687,12 @@
     };
     return '<div class="mes-chips">' +
         chip('revisar', 'Por revisar', g.revisar) +
-        chip('ajuste', 'Ajustes manuales', g.ajuste) +
+        chip('ajuste', 'Ajuste manual (ya cuadrados)', g.ajuste) +
         chip('bien', 'Ya cuadran', g.bien) +
         chip('', 'Todos', todas.length) +
       '</div><div class="summary-cards">' +
       card('Por revisar', fmtNum(g.revisar), 'diferencias sin explicar', 'var(--danger)') +
-      card('Ajustes manuales', fmtNum(g.ajuste), 'se resuelven después', 'var(--amber)') +
+      card('Ajuste manual', fmtNum(g.ajuste), 'ya cuadrados', 'var(--amber)') +
       card('Ya cuadran', fmtNum(g.bien), '', 'var(--success)') +
       (g.sin ? card('Sin comentario', fmtNum(g.sin), 'falta clasificar') : '') +
       '</div>';
@@ -6960,7 +6962,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-146';
+    var mia = '2026.08.11-147';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
