@@ -652,7 +652,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-138</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-140</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -897,6 +897,7 @@
     proveedores:         'Cuánto se le pidió a cada proveedor, qué llegó y cuánto se le debe.',
     costos:              'La venta contra tres costos: el real, el de la hoja y el del catálogo.',
     conciliacion:        'Lo que Nico captura a mano contra lo que de verdad salió del banco.',
+    prov_revision:       'Pedidos cuyo saldo no cuadra. Salen filtrados los que faltan por resolver.',
     fac_complementos:    'A quién le falta el complemento de pago después de que ya pagó.',
     fac_proveedores:     'Qué facturas nos deben los proveedores de lo que ya les pagamos.',
     fac_impuestos:       'Impuestos por mes: base, tasa, a cargo, a favor y si ya se pagó.',
@@ -1051,6 +1052,7 @@
   }
 
   function selectArea(key, label, keepClosed) {
+    if (state.key !== key) filtroYaPuesto = false;
     state.key = key; state.label = label;
     sortState = { col: null, dir: 1 }; editingRow = -1;
     filters = []; pendingAutoFilter = true; closeFilterPopup(); renderFilterBar();
@@ -1103,7 +1105,7 @@
   }
 
   // Filtro que dejó pendiente un aviso del Inicio (ej. "ventas sin vendedor")
-  var filtroPendiente = null;
+  var filtroPendiente = null, filtroYaPuesto = false;
   function aplicarFiltroPendiente() {
     var f = filtroPendiente; filtroPendiente = null;
     if (!f || !f.col) return false;
@@ -1927,6 +1929,11 @@
         return;
       }
       var vinoFiltrado = aplicarFiltroPendiente();
+      // Algunas áreas arrancan filtradas: aquí solo lo que no está resuelto
+      if (!vinoFiltrado && FILTRO_INICIAL[state.key] && !filtroYaPuesto) {
+        var fi = FILTRO_INICIAL[state.key]();
+        if (fi) { filters = fi; filtroYaPuesto = true; }
+      }
       // Si la hoja trae celdas con error de fórmula, se avisa en vez de mostrarlas como datos
       if (data.errores) {
         var fe = (data.filasError || []).slice(0, 15);
@@ -2083,6 +2090,15 @@
   var filters = [];   // {col, type:'values'|'range', values:[], from:'', to:''}
 
   // Áreas que arrancan con filtro de fecha del año en curso (columna a usar).
+  // Áreas que arrancan con un filtro puesto
+  var FILTRO_INICIAL = {
+    prov_revision: function () {
+      var c = findHeaderByName('Comentarios') || findHeaderByName('Diferencias') ||
+              findHeaderByName('Comentario') || findHeaderByName('Status');
+      return c ? [{ col: c, type: 'noContiene', textos: ['BIEN'] }] : null;
+    }
+  };
+
   var AUTO_DATE_FILTER = {
     cotizaciones: 'Fecha',
     ventas_registro: 'Fecha',
@@ -6863,7 +6879,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-138';
+    var mia = '2026.08.11-140';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
