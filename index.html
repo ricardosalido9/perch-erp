@@ -652,7 +652,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-142</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-145</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1192,7 +1192,10 @@
             '</div>' +
             '<div class="prov-cifras">' +
               '<div><span class="k">Le he pedido</span><b>' + esc(formatMoney(t.costo)) + '</b></div>' +
-              '<div><span class="k">Le he pagado</span><b>' + esc(formatMoney(t.pagado)) + '</b></div>' +
+              '<div><span class="k">Le he pagado</span><b>' + esc(formatMoney(t.pagado)) + '</b>' +
+                (t.liquidadosConAjuste ? '<span class="k">' + fmtNum(t.liquidadosConAjuste) +
+                  ' liquidado' + (t.liquidadosConAjuste === 1 ? '' : 's') + ' con ajuste</span>' : '') +
+              '</div>' +
 
               '<div><span class="k">' + (aFavor ? 'Saldo a favor' : 'Le debo') + '</span>' +
                 '<b style="color:' + (aFavor ? 'var(--success)' : (t.porPagar > 0.5 ? 'var(--danger)' : 'var(--muted)')) +
@@ -1207,10 +1210,22 @@
             h += '<div style="margin-bottom:14px">' +
               '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:6px">' +
                 '<b>' + esc(d2.pedido) + '</b>' + (d2.status ? ' ' + pillHTML(d2.status) : '') +
+                (d2.liquidado ? ' <span style="background:var(--success-bg);color:var(--success);' +
+                  'padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600">liquidado con ajuste</span>' : '') +
                 '<span class="s">' + esc(d2.fecha) + (d2.estimada ? ' · estimada ' + esc(d2.estimada) : '') + '</span>' +
                 '<span>' + esc(formatMoney(d2.costo)) + ' · pagado ' + esc(formatMoney(d2.pagado)) +
                 ' · <b' + (d2.porPagar > 0.5 ? ' style="color:var(--danger)"' : '') + '>por pagar ' +
                 esc(formatMoney(d2.porPagar)) + '</b></span>' +
+              '</div>' +
+              (d2.liquidado
+                ? '<div class="s" style="color:var(--success);margin:-4px 0 8px">' +
+                  esc(d2.notaAjuste || 'Liquidado con ajuste manual') +
+                  (Math.abs(d2.saldoOriginal || 0) > 0.5
+                    ? ' · la diferencia de ' + esc(formatMoney(Math.abs(d2.saldoOriginal))) +
+                      ' queda absorbida'
+                    : '') + '</div>'
+                : '') +
+              '<div style="display:none">' +
               '</div>' +
               ((d2.detallePagos && d2.detallePagos.length)
                 ? '<table class="mini-table" style="margin-bottom:8px"><thead><tr>' +
@@ -1929,11 +1944,7 @@
         return;
       }
       var vinoFiltrado = aplicarFiltroPendiente();
-      // Algunas áreas arrancan filtradas: aquí solo lo que no está resuelto
-      if (!vinoFiltrado && FILTRO_INICIAL[state.key] && !filtroYaPuesto) {
-        var fi = FILTRO_INICIAL[state.key]();
-        if (fi) { filters = fi; filtroYaPuesto = true; }
-      }
+
       // Si la hoja trae celdas con error de fórmula, se avisa en vez de mostrarlas como datos
       if (data.errores) {
         var fe = (data.filasError || []).slice(0, 15);
@@ -2091,13 +2102,9 @@
 
   // Áreas que arrancan con filtro de fecha del año en curso (columna a usar).
   // Áreas que arrancan con un filtro puesto
-  var FILTRO_INICIAL = {
-    prov_revision: function () {
-      var c = findHeaderByName('Comentarios') || findHeaderByName('Diferencias') ||
-              findHeaderByName('Comentario') || findHeaderByName('Status');
-      return c ? [{ col: c, type: 'noContiene', textos: ['BIEN'] }] : null;
-    }
-  };
+  // El área de discrepancias arranca en "Por revisar"
+  var revFiltro = 'revisar';
+  var FILTRO_INICIAL = {};
 
   var AUTO_DATE_FILTER = {
     cotizaciones: 'Fecha',
@@ -2635,11 +2642,60 @@
       card('Sin existencia', fmtNum(n.sinStock), 'combinaciones en cero');
   }
 
+  // Resumen del área de discrepancias: separa lo que hay que resolver de los ajustes
+  function colComentario() {
+    return findHeaderByName('Comentarios') || findHeaderByName('Diferencias') ||
+           findHeaderByName('Comentario') || findHeaderByName('Status') || '';
+  }
+  var ES_AJUSTE = /ajuste/i;
+  var ES_BIEN = /\bbien\b/i;
+  function claseRevision(r) {
+    var c = colComentario();
+    var t = String(c ? (r[c] || '') : '').trim();
+    if (!t) return 'sin';
+    if (ES_BIEN.test(t)) return 'bien';
+    if (ES_AJUSTE.test(t)) return 'ajuste';
+    return 'revisar';
+  }
+  function resumenRevision(rows) {
+    var todas = state.rows || [];
+    var g = { revisar: 0, ajuste: 0, bien: 0, sin: 0 };
+    todas.forEach(function (r) { g[claseRevision(r)]++; });
+    var chip = function (k, txt2, n) {
+      return '<button type="button" class="mes-chip' + (revFiltro === k ? ' on' : '') +
+        '" data-rev="' + k + '">' + txt2 + ' (' + fmtNum(n) + ')</button>';
+    };
+    var card = function (k, v, extra, color) {
+      return '<div class="sum-card"><div class="k">' + esc(k) + '</div><div class="v"' +
+        (color ? ' style="color:' + color + '"' : '') + '>' + v + '</div>' +
+        (extra ? '<div class="k" style="text-transform:none;letter-spacing:0">' + extra + '</div>' : '') + '</div>';
+    };
+    return '<div class="mes-chips">' +
+        chip('revisar', 'Por revisar', g.revisar) +
+        chip('ajuste', 'Ajustes manuales', g.ajuste) +
+        chip('bien', 'Ya cuadran', g.bien) +
+        chip('', 'Todos', todas.length) +
+      '</div><div class="summary-cards">' +
+      card('Por revisar', fmtNum(g.revisar), 'diferencias sin explicar', 'var(--danger)') +
+      card('Ajustes manuales', fmtNum(g.ajuste), 'se resuelven después', 'var(--amber)') +
+      card('Ya cuadran', fmtNum(g.bien), '', 'var(--success)') +
+      (g.sin ? card('Sin comentario', fmtNum(g.sin), 'falta clasificar') : '') +
+      '</div>';
+  }
+
   function renderSummary(rows) {
     var box = document.getElementById('summary');
     if (!state.headers.length) { box.innerHTML = ''; return; }
     if (state.key === 'cotizaciones') { box.style.display = 'block'; box.innerHTML = resumenCotizaciones(rows); return; }
     if (state.key === 'op_stock') { box.style.display = 'flex'; box.innerHTML = resumenStock(rows); return; }
+    if (state.key === 'prov_revision') {
+      box.style.display = 'block';
+      box.innerHTML = resumenRevision(rows);
+      box.querySelectorAll('[data-rev]').forEach(function (b) {
+        b.addEventListener('click', function () { revFiltro = b.getAttribute('data-rev'); renderTable(); });
+      });
+      return;
+    }
     if (state.key === 'fin_cxc') { box.style.display = 'block'; box.innerHTML = resumenCxc(rows); return; }
     if (state.key === 'funnel') { box.style.display = 'block'; box.innerHTML = resumenFunnel(rows); return; }
     var chipsSt = (state.key === 'ventas_registro') ? chipsStatus() : '';
@@ -6827,6 +6883,12 @@
     ventas_clientes: 'Nombre/Razón Social'
   };
   function filteredRows() {
+    // El área de discrepancias filtra por su propia clasificación
+    if (state.key === 'prov_revision' && revFiltro) {
+      return (state.rows || []).filter(function (r) {
+        return claseRevision(r) === revFiltro;
+      }).filter(passesFilters);
+    }
     var q = document.getElementById('search').value.trim().toLowerCase();
     var rows = state.rows.filter(passesFilters);
     // Ocultar filas sin la columna requerida del área (p. ej. Clientes sin nombre)
@@ -6840,7 +6902,11 @@
     if (!q) return rows;
     return rows.filter(function (r) {
       return state.headers.some(function (h) {
-        return String(r[h] == null ? '' : r[h]).toLowerCase().indexOf(q) !== -1; });
+        var v = r[h];
+        if (v == null) return false;
+        var t;
+        try { t = String(v); } catch (e) { return false; }
+        return t.toLowerCase().indexOf(q) !== -1; });
     });
   }
   function downloadCSV() {
@@ -6879,7 +6945,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-142';
+    var mia = '2026.08.11-145';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
