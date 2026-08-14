@@ -652,7 +652,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-175</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-177</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -2358,30 +2358,40 @@
                    'no se encontró ninguna factura a su nombre</div>')) + '</td>' +
               '<td class="num">' + esc(formatMoney(r.pagado)) + '</td>' +
               '<td class="num">' + esc(formatMoney(r.facturado)) + '</td>' +
-              '<td class="num" style="color:var(--danger);font-weight:600">' +
-                esc(formatMoney(r.faltaFacturar)) + '</td>' +
+              '<td class="num" style="font-weight:600;color:' +
+                (r.faltaFacturar > 1 ? 'var(--danger)' : 'var(--success)') + '">' +
+                esc(r.faltaFacturar > 1 ? formatMoney(r.faltaFacturar) : 'cuadra') + '</td>' +
               '<td class="num">' + fmtNum(r.nPagos) + '</td>' +
               '<td class="num">' + fmtNum(r.nFacturas) + '</td></tr>' +
-              (ab && (r.pagosDescubiertos || []).length
-                ? '<tr><td colspan="6" style="background:var(--paper);padding:10px 14px">' +
-                  '<div class="s" style="margin-bottom:6px;color:var(--slate)"><b>Pagos sin factura.</b> ' +
-                  'Las facturas se aplican del pago más viejo al más nuevo, así que estos son los que ' +
-                  'quedaron descubiertos:</div>' +
+              (ab
+                ? '<tr><td colspan="6" style="background:var(--paper);padding:12px 14px">' +
+                  '<div class="s" style="margin-bottom:8px;color:var(--slate)"><b>Cada pago con su ' +
+                  'factura.</b> Se busca una factura del mismo monto; si no hay, el pago queda sin ' +
+                  'comprobar. Los pagos que no entran al cruce salen en gris.</div>' +
                   '<table class="mini-table" style="background:var(--surface)"><thead><tr>' +
-                  '<th>Fecha</th><th>Concepto</th><th>Pedido</th><th>Cuenta</th>' +
-                  '<th style="text-align:right">Monto</th><th style="text-align:right">Sin factura</th>' +
-                  '</tr></thead><tbody>' +
-                  r.pagosDescubiertos.map(function (g) {
-                    return '<tr><td>' + esc(formatDateCell(g.fecha)) + '</td>' +
-                      '<td title="' + esc(g.descripcion || '') + '">' +
-                        esc((g.concepto || g.descripcion || '').slice(0, 40)) + '</td>' +
+                  '<th>Fecha del pago</th><th>Método</th><th>Pedido</th>' +
+                  '<th style="text-align:right">Pagué</th><th>Factura</th><th>Fecha factura</th>' +
+                  '<th style="text-align:right">Facturado</th><th>Días</th></tr></thead><tbody>' +
+                  (r.todosLosPagos || []).map(function (g) {
+                    var gris = !g.entraAlCruce;
+                    var f = g.factura;
+                    return '<tr' + (gris ? ' style="opacity:.5"' : (!f ? ' style="background:var(--danger-bg)"' : '')) + '>' +
+                      '<td>' + esc(formatDateCell(g.fecha)) + '</td>' +
+                      '<td class="s">' + esc((g.metodo || '').slice(0, 22)) + '</td>' +
                       '<td>' + esc(g.pedido || '') + '</td>' +
-                      '<td class="s">' + esc(g.cuenta || '') + '</td>' +
                       '<td class="num">' + esc(formatMoney(g.monto)) + '</td>' +
-                      '<td class="num" style="color:var(--danger);font-weight:600">' +
-                        esc(formatMoney(g.sinCubrir)) +
-                        (g.cubierto === 'a medias' ? ' <span class="s">(parcial)</span>' : '') +
-                      '</td></tr>';
+                      (gris
+                        ? '<td colspan="4" class="s">no entra al cruce</td>'
+                        : (f
+                          ? '<td class="s">' + esc((f.serie || '') + (f.folioF ? '-' + f.folioF : '') ||
+                              (f.uuid || '').slice(0, 8)) + '</td>' +
+                            '<td>' + esc(formatDateCell(f.fecha)) + '</td>' +
+                            '<td class="num">' + esc(formatMoney(f.total)) + '</td>' +
+                            '<td class="s">' + (g.diasDeDiferencia !== null && g.diasDeDiferencia !== undefined
+                              ? fmtNum(g.diasDeDiferencia) : '') + '</td>'
+                          : '<td colspan="4" style="color:var(--danger);font-weight:600">' +
+                            'Sin factura de este monto</td>')) +
+                      '</tr>';
                   }).join('') + '</tbody></table></td></tr>'
                 : '');
           }).join('') + '</tbody></table>' +
@@ -7640,7 +7650,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-175';
+    var mia = '2026.08.11-177';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
