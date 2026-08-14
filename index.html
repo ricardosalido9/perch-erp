@@ -317,6 +317,9 @@
   #lineItemsBox .li-qty:focus { border-color:var(--accent-ink); outline:none; }
   #lineItemsBox .li-imp { flex:none; font-weight:600; min-width:92px; text-align:right; }
   #lineItemsBox .li-row.editando { background:var(--amber-bg); border-radius:8px; }
+  .sec-t { font-size:14px; color:var(--accent-ink); margin:22px 0 8px; font-weight:600;
+    letter-spacing:.01em; }
+  .sec-t:first-child { margin-top:4px; }
   #lineItemsBox .li-row.pendiente { background:var(--amber-bg); border-radius:8px;
     border:1px dashed var(--amber); }
   #lineItemsBox .li-add-ya { background:var(--accent-ink); color:#fff; border:0; border-radius:6px;
@@ -578,6 +581,9 @@
   #lineItemsBox .li-qty:focus { border-color:var(--accent-ink); outline:none; }
   #lineItemsBox .li-imp { flex:none; font-weight:600; min-width:92px; text-align:right; }
   #lineItemsBox .li-row.editando { background:var(--amber-bg); border-radius:8px; }
+  .sec-t { font-size:14px; color:var(--accent-ink); margin:22px 0 8px; font-weight:600;
+    letter-spacing:.01em; }
+  .sec-t:first-child { margin-top:4px; }
   #lineItemsBox .li-row.pendiente { background:var(--amber-bg); border-radius:8px;
     border:1px dashed var(--amber); }
   #lineItemsBox .li-add-ya { background:var(--accent-ink); color:#fff; border:0; border-radius:6px;
@@ -652,7 +658,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-183</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-185</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -905,6 +911,7 @@
     fin_efectivo:        'Movimientos en efectivo, para pasarlos después a ingresos y egresos.',
     fin_gastos_op:       'Gastos de operación por categoría: renta, servicios, sueldos, marketing.',
     fin_estados:         'Estado de resultados por mes.',
+    rh_resumen:          'La plantilla de un vistazo: costo, altas, bajas y rotación.',
     rh_personal:         'Quién trabaja aquí, desde cuándo y bajo qué esquema.',
     rh_nomina:           'Lo que se paga cada periodo, con sus deducciones.',
     inv_prov:            'Qué tiene terminado cada proveedor, qué falta por fabricar y a dónde se fue.',
@@ -927,7 +934,7 @@
     fin_cxc:             'Saldos por cobrar de cada pedido.',
     fin_ingresos:        'Cobros recibidos, ligados al folio del pedido.'
   };
-  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'fac_control', 'cfdi_control', 'cfdi_prov', 'prov_razon'];
+  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'fac_control', 'cfdi_control', 'cfdi_prov', 'prov_razon', 'rh_resumen'];
   function esLector() {
     return state.rol === 'lector' || state.rol === 'viewer' || state.rol === 'lectura';
   }
@@ -2553,7 +2560,128 @@
     });
   }
 
+  // ===== Resumen de Nómina y RH =====
+  function nombreDeMesNumero(m) {
+    var i = parseInt(m, 10);
+    return (i >= 1 && i <= 12) ? MESES_ES[i - 1] : String(m);
+  }
+  function loadRH() {
+    document.getElementById('tableWrap').innerHTML =
+      '<div class="state" style="padding:50px 0">Armando el resumen de la plantilla…</div>';
+    document.getElementById('summary').innerHTML = '';
+    mostrarAlta(false);
+    api('rh', { token: state.token, anio: new Date().getFullYear() }).then(function (d) {
+      var t = d.totales || {};
+      var card = function (k, v, extra, color) {
+        return '<div class="sum-card"><div class="k">' + esc(k) + '</div><div class="v"' +
+          (color ? ' style="color:' + color + '"' : '') + '>' + v + '</div>' +
+          (extra ? '<div class="k" style="text-transform:none;letter-spacing:0">' + extra + '</div>' : '') + '</div>';
+      };
+      var box = document.getElementById('summary');
+      box.style.display = 'flex';
+      box.innerHTML =
+        card('Plantilla', fmtNum(t.activos), 'personas activas') +
+        card('Costo mensual', esc(fmtMoneyShort(t.costoMensual)),
+             'neto ' + esc(fmtMoneyShort(t.netoMensual))) +
+        card('Altas ' + d.anio, fmtNum(t.altasAnio), '', 'var(--success)') +
+        card('Bajas ' + d.anio, fmtNum(t.bajasAnio), '', t.bajasAnio ? 'var(--amber)' : '') +
+        card('Rotación', fmtNum(t.rotacion) + '%', 'del año') +
+        (t.conDatosFaltantes ? card('Expedientes', fmtNum(t.conDatosFaltantes),
+             'con datos faltantes', 'var(--amber)') : '');
+
+      var h = '';
+      if ((d.movimientos || []).length) {
+        h += '<h3 class="sec-t">Altas y bajas de ' + d.anio + '</h3>' +
+          '<table class="mini-table"><thead><tr><th>Mes</th>' +
+          '<th style="text-align:right">Altas</th><th>Quién entró</th>' +
+          '<th style="text-align:right">Bajas</th><th>Quién salió</th></tr></thead><tbody>' +
+          d.movimientos.map(function (m) {
+            return '<tr><td><b>' + esc(nombreDeMes(m.mes)) + '</b></td>' +
+              '<td class="num" style="color:var(--success)">' + (m.altas || '') + '</td>' +
+              '<td class="s">' + esc((m.quienEntro || []).join(' · ')) + '</td>' +
+              '<td class="num" style="color:var(--danger)">' + (m.bajas || '') + '</td>' +
+              '<td class="s">' + esc((m.quienSalio || []).join(' · ')) + '</td></tr>';
+          }).join('') + '</tbody></table>';
+      }
+      if ((d.porArea || []).length) {
+        h += '<h3 class="sec-t">La plantilla por área</h3>' +
+          '<table class="mini-table"><thead><tr><th>Área</th>' +
+          '<th style="text-align:right">Personas</th><th style="text-align:right">Costo mensual</th>' +
+          '<th style="text-align:right">Por persona</th><th>Puestos</th></tr></thead><tbody>' +
+          d.porArea.map(function (a) {
+            return '<tr><td><b>' + esc(a.area) + '</b></td>' +
+              '<td class="num">' + fmtNum(a.gente) + '</td>' +
+              '<td class="num">' + esc(formatMoney(a.costo)) + '</td>' +
+              '<td class="num s">' + esc(formatMoney(a.gente ? a.costo / a.gente : 0)) + '</td>' +
+              '<td class="s">' + esc(a.puestos.map(function (p) {
+                return p.puesto + (p.n > 1 ? ' x' + p.n : ''); }).join(' · ')) + '</td></tr>';
+          }).join('') + '</tbody></table>';
+      }
+      var comp = function (titulo, lista) {
+        if (!lista || !lista.length) return '';
+        return '<div style="flex:1;min-width:200px"><div class="k" style="margin-bottom:6px">' +
+          esc(titulo) + '</div>' + lista.map(function (x) {
+            return '<div class="s" style="display:flex;justify-content:space-between;padding:3px 0;' +
+              'border-bottom:1px solid var(--line)"><span>' + esc(x.valor) + '</span><b>' +
+              fmtNum(x.n) + '</b></div>';
+          }).join('') + '</div>';
+      };
+      if ((d.porTipo || []).length || (d.porRegimen || []).length) {
+        h += '<h3 class="sec-t">Cómo está compuesta</h3>' +
+          '<div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:20px">' +
+          comp('Tipo de empleado', d.porTipo) + comp('Régimen de pago', d.porRegimen) +
+          comp('Periodicidad', d.porPeriodicidad) + '</div>';
+      }
+      if (d.nomina) {
+        h += '<h3 class="sec-t">Nómina pagada este año' +
+          (d.nomina.sinTimbrar ? ' <span style="color:var(--danger);font-size:13px;font-weight:400">· ' +
+            fmtNum(d.nomina.sinTimbrar) + ' pagos sin timbrar por ' +
+            esc(formatMoney(d.nomina.montoSinTimbrar)) + '</span>' : '') + '</h3>' +
+          '<table class="mini-table"><thead><tr><th>Mes</th>' +
+          '<th style="text-align:right">Pagado</th><th style="text-align:right">Personas</th>' +
+          '<th style="text-align:right">Semanas</th></tr></thead><tbody>' +
+          d.nomina.porMes.map(function (m) {
+            return '<tr><td>' + esc(nombreDeMesNumero(m.mes)) + '</td>' +
+              '<td class="num">' + esc(formatMoney(m.monto)) + '</td>' +
+              '<td class="num">' + fmtNum(m.personas) + '</td>' +
+              '<td class="num">' + fmtNum(m.semanas) + '</td></tr>';
+          }).join('') +
+          '<tr style="border-top:2px solid var(--line);font-weight:600"><td>Total</td>' +
+          '<td class="num">' + esc(formatMoney(d.nomina.total)) + '</td><td></td><td></td></tr>' +
+          '</tbody></table>';
+      }
+      if ((d.aniversarios || []).length) {
+        h += '<h3 class="sec-t">Cumplen años de antigüedad pronto</h3>' +
+          '<table class="mini-table"><thead><tr><th>Nombre</th><th>Área</th>' +
+          '<th style="text-align:right">Cumple</th><th style="text-align:right">En</th>' +
+          '<th style="text-align:right">Vacaciones</th></tr></thead><tbody>' +
+          d.aniversarios.map(function (x) {
+            return '<tr><td><b>' + esc(x.nombre) + '</b></td><td>' + esc(x.area) + '</td>' +
+              '<td class="num">' + fmtNum(x.anios) + (x.anios === 1 ? ' año' : ' años') + '</td>' +
+              '<td class="num">' + (x.dias === 0 ? 'hoy' : fmtNum(x.dias) + ' días') + '</td>' +
+              '<td class="num">' + (x.vacaciones || '') + '</td></tr>';
+          }).join('') + '</tbody></table>';
+      }
+      if ((d.incompletos || []).length) {
+        h += '<h3 class="sec-t">Expedientes por completar</h3>' +
+          '<table class="mini-table"><thead><tr><th>Nombre</th><th>Área</th><th>Puesto</th>' +
+          '<th>Qué falta</th></tr></thead><tbody>' +
+          d.incompletos.map(function (x) {
+            return '<tr><td><b>' + esc(x.nombre) + '</b></td><td>' + esc(x.area) + '</td>' +
+              '<td>' + esc(x.puesto) + '</td>' +
+              '<td style="color:var(--amber)">' + esc(x.faltantes.join(' · ')) + '</td></tr>';
+          }).join('') + '</tbody></table>';
+      }
+      document.getElementById('tableWrap').innerHTML = h;
+      document.getElementById('count').textContent = fmtNum(t.activos) + ' colaboradores';
+    }).catch(function (e) {
+      document.getElementById('tableWrap').innerHTML =
+        '<div class="state">' + esc((e && e.message) || 'No se pudo armar el resumen.') + '</div>';
+    });
+  }
+
   function loadArea() {
+    if (state.key === 'rh_resumen') return loadRH();
     if (state.key === 'prov_razon') return loadProvRazon();
     if (state.key === 'cfdi_prov') return loadCfdiProv();
     if (state.key === 'cfdi_control') return loadCfdi();
@@ -7704,7 +7832,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-183';
+    var mia = '2026.08.11-185';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {

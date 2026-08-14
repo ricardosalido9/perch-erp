@@ -46,7 +46,8 @@ const RUTAS = {
   cfdi:           require('../lib/handlers/cfdi'),
   'cfdi-prov':    require('../lib/handlers/cfdi-recibidos'),
   'cfdi-traza':   require('../lib/handlers/cfdi-traza'),
-  'ingreso-traza':require('../lib/handlers/ingreso-traza')
+  'ingreso-traza':require('../lib/handlers/ingreso-traza'),
+  rh:             require('../lib/handlers/rh')
 };
 
 module.exports = async (req, res) => {
