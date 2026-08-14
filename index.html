@@ -652,7 +652,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-147</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-149</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1206,8 +1206,8 @@
             '<div class="prov-cifras">' +
               '<div><span class="k">Le he pedido</span><b>' + esc(formatMoney(t.costo)) + '</b></div>' +
               '<div><span class="k">Le he pagado</span><b>' + esc(formatMoney(t.pagado)) + '</b>' +
-                (t.liquidadosConAjuste ? '<span class="k">' + fmtNum(t.liquidadosConAjuste) +
-                  ' liquidado' + (t.liquidadosConAjuste === 1 ? '' : 's') + ' con ajuste</span>' : '') +
+                (t.conNota ? '<span class="k">' + fmtNum(t.conNota) +
+                  ' con nota de revisión</span>' : '') +
               '</div>' +
 
               '<div><span class="k">' + (aFavor ? 'Saldo a favor' : 'Le debo') + '</span>' +
@@ -1223,20 +1223,23 @@
             h += '<div style="margin-bottom:14px">' +
               '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:6px">' +
                 '<b>' + esc(d2.pedido) + '</b>' + (d2.status ? ' ' + pillHTML(d2.status) : '') +
-                (d2.liquidado ? ' <span style="background:var(--success-bg);color:var(--success);' +
-                  'padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600">liquidado con ajuste</span>' : '') +
+                (d2.liquidado
+                  ? ' <span style="background:var(--success-bg);color:var(--success);' +
+                    'padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600">ajuste manual</span>'
+                  : (d2.notaAjuste
+                      ? ' <span style="background:var(--amber-bg);color:var(--amber);' +
+                        'padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600">con nota</span>'
+                      : '')) +
                 '<span class="s">' + esc(d2.fecha) + (d2.estimada ? ' · estimada ' + esc(d2.estimada) : '') + '</span>' +
                 '<span>' + esc(formatMoney(d2.costo)) + ' · pagado ' + esc(formatMoney(d2.pagado)) +
                 ' · <b' + (d2.porPagar > 0.5 ? ' style="color:var(--danger)"' : '') + '>por pagar ' +
                 esc(formatMoney(d2.porPagar)) + '</b></span>' +
               '</div>' +
-              (d2.liquidado
-                ? '<div class="s" style="color:var(--success);margin:-4px 0 8px">' +
-                  esc(d2.notaAjuste || 'Liquidado con ajuste manual') +
-                  (Math.abs(d2.saldoOriginal || 0) > 0.5
-                    ? ' · la diferencia de ' + esc(formatMoney(Math.abs(d2.saldoOriginal))) +
-                      ' queda absorbida'
-                    : '') + '</div>'
+              (d2.notaAjuste
+                ? '<div class="s" style="margin:-4px 0 8px;padding:6px 10px;border-radius:8px;' +
+                  'background:' + (d2.liquidado ? 'var(--success-bg)' : 'var(--amber-bg)') + ';' +
+                  'color:' + (d2.liquidado ? 'var(--success)' : 'var(--amber)') + '">' +
+                  '<b>De Mi hoja:</b> ' + esc(d2.notaAjuste) + '</div>'
                 : '') +
               '<div style="display:none">' +
               '</div>' +
@@ -6962,7 +6965,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-147';
+    var mia = '2026.08.11-149';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
