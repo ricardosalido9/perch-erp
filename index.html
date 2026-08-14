@@ -708,7 +708,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-194</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-195</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -889,6 +889,7 @@
         <div id="altaError" style="display:none;margin-bottom:16px;padding:12px 14px;border-radius:10px;
              background:var(--danger-bg);border:1px solid var(--danger);color:var(--danger);font-size:13px"></div>
         <div class="form-grid" id="formFields"></div>
+        <div id="avisoYaTiene"></div>
         <div id="lineItemsBox" style="display:none"></div>
       </div>
       <div class="modal-foot">
@@ -6021,6 +6022,7 @@
     return out;
   }
   function onCascadeChange(level) {
+    setTimeout(avisarSiYaTiene, 60);
     var c = cascadeLU(); if (!c) return;
     if (level === 0) {
       // Al elegir Producto, se llenan TODOS los ejes (Material, Material Extra…) de forma independiente.
@@ -6094,7 +6096,96 @@
     return '';
   }
 
+  // ===== Aviso: el proveedor ya tiene piezas de este mueble =====
+  var stockProvCache = null, stockProvCargando = false;
+  function cargarStockProveedores(luego) {
+    if (stockProvCache) { luego(stockProvCache); return; }
+    if (stockProvCargando) return;
+    stockProvCargando = true;
+    api('inv-prov', { token: state.token }).then(function (d) {
+      stockProvCache = d.proveedores || [];
+      stockProvCargando = false;
+      luego(stockProvCache);
+    }).catch(function () { stockProvCargando = false; });
+  }
+  function avisarSiYaTiene() {
+    if (state.key !== 'prov_pedidos') return;
+    var caja = document.getElementById('avisoYaTiene');
+    if (!caja) return;
+    var elProd = fieldEl('Producto') || fieldEl('Productos');
+    var elMat = fieldEl('Material');
+    var elProv = fieldEl('Proveedor');
+    var prod = elProd ? String(elProd.value || '').trim() : '';
+    var mat = elMat ? String(elMat.value || '').trim() : '';
+    var prov = elProv ? String(elProv.value || '').trim() : '';
+    if (!prod || !prov) { caja.innerHTML = ''; return; }
+
+    cargarStockProveedores(function (provs) {
+      var p = provs.filter(function (x) { return norm(x.proveedor) === norm(prov); })[0];
+      if (!p) { caja.innerHTML = ''; return; }
+      var lineas = (p.lineas || []).filter(function (l) {
+        if (norm(l.producto) !== norm(prod)) return false;
+        // Si ya se eligió material, solo ese; si no, todos los del mueble
+        if (mat && l.material) return norm(l.material) === norm(mat);
+        return true;
+      });
+      var disponibles = 0, porFabricar = 0, pedidos = [];
+      lineas.forEach(function (l) {
+        (l.pedidos || []).forEach(function (q) {
+          if (q.disponibles > 0) {
+            disponibles += q.disponibles;
+            pedidos.push({ pedido: q.pedido, n: q.disponibles, tipo: 'listas',
+                           material: l.material, fecha: q.fecha });
+          }
+          if (q.porFabricar > 0) {
+            porFabricar += q.porFabricar;
+            pedidos.push({ pedido: q.pedido, n: q.porFabricar, tipo: 'en proceso',
+                           material: l.material, estimada: q.estimada });
+          }
+        });
+      });
+      if (!disponibles && !porFabricar) { caja.innerHTML = ''; return; }
+
+      caja.innerHTML =
+        '<div style="background:var(--success-bg);border:1px solid var(--success);border-radius:10px;' +
+        'padding:10px 14px;margin:8px 0 14px;font-size:13px;color:var(--success)">' +
+          '<b>' + esc(prov) + ' ya tiene ' + fmtNum(disponibles + porFabricar) + ' ' +
+          esc(prod) + (mat ? ' en ' + esc(mat) : '') + '</b>' +
+          '<div style="margin-top:6px;color:var(--slate)">' +
+            pedidos.slice(0, 6).map(function (x) {
+              return '<span style="display:inline-block;margin-right:14px">' +
+                '<b>' + esc(x.pedido) + '</b>: ' + fmtNum(x.n) + ' ' + x.tipo +
+                (x.material && !mat ? ' · ' + esc(x.material) : '') +
+                (x.estimada ? ' (llega ' + esc(x.estimada) + ')' : '') + '</span>';
+            }).join('') +
+          '</div>' +
+          (disponibles
+            ? '<div style="margin-top:8px">' +
+              '<button type="button" id="usarStockProv" class="row-btn primary">' +
+              'Pedir solo lo que falta</button>' +
+              '<span class="s" style="margin-left:10px;color:var(--muted)">' +
+              fmtNum(disponibles) + ' ya están listas en su taller</span></div>'
+            : '') +
+        '</div>';
+      var b = document.getElementById('usarStockProv');
+      if (b) b.addEventListener('click', function () {
+        var elC = fieldEl('Cantidad');
+        if (!elC) return;
+        var quiero = parseFloat(elC.value || '0') || 0;
+        if (!quiero) { toast('Primero pon cuántas necesitas.', 'err'); return; }
+        var falta = Math.max(0, quiero - disponibles);
+        elC.value = falta;
+        recalcComputed();
+        toast(falta
+          ? 'Se ajustó a ' + fmtNum(falta) + ': las otras ' + fmtNum(Math.min(quiero, disponibles)) +
+            ' ya las tiene.'
+          : 'Ya las tiene todas: no hace falta pedir nada.', 'ok');
+      });
+    });
+  }
+
   function aplicarTabla() {
+    avisarSiYaTiene();
     var t = tablaLU();
     if (!t) return;
     var claves = t.campos.map(function (c) {
@@ -6121,6 +6212,7 @@
       return;
     }
     if (aviso) aviso.textContent = '';
+    avisarSiYaTiene();
     // Si la tabla distingue por año, gana el del año en curso; si no, el más reciente
     if (t.conAnio) {
       var hoy = new Date().getFullYear();
@@ -7104,6 +7196,7 @@
             (n === 1 ? ' producto' : ' productos') + folio + '.', 'ok');
       state.lineItems = []; envioValor = ''; descPedido = { tipo: '', monto: '' };
     editandoProducto = false; lineaEditando = -1;
+    var ay = document.getElementById('avisoYaTiene'); if (ay) ay.innerHTML = '';
       cerrarModalAlta();
       var folioNuevo = (out && out.folio) ? out.folio : '';
       // ¿Le faltan datos a este cliente? Se piden ahora, no después
@@ -8307,7 +8400,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-194';
+    var mia = '2026.08.11-195';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
