@@ -42,7 +42,8 @@ const RUTAS = {
   'prov-pdf':     require('../lib/handlers/prov-pdf'),
   'cta-clientes': require('../lib/handlers/clientes-cuenta'),
   'cxc-notas':    require('../lib/handlers/cxc-notas'),
-  facturacion:    require('../lib/handlers/facturacion')
+  facturacion:    require('../lib/handlers/facturacion'),
+  cfdi:           require('../lib/handlers/cfdi')
 };
 
 module.exports = async (req, res) => {

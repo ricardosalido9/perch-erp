@@ -652,7 +652,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-158</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-159</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -911,6 +911,7 @@
     expediente:          'Todo de cada cliente: desde el primer contacto hasta la última venta.',
     cta_clientes:        'Lo que se vendió contra lo que de verdad entró, ligado por folio.',
     fac_control:         'A quién falta facturarle y a quién falta emitirle el complemento de pago.',
+    cfdi_control:        'Los CFDIs del SAT: qué factura no tiene su complemento emitido.',
     op_stock:            'Lo disponible por producto y material, con lo que está por llegar.',
     op_revisar:          'Renglones que no cuadran y hay que corregir en Pedidos.',
     prov_pedidos:        'Pedidos a proveedores. La fecha y el status se ponen solos; el costo lo propone el catálogo.',
@@ -924,7 +925,7 @@
     fin_cxc:             'Saldos por cobrar de cada pedido.',
     fin_ingresos:        'Cobros recibidos, ligados al folio del pedido.'
   };
-  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'fac_control'];
+  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'fac_control', 'cfdi_control'];
   function esLector() {
     return state.rol === 'lector' || state.rol === 'viewer' || state.rol === 'lectura';
   }
@@ -2135,7 +2136,99 @@
     });
   }
 
+  // ===== CFDIs contra complementos, leyendo del SAT =====
+  var cfdiVista = 'falta';
+  function loadCfdi() {
+    document.getElementById('tableWrap').innerHTML =
+      '<div class="state" style="padding:50px 0">Cruzando facturas contra complementos…</div>';
+    document.getElementById('summary').innerHTML = '';
+    mostrarAlta(false);
+    api('cfdi', { token: state.token }).then(function (d) {
+      if (d.sinArchivo) {
+        document.getElementById('tableWrap').innerHTML =
+          '<div class="state" style="padding:40px 0">' + esc(d.mensaje) + '</div>';
+        return;
+      }
+      var t = d.totales || {};
+      var box = document.getElementById('summary');
+      box.style.display = 'block';
+      var chip = function (k, txt2, n) {
+        return '<button type="button" class="mes-chip' + (cfdiVista === k ? ' on' : '') +
+          '" data-cfdi="' + k + '">' + txt2 + ' (' + fmtNum(n) + ')</button>';
+      };
+      var card = function (k, v, extra, color) {
+        return '<div class="sum-card"><div class="k">' + esc(k) + '</div><div class="v"' +
+          (color ? ' style="color:' + color + '"' : '') + '>' + v + '</div>' +
+          (extra ? '<div class="k" style="text-transform:none;letter-spacing:0">' + extra + '</div>' : '') + '</div>';
+      };
+      box.innerHTML =
+        '<div class="mes-chips">' +
+          chip('falta', 'Falta complemento', t.faltaComplemento) +
+          chip('con', 'Ya complementadas', t.conComplemento) +
+          chip('pue', 'PUE', t.pue) +
+          chip('nocxc', 'No están en CxC', t.sinEnCxc) +
+          chip('canc', 'Canceladas', t.canceladas) +
+        '</div><div class="summary-cards">' +
+        card('Falta complemento', fmtNum(t.faltaComplemento),
+             esc(fmtMoneyShort(t.montoFalta)) + (t.vencidos ? ' · ' + fmtNum(t.vencidos) + ' vencidos' : ''),
+             t.vencidos ? 'var(--danger)' : 'var(--amber)') +
+        card('Ya complementadas', fmtNum(t.conComplemento), '', 'var(--success)') +
+        card('Facturas revisadas', fmtNum(t.facturas), fmtNum(t.complementos) + ' complementos') +
+        (t.sinEnCxc ? card('No están en CxC', fmtNum(t.sinEnCxc),
+             esc(fmtMoneyShort(t.montoSinEnCxc)) + ' facturado sin registrar', 'var(--amber)') : '') +
+        (t.sinMetodo ? card('Sin PUE ni PPD', fmtNum(t.sinMetodo), 'en el CFDI', 'var(--amber)') : '') +
+        '</div>';
+
+      var lista = cfdiVista === 'con' ? d.conComplemento
+        : cfdiVista === 'pue' ? d.pue
+        : cfdiVista === 'nocxc' ? d.sinEnCxc
+        : cfdiVista === 'canc' ? d.canceladas : d.faltaComplemento;
+      var h = '';
+      if (!lista.length) {
+        h = '<div class="state" style="padding:40px 0">Nada por aquí.</div>';
+      } else {
+        var esFalta = cfdiVista === 'falta';
+        h = (esFalta
+          ? '<div class="s" style="margin:8px 0;color:var(--muted)">Facturas <b>PPD</b> cuyo UUID no ' +
+            'aparece en ningún complemento, o que solo tienen una parte pagada. Esto sale de los CFDIs ' +
+            'del SAT, no de lo que se capturó a mano.</div>'
+          : '') +
+          '<table class="mini-table"><thead><tr><th>Folio venta</th><th>Cliente</th><th>Factura</th>' +
+          '<th>Emitida</th><th style="text-align:right">Total</th>' +
+          (esFalta ? '<th style="text-align:right">Complementado</th><th>Vence</th><th>Situación</th>'
+                   : '<th>Método</th><th>Estado</th>') +
+          '</tr></thead><tbody>' +
+          lista.map(function (r) {
+            return '<tr' + (r.urgente ? ' style="background:var(--danger-bg)"' : '') + '>' +
+              '<td><b>' + esc(r.folioVenta || '—') + '</b></td>' +
+              '<td>' + esc(r.receptor) + '</td>' +
+              '<td class="s" title="' + esc(r.uuid) + '">' +
+                esc((r.serie || '') + (r.folioF ? '-' + r.folioF : '') || r.uuid.slice(0, 8)) + '</td>' +
+              '<td>' + esc(formatDateCell(r.fecha)) + '</td>' +
+              '<td class="num">' + esc(formatMoney(r.total)) + '</td>' +
+              (esFalta
+                ? '<td class="num">' + esc(formatMoney(r.pagadoEnComplementos || 0)) + '</td>' +
+                  '<td>' + esc(fechaLegible(r.vence)) + '</td>' +
+                  '<td' + (r.urgente ? ' style="color:var(--danger);font-weight:600"' : '') + '>' +
+                  (r.urgente ? 'Vencido hace ' + fmtNum(r.diasDeRetraso) + ' días · ' : '') +
+                  esc(r.motivo) + '</td>'
+                : '<td>' + esc(r.metodo || '—') + '</td><td>' + esc(r.estado) + '</td>') +
+              '</tr>';
+          }).join('') + '</tbody></table>';
+      }
+      document.getElementById('tableWrap').innerHTML = h;
+      document.getElementById('count').textContent = lista.length + ' facturas';
+      document.querySelectorAll('#summary [data-cfdi]').forEach(function (b) {
+        b.addEventListener('click', function () { cfdiVista = b.getAttribute('data-cfdi'); loadCfdi(); });
+      });
+    }).catch(function (e) {
+      document.getElementById('tableWrap').innerHTML =
+        '<div class="state">' + esc((e && e.message) || 'No se pudo leer los CFDIs.') + '</div>';
+    });
+  }
+
   function loadArea() {
+    if (state.key === 'cfdi_control') return loadCfdi();
     if (state.key === 'fac_control') return loadFacturacion();
     if (state.key === 'cta_clientes') return loadCtaClientes();
     if (state.key === 'expediente') return loadClientes();
@@ -7283,7 +7376,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-158';
+    var mia = '2026.08.11-159';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
