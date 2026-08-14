@@ -317,6 +317,31 @@
   #lineItemsBox .li-qty:focus { border-color:var(--accent-ink); outline:none; }
   #lineItemsBox .li-imp { flex:none; font-weight:600; min-width:92px; text-align:right; }
   #lineItemsBox .li-row.editando { background:var(--amber-bg); border-radius:8px; }
+  /* Gráficas del resumen de RH: barras y donas hechas con CSS, sin librerías */
+  .g-panel { background:var(--surface); border:1px solid var(--line); border-radius:12px;
+    padding:16px 18px; }
+  .g-titulo { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.6px;
+    margin-bottom:14px; }
+  .g-barras { display:flex; flex-direction:column; gap:9px; }
+  .g-fila { display:grid; grid-template-columns:130px 1fr 90px; align-items:center; gap:10px;
+    font-size:13px; }
+  .g-fila .g-riel { background:var(--paper); border-radius:6px; height:20px; overflow:hidden; }
+  .g-fila .g-relleno { height:100%; border-radius:6px; background:var(--accent-ink);
+    transition:width .3s; min-width:2px; }
+  .g-fila .g-val { text-align:right; font-variant-numeric:tabular-nums; font-weight:600; }
+  .g-cols { display:flex; align-items:flex-end; gap:8px; height:150px; padding-top:8px; }
+  .g-col { flex:1; display:flex; flex-direction:column; align-items:center; gap:6px;
+    min-width:0; height:100%; justify-content:flex-end; }
+  .g-col .g-tubo { width:100%; max-width:44px; border-radius:6px 6px 0 0; background:var(--accent-ink);
+    min-height:3px; position:relative; }
+  .g-col .g-etq { font-size:10.5px; color:var(--muted); white-space:nowrap; overflow:hidden;
+    text-overflow:ellipsis; max-width:100%; }
+  .g-col .g-cifra { font-size:11px; font-weight:600; }
+  .g-doble { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:14px;
+    margin-bottom:16px; }
+  .g-mov { display:flex; align-items:center; gap:6px; }
+  .g-mov .g-alta { background:var(--success); border-radius:3px; }
+  .g-mov .g-baja { background:var(--danger); border-radius:3px; }
   .sec-t { font-size:14px; color:var(--accent-ink); margin:22px 0 8px; font-weight:600;
     letter-spacing:.01em; }
   .sec-t:first-child { margin-top:4px; }
@@ -581,6 +606,31 @@
   #lineItemsBox .li-qty:focus { border-color:var(--accent-ink); outline:none; }
   #lineItemsBox .li-imp { flex:none; font-weight:600; min-width:92px; text-align:right; }
   #lineItemsBox .li-row.editando { background:var(--amber-bg); border-radius:8px; }
+  /* Gráficas del resumen de RH: barras y donas hechas con CSS, sin librerías */
+  .g-panel { background:var(--surface); border:1px solid var(--line); border-radius:12px;
+    padding:16px 18px; }
+  .g-titulo { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.6px;
+    margin-bottom:14px; }
+  .g-barras { display:flex; flex-direction:column; gap:9px; }
+  .g-fila { display:grid; grid-template-columns:130px 1fr 90px; align-items:center; gap:10px;
+    font-size:13px; }
+  .g-fila .g-riel { background:var(--paper); border-radius:6px; height:20px; overflow:hidden; }
+  .g-fila .g-relleno { height:100%; border-radius:6px; background:var(--accent-ink);
+    transition:width .3s; min-width:2px; }
+  .g-fila .g-val { text-align:right; font-variant-numeric:tabular-nums; font-weight:600; }
+  .g-cols { display:flex; align-items:flex-end; gap:8px; height:150px; padding-top:8px; }
+  .g-col { flex:1; display:flex; flex-direction:column; align-items:center; gap:6px;
+    min-width:0; height:100%; justify-content:flex-end; }
+  .g-col .g-tubo { width:100%; max-width:44px; border-radius:6px 6px 0 0; background:var(--accent-ink);
+    min-height:3px; position:relative; }
+  .g-col .g-etq { font-size:10.5px; color:var(--muted); white-space:nowrap; overflow:hidden;
+    text-overflow:ellipsis; max-width:100%; }
+  .g-col .g-cifra { font-size:11px; font-weight:600; }
+  .g-doble { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:14px;
+    margin-bottom:16px; }
+  .g-mov { display:flex; align-items:center; gap:6px; }
+  .g-mov .g-alta { background:var(--success); border-radius:3px; }
+  .g-mov .g-baja { background:var(--danger); border-radius:3px; }
   .sec-t { font-size:14px; color:var(--accent-ink); margin:22px 0 8px; font-weight:600;
     letter-spacing:.01em; }
   .sec-t:first-child { margin-top:4px; }
@@ -658,7 +708,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-187</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-188</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -2566,6 +2616,36 @@
     var i = parseInt(m, 10);
     return (i >= 1 && i <= 12) ? MESES_ES[i - 1] : String(m);
   }
+  // Barras horizontales: para comparar áreas o categorías
+  function gBarras(titulo, filas, formato) {
+    if (!filas || !filas.length) return '';
+    var max = Math.max.apply(null, filas.map(function (f) { return f.valor || 0; })) || 1;
+    return '<div class="g-panel"><div class="g-titulo">' + esc(titulo) + '</div><div class="g-barras">' +
+      filas.map(function (f) {
+        var pct = Math.max(2, Math.round((f.valor / max) * 100));
+        return '<div class="g-fila"><span title="' + esc(f.etiqueta) + '" style="overflow:hidden;' +
+          'text-overflow:ellipsis;white-space:nowrap">' + esc(f.etiqueta) + '</span>' +
+          '<div class="g-riel"><div class="g-relleno" style="width:' + pct + '%' +
+            (f.color ? ';background:' + f.color : '') + '"></div></div>' +
+          '<span class="g-val">' + esc(formato ? formato(f.valor) : fmtNum(f.valor)) + '</span></div>';
+      }).join('') + '</div></div>';
+  }
+  // Columnas verticales: para series de tiempo
+  function gColumnas(titulo, filas, formato) {
+    if (!filas || !filas.length) return '';
+    var max = Math.max.apply(null, filas.map(function (f) { return f.valor || 0; })) || 1;
+    return '<div class="g-panel"><div class="g-titulo">' + esc(titulo) + '</div><div class="g-cols">' +
+      filas.map(function (f) {
+        var alto = Math.max(3, Math.round((f.valor / max) * 108));
+        return '<div class="g-col" title="' + esc(f.etiqueta) + ': ' +
+          esc(formato ? formato(f.valor) : fmtNum(f.valor)) + '">' +
+          '<span class="g-cifra">' + esc(formato ? formato(f.valor) : fmtNum(f.valor)) + '</span>' +
+          '<div class="g-tubo" style="height:' + alto + 'px' +
+            (f.color ? ';background:' + f.color : '') + '"></div>' +
+          '<span class="g-etq">' + esc(f.etiqueta) + '</span></div>';
+      }).join('') + '</div></div>';
+  }
+
   function loadRH() {
     document.getElementById('tableWrap').innerHTML =
       '<div class="state" style="padding:50px 0">Armando el resumen de la plantilla…</div>';
@@ -2573,66 +2653,103 @@
     mostrarAlta(false);
     api('rh', { token: state.token, anio: new Date().getFullYear() }).then(function (d) {
       var t = d.totales || {};
-      var card = function (k, v, extra, color) {
-        return '<div class="sum-card"><div class="k">' + esc(k) + '</div><div class="v"' +
-          (color ? ' style="color:' + color + '"' : '') + '>' + v + '</div>' +
-          (extra ? '<div class="k" style="text-transform:none;letter-spacing:0">' + extra + '</div>' : '') + '</div>';
+      // Tarjetas de arriba, como en el inicio
+      var kpi = function (k, v, sub, dark) {
+        return '<div class="kpi' + (dark ? ' dark' : '') + '"><div class="k">' + esc(k) + '</div>' +
+          '<div class="v">' + v + '</div>' + (sub ? '<div class="s">' + sub + '</div>' : '') + '</div>';
       };
-      var box = document.getElementById('summary');
-      box.style.display = 'flex';
-      box.innerHTML =
-        card('Plantilla', fmtNum(t.activos), 'personas activas') +
-        card('Costo mensual', esc(fmtMoneyShort(t.costoMensual)),
-             'neto ' + esc(fmtMoneyShort(t.netoMensual))) +
-        card('Altas ' + d.anio, fmtNum(t.altasAnio), '', 'var(--success)') +
-        card('Bajas ' + d.anio, fmtNum(t.bajasAnio), '', t.bajasAnio ? 'var(--amber)' : '') +
-        card('Rotación', fmtNum(t.rotacion) + '%', 'del año') +
-        (t.conDatosFaltantes ? card('Expedientes', fmtNum(t.conDatosFaltantes),
-             'con datos faltantes', 'var(--amber)') : '');
+      var neto = t.netoMensual || 0, costo = t.costoMensual || 0;
+      var carga = (neto && costo) ? Math.round(((costo - neto) / neto) * 100) : 0;
+      var h = '<div class="kpi-grid" style="margin-bottom:18px">' +
+        kpi('Plantilla', fmtNum(t.activos), 'personas activas', true) +
+        kpi('Costo mensual', esc(fmtMoneyShort(costo)),
+            'neto ' + esc(fmtMoneyShort(neto))) +
+        kpi('Costo por persona', esc(fmtMoneyShort(t.activos ? costo / t.activos : 0)), 'promedio') +
+        kpi('Carga social', carga + '%', 'sobre el neto') +
+        kpi('Altas ' + d.anio, fmtNum(t.altasAnio), 'entraron este año') +
+        kpi('Bajas ' + d.anio, fmtNum(t.bajasAnio), 'salieron este año') +
+        kpi('Rotación', fmtNum(t.rotacion) + '%', 'bajas sobre plantilla') +
+        (t.nominaPagada != null
+          ? kpi('Nómina pagada', esc(fmtMoneyShort(t.nominaPagada)), 'en lo que va del año') : '') +
+        '</div>';
 
-      var h = '';
-      if ((d.movimientos || []).length) {
-        h += '<h3 class="sec-t">Altas y bajas de ' + d.anio + '</h3>' +
-          '<table class="mini-table"><thead><tr><th>Mes</th>' +
-          '<th style="text-align:right">Altas</th><th>Quién entró</th>' +
-          '<th style="text-align:right">Bajas</th><th>Quién salió</th></tr></thead><tbody>' +
-          d.movimientos.map(function (m) {
-            return '<tr><td><b>' + esc(nombreDeMes(m.mes)) + '</b></td>' +
-              '<td class="num" style="color:var(--success)">' + (m.altas || '') + '</td>' +
-              '<td class="s">' + esc((m.quienEntro || []).join(' · ')) + '</td>' +
-              '<td class="num" style="color:var(--danger)">' + (m.bajas || '') + '</td>' +
-              '<td class="s">' + esc((m.quienSalio || []).join(' · ')) + '</td></tr>';
-          }).join('') + '</tbody></table>';
-      }
+      // Gráficas
+      var gr = [];
       if ((d.porArea || []).length) {
-        h += '<h3 class="sec-t">La plantilla por área</h3>' +
+        gr.push(gBarras('Costo mensual por área', d.porArea.map(function (a) {
+          return { etiqueta: a.area, valor: a.costo }; }), fmtMoneyShort));
+        gr.push(gBarras('Personas por área', d.porArea.map(function (a) {
+          return { etiqueta: a.area, valor: a.gente }; })));
+      }
+      if (d.nomina && (d.nomina.porMes || []).length) {
+        gr.push(gColumnas('Nómina pagada por mes', d.nomina.porMes.slice().reverse().map(function (m) {
+          return { etiqueta: nombreDeMesNumero(m.mes).slice(0, 3), valor: m.monto }; }), fmtMoneyShort));
+      }
+      if ((d.movimientos || []).length) {
+        var movs = d.movimientos.slice().reverse();
+        gr.push('<div class="g-panel"><div class="g-titulo">Altas y bajas por mes</div>' +
+          '<div class="g-barras">' + movs.map(function (m) {
+            var tot = Math.max(1, Math.max.apply(null, movs.map(function (x) {
+              return Math.max(x.altas || 0, x.bajas || 0); })));
+            return '<div class="g-fila"><span>' + esc(nombreDeMes(m.mes)) + '</span>' +
+              '<div class="g-mov">' +
+                (m.altas ? '<div class="g-alta" style="height:16px;width:' +
+                  Math.round((m.altas / tot) * 46) + '%" title="' + m.altas + ' altas"></div>' : '') +
+                (m.bajas ? '<div class="g-baja" style="height:16px;width:' +
+                  Math.round((m.bajas / tot) * 46) + '%" title="' + m.bajas + ' bajas"></div>' : '') +
+              '</div>' +
+              '<span class="g-val" style="font-weight:400;font-size:12px">' +
+                (m.altas ? '<span style="color:var(--success)">+' + m.altas + '</span>' : '') +
+                (m.altas && m.bajas ? ' ' : '') +
+                (m.bajas ? '<span style="color:var(--danger)">−' + m.bajas + '</span>' : '') +
+              '</span></div>';
+          }).join('') + '</div></div>');
+      }
+      if ((d.antiguedades || []).length) {
+        gr.push(gBarras('Antigüedad de la plantilla', d.antiguedades.map(function (x) {
+          return { etiqueta: x.valor, valor: x.n }; })));
+      }
+      if ((d.topCosto || []).length) {
+        gr.push(gBarras('Quiénes pesan más en la nómina', d.topCosto.map(function (x) {
+          return { etiqueta: x.nombre, valor: x.costo }; }), fmtMoneyShort));
+      }
+      if (gr.length) h += '<div class="g-doble">' + gr.join('') + '</div>';
+
+      // Composición
+      var comp = function (titulo, lista) {
+        if (!lista || !lista.length) return '';
+        var tot = lista.reduce(function (a, x) { return a + x.n; }, 0) || 1;
+        return '<div class="g-panel"><div class="g-titulo">' + esc(titulo) + '</div>' +
+          lista.map(function (x) {
+            return '<div style="display:flex;justify-content:space-between;align-items:center;' +
+              'padding:5px 0;font-size:13px;border-bottom:1px solid var(--line)">' +
+              '<span>' + esc(x.valor) + '</span>' +
+              '<span><b>' + fmtNum(x.n) + '</b> <span class="s" style="color:var(--muted)">' +
+              Math.round((x.n / tot) * 100) + '%</span></span></div>';
+          }).join('') + '</div>';
+      };
+      var comps = comp('Tipo de empleado', d.porTipo) + comp('Régimen de pago', d.porRegimen) +
+                  comp('Periodicidad de pago', d.porPeriodicidad);
+      if (comps) h += '<div class="g-doble">' + comps + '</div>';
+
+      // Detalle por área
+      if ((d.porArea || []).length) {
+        h += '<h3 class="sec-t">El detalle por área</h3>' +
           '<table class="mini-table"><thead><tr><th>Área</th>' +
           '<th style="text-align:right">Personas</th><th style="text-align:right">Costo mensual</th>' +
-          '<th style="text-align:right">Por persona</th><th>Puestos</th></tr></thead><tbody>' +
+          '<th style="text-align:right">Por persona</th><th style="text-align:right">% del total</th>' +
+          '<th>Puestos</th></tr></thead><tbody>' +
           d.porArea.map(function (a) {
             return '<tr><td><b>' + esc(a.area) + '</b></td>' +
               '<td class="num">' + fmtNum(a.gente) + '</td>' +
               '<td class="num">' + esc(formatMoney(a.costo)) + '</td>' +
               '<td class="num s">' + esc(formatMoney(a.gente ? a.costo / a.gente : 0)) + '</td>' +
+              '<td class="num s">' + (costo ? Math.round((a.costo / costo) * 100) : 0) + '%</td>' +
               '<td class="s">' + esc(a.puestos.map(function (p) {
                 return p.puesto + (p.n > 1 ? ' x' + p.n : ''); }).join(' · ')) + '</td></tr>';
           }).join('') + '</tbody></table>';
       }
-      var comp = function (titulo, lista) {
-        if (!lista || !lista.length) return '';
-        return '<div style="flex:1;min-width:200px"><div class="k" style="margin-bottom:6px">' +
-          esc(titulo) + '</div>' + lista.map(function (x) {
-            return '<div class="s" style="display:flex;justify-content:space-between;padding:3px 0;' +
-              'border-bottom:1px solid var(--line)"><span>' + esc(x.valor) + '</span><b>' +
-              fmtNum(x.n) + '</b></div>';
-          }).join('') + '</div>';
-      };
-      if ((d.porTipo || []).length || (d.porRegimen || []).length) {
-        h += '<h3 class="sec-t">Cómo está compuesta</h3>' +
-          '<div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:20px">' +
-          comp('Tipo de empleado', d.porTipo) + comp('Régimen de pago', d.porRegimen) +
-          comp('Periodicidad', d.porPeriodicidad) + '</div>';
-      }
+      // Nómina por quincena
       if (d.nomina) {
         h += '<h3 class="sec-t">Nómina pagada este año' +
           (d.nomina.sinTimbrar ? ' <span style="color:var(--danger);font-size:13px;font-weight:400">· ' +
@@ -2640,17 +2757,20 @@
             esc(formatMoney(d.nomina.montoSinTimbrar)) + '</span>' : '') + '</h3>' +
           '<table class="mini-table"><thead><tr><th>Mes</th>' +
           '<th style="text-align:right">Pagado</th><th style="text-align:right">Personas</th>' +
-          '<th style="text-align:right">Semanas</th></tr></thead><tbody>' +
+          '<th style="text-align:right">Periodos</th><th style="text-align:right">Por persona</th>' +
+          '</tr></thead><tbody>' +
           d.nomina.porMes.map(function (m) {
             return '<tr><td>' + esc(nombreDeMesNumero(m.mes)) + '</td>' +
               '<td class="num">' + esc(formatMoney(m.monto)) + '</td>' +
               '<td class="num">' + fmtNum(m.personas) + '</td>' +
-              '<td class="num">' + fmtNum(m.semanas) + '</td></tr>';
+              '<td class="num">' + fmtNum(m.semanas) + '</td>' +
+              '<td class="num s">' + esc(formatMoney(m.personas ? m.monto / m.personas : 0)) + '</td></tr>';
           }).join('') +
           '<tr style="border-top:2px solid var(--line);font-weight:600"><td>Total</td>' +
-          '<td class="num">' + esc(formatMoney(d.nomina.total)) + '</td><td></td><td></td></tr>' +
+          '<td class="num">' + esc(formatMoney(d.nomina.total)) + '</td><td></td><td></td><td></td></tr>' +
           '</tbody></table>';
       }
+      // Aniversarios
       if ((d.aniversarios || []).length) {
         h += '<h3 class="sec-t">Cumplen años de antigüedad pronto</h3>' +
           '<table class="mini-table"><thead><tr><th>Nombre</th><th>Área</th>' +
@@ -2663,6 +2783,7 @@
               '<td class="num">' + (x.vacaciones || '') + '</td></tr>';
           }).join('') + '</tbody></table>';
       }
+      // Expedientes
       if ((d.incompletos || []).length) {
         h += '<h3 class="sec-t">Expedientes por completar</h3>' +
           '<table class="mini-table"><thead><tr><th>Nombre</th><th>Área</th><th>Puesto</th>' +
@@ -7833,7 +7954,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-187';
+    var mia = '2026.08.11-188';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
