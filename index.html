@@ -652,7 +652,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-155</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-157</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -909,6 +909,7 @@
     rh_nomina:           'Lo que se paga cada periodo, con sus deducciones.',
     inv_prov:            'Qué tiene terminado cada proveedor, qué falta por fabricar y a dónde se fue.',
     expediente:          'Todo de cada cliente: desde el primer contacto hasta la última venta.',
+    cta_clientes:        'Lo que se vendió contra lo que de verdad entró, ligado por folio.',
     op_stock:            'Lo disponible por producto y material, con lo que está por llegar.',
     op_revisar:          'Renglones que no cuadran y hay que corregir en Pedidos.',
     prov_pedidos:        'Pedidos a proveedores. La fecha y el status se ponen solos; el costo lo propone el catálogo.',
@@ -922,7 +923,7 @@
     fin_cxc:             'Saldos por cobrar de cada pedido.',
     fin_ingresos:        'Cobros recibidos, ligados al folio del pedido.'
   };
-  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente'];
+  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes'];
   function esLector() {
     return state.rol === 'lector' || state.rol === 'viewer' || state.rol === 'lectura';
   }
@@ -1906,7 +1907,134 @@
     return d + ' ' + (MESES_ES[m - 1] || '').toLowerCase() + ' ' + a;
   }
 
+  // ===== Estado de cuenta de clientes: ventas contra ingresos =====
+  var ctaCliAbierto = {}, ctaCliFiltro = 'saldo';
+  function loadCtaClientes() {
+    document.getElementById('tableWrap').innerHTML =
+      '<div class="state" style="padding:50px 0">Cruzando ventas contra ingresos…</div>';
+    document.getElementById('summary').innerHTML = '';
+    mostrarAlta(false);
+    api('cta-clientes', { token: state.token }).then(function (d) {
+      var t = d.totales || {};
+      var box = document.getElementById('summary');
+      box.style.display = 'flex';
+      box.innerHTML =
+        '<div class="sum-card"><div class="k">Vendido</div><div class="v">' +
+          esc(formatMoney(t.vendido)) + '</div></div>' +
+        '<div class="sum-card"><div class="k">Cobrado</div><div class="v" style="color:var(--success)">' +
+          esc(formatMoney(t.cobrado)) + '</div><div class="k" style="text-transform:none;letter-spacing:0">' +
+          'según INGRESOS</div></div>' +
+        '<div class="sum-card"><div class="k">Por cobrar</div><div class="v" style="color:var(--danger)">' +
+          esc(formatMoney(t.porCobrar)) + '</div><div class="k" style="text-transform:none;letter-spacing:0">' +
+          fmtNum(t.conSaldo) + ' clientes</div></div>' +
+        (t.conDiferencia ? '<div class="sum-card"><div class="k">No cuadran con CxC</div>' +
+          '<div class="v" style="color:var(--amber)">' + fmtNum(t.conDiferencia) + '</div>' +
+          '<div class="k" style="text-transform:none;letter-spacing:0">ventas por revisar</div></div>' : '') +
+        ((d.sinFolio && d.sinFolio.pagos)
+          ? '<div class="sum-card"><div class="k">Pagos sin folio</div><div class="v" style="color:var(--amber)">' +
+            fmtNum(d.sinFolio.pagos) + '</div><div class="k" style="text-transform:none;letter-spacing:0">' +
+            esc(fmtMoneyShort(d.sinFolio.monto)) + ' sin identificar</div></div>' : '');
+
+      var chip = function (k, txt2) {
+        return '<button type="button" class="mes-chip' + (ctaCliFiltro === k ? ' on' : '') +
+          '" data-ctacli="' + k + '">' + txt2 + '</button>';
+      };
+      var L = (d.clientes || []).filter(function (c) {
+        if (ctaCliFiltro === 'saldo') return c.totales.porCobrar > 1;
+        if (ctaCliFiltro === 'nada') return c.totales.sinUnSoloPago > 0;
+        if (ctaCliFiltro === 'dif') return c.totales.conDiferencia > 0;
+        return true;
+      });
+      var h = '<div class="mes-chips">' +
+        chip('saldo', 'Con saldo') + chip('nada', 'Sin un solo pago') +
+        chip('dif', 'No cuadran con CxC') + chip('', 'Todos') +
+        '<button type="button" class="mes-chip" id="anotarCxc" style="margin-left:auto">' +
+        'Anotar el resultado en CxC</button>' +
+        '</div><div class="cot-grid">';
+
+      L.forEach(function (c) {
+        var ab = !!ctaCliAbierto[c.cliente];
+        h += '<div class="cot-card' + (ab ? ' open' : '') + '">' +
+          '<button type="button" class="cot-head" data-ctacliente="' + esc(c.cliente).replace(/"/g, '&quot;') + '">' +
+            '<div class="cot-info" style="flex:1.2"><div class="cot-folio">' + esc(c.cliente) + '</div>' +
+              '<div class="cot-cli">' + esc(c.despacho || '') + '</div>' +
+              '<div class="cot-sub">' + fmtNum(c.totales.ventas) + ' ventas' +
+                (c.totales.conSaldo ? ' · ' + fmtNum(c.totales.conSaldo) + ' con saldo' : '') + '</div></div>' +
+            '<div class="prov-cifras">' +
+              '<div><span class="k">Le he vendido</span><b>' + esc(formatMoney(c.totales.vendido)) + '</b></div>' +
+              '<div><span class="k">Me ha pagado</span><b>' + esc(formatMoney(c.totales.cobrado)) + '</b></div>' +
+              '<div><span class="k">Me debe</span><b style="color:' +
+                (c.totales.porCobrar > 1 ? 'var(--danger)' : 'var(--success)') + '">' +
+                esc(formatMoney(c.totales.porCobrar)) + '</b></div>' +
+            '</div><span class="cat-chev">' + (ab ? '▲' : '▼') + '</span></button>';
+        if (ab) {
+          h += '<div class="cot-body">';
+          c.ventas.forEach(function (v) {
+            h += '<div style="padding:10px 0;border-bottom:1px solid var(--line)">' +
+              '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px">' +
+                '<b>' + esc(v.folio) + '</b>' + (v.status ? ' ' + pillHTML(v.status) : '') +
+                '<span class="s">' + esc(formatDateCell(v.fecha)) + '</span>' +
+                '<span>' + esc(formatMoney(v.total)) + ' · cobrado ' + esc(formatMoney(v.cobrado)) +
+                ' · <b' + (v.porCobrar > 1 ? ' style="color:var(--danger)"' : '') + '>por cobrar ' +
+                esc(formatMoney(v.porCobrar)) + '</b></span></div>' +
+              (v.difConCxc !== null && Math.abs(v.difConCxc) > 1
+                ? '<div class="s" style="color:var(--amber);margin-top:4px">CxC dice que se cobraron ' +
+                  esc(formatMoney(v.cxcPagado)) + ', pero en INGRESOS solo hay ' +
+                  esc(formatMoney(v.cobrado)) + '. Diferencia de ' +
+                  esc(formatMoney(Math.abs(v.difConCxc))) + '.</div>'
+                : '') +
+              ((v.detalleCobros || []).length
+                ? '<table class="mini-table" style="margin-top:8px"><thead><tr><th>Fecha</th>' +
+                  '<th>Concepto</th><th>Cuenta</th><th style="text-align:right">Monto</th></tr></thead><tbody>' +
+                  v.detalleCobros.map(function (g) {
+                    return '<tr><td>' + esc(formatDateCell(g.fecha)) + '</td>' +
+                      '<td title="' + esc(g.descripcion) + '">' +
+                        esc((g.concepto || g.descripcion || '').slice(0, 44)) + '</td>' +
+                      '<td>' + esc(g.cuenta || g.metodo || '') + '</td>' +
+                      '<td class="num">' + esc(formatMoney(g.monto)) + '</td></tr>';
+                  }).join('') + '</tbody></table>'
+                : '<div class="s" style="color:var(--muted);margin-top:4px">Sin pagos en INGRESOS con este folio.</div>') +
+              '</div>';
+          });
+          h += '</div>';
+        }
+        h += '</div>';
+      });
+      document.getElementById('tableWrap').innerHTML = h + '</div>';
+      document.getElementById('count').textContent = L.length + ' de ' + (d.clientes || []).length + ' clientes';
+      document.querySelectorAll('#tableWrap [data-ctacliente]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          var k = b.getAttribute('data-ctacliente');
+          ctaCliAbierto[k] = !ctaCliAbierto[k];
+          loadCtaClientes();
+        });
+      });
+      document.querySelectorAll('#tableWrap [data-ctacli]').forEach(function (b) {
+        b.addEventListener('click', function () { ctaCliFiltro = b.getAttribute('data-ctacli'); loadCtaClientes(); });
+      });
+      var ba = document.getElementById('anotarCxc');
+      if (ba) ba.addEventListener('click', function () {
+        ba.disabled = true; ba.textContent = 'Escribiendo en CxC...';
+        api('cxc-notas', { token: state.token }).then(function (o) {
+          avisoFijo('<b>Listo: se anotaron ' + fmtNum(o.filas) + ' renglones en CxC.</b>' +
+            '<div style="margin-top:6px">' + fmtNum(o.cuadran) + ' cuadran · ' +
+            fmtNum(o.noCuadran) + ' no cuadran' +
+            (o.sinVenta ? ' · ' + fmtNum(o.sinVenta) + ' sin venta asociada' : '') + '</div>' +
+            '<div style="margin-top:6px;color:var(--muted);font-size:12px">Las columnas nuevas son ' +
+            '"Cuadra con Ingresos" y "Nota de conciliación", al final de la hoja.</div>');
+          if (o.archivo) window.open(o.archivo, '_blank');
+        }).catch(fail).then(function () {
+          ba.disabled = false; ba.textContent = 'Anotar el resultado en CxC';
+        });
+      });
+    }).catch(function (e) {
+      document.getElementById('tableWrap').innerHTML =
+        '<div class="state">' + esc((e && e.message) || 'No se pudo armar el estado de cuenta.') + '</div>';
+    });
+  }
+
   function loadArea() {
+    if (state.key === 'cta_clientes') return loadCtaClientes();
     if (state.key === 'expediente') return loadClientes();
     if (state.key === 'inv_prov') return loadInvProv();
     if (state.key === 'conciliacion') return loadConciliacion();
@@ -7052,7 +7180,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-155';
+    var mia = '2026.08.11-157';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
