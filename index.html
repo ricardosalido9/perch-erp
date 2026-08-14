@@ -708,7 +708,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-191</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-192</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -2891,8 +2891,8 @@
       document.getElementById('driveStockBtn').style.display = (state.key === 'op_stock') ? '' : 'none';
       document.getElementById('driveProvBtn').style.display = (state.key === 'proveedores') ? '' : 'none';
       var cvb = document.getElementById('catViewBtn');
-      cvb.style.display = ['inventario','cotizaciones','ventas_registro','prov_pedidos'].indexOf(state.key) !== -1 ? '' : 'none';
-      cvb.textContent = catalogoAgrupado ? 'Ver como tabla' : 'Ver por producto';
+      cvb.style.display = ['inventario','cotizaciones','ventas_registro','prov_pedidos','fin_cxc'].indexOf(state.key) !== -1 ? '' : 'none';
+      cvb.textContent = catalogoAgrupado ? 'Ver como tabla' : 'Ver por tarjetas';
       if (!data.connected) {
         document.getElementById('tableWrap').innerHTML =
           '<div class="state">Esta área todavía no está conectada. Agregá su hoja en SHEETS (lib/core.js).</div>';
@@ -4911,6 +4911,93 @@
   }
 
   var filaEditando = -1;
+  // Cuentas por cobrar en tarjetas: una por folio, con lo cobrado y lo que falta
+  var cxcAbierta = {};
+  function renderCxc(rows) {
+    var cRef = findHeaderByName('No. de Referencia') || findHeaderByName('Folio');
+    var cCli = findHeaderByName('Cliente');
+    if (!cRef || !rows.length) return '';
+    var cTot = findHeaderByName('Total con envío') || findHeaderByName('Total con envio') ||
+               findHeaderByName('Total');
+    var cPag = findHeaderByName('Pagado') || findHeaderByName('Total Cobrado') ||
+               findHeaderByName('Cobrado');
+    var cPor = findHeaderByName('Por Cobrar') || findHeaderByName('Saldo');
+    var cFec = findHeaderByName('Fecha del Cierre') || findHeaderByName('Fecha');
+    var cSt = findHeaderByName('Status');
+    var cFac = findHeaderByName('Factura Si / No') || findHeaderByName('Factura');
+    var cUUID = findHeaderByName('UUID');
+    var cMet = findHeaderByName('Método de pago SAT') || findHeaderByName('PUE/PPD');
+    var cVence = findHeaderByName('Fecha de vencimiento') || findHeaderByName('Vencimiento');
+    var cNota = findHeaderByName('Nota de conciliación') || findHeaderByName('Comentarios');
+    var cCuadra = findHeaderByName('Cuadra con Ingresos');
+
+    var h = '<div class="cot-grid">';
+    var totalGral = 0, cobradoGral = 0, porCobrarGral = 0;
+    rows.forEach(function (r) {
+      var folio = String(r[cRef] || '').trim();
+      if (!folio) return;
+      var tot = parseNumber(cTot ? r[cTot] : null) || 0;
+      var pag = parseNumber(cPag ? r[cPag] : null) || 0;
+      var por = cPor ? (parseNumber(r[cPor]) || 0) : (tot - pag);
+      totalGral += tot; cobradoGral += pag; porCobrarGral += por;
+      var pct = tot ? Math.min(100, Math.round((pag / tot) * 100)) : 0;
+      var ab = !!cxcAbierta[folio];
+      var st = cSt ? String(r[cSt] || '').trim() : '';
+      var cuadra = cCuadra ? String(r[cCuadra] || '').trim() : '';
+      var saldado = Math.abs(por) < 1;
+
+      h += '<div class="cot-card' + (ab ? ' open' : '') + '">' +
+        '<button type="button" class="cot-head" data-cxc="' + esc(folio).replace(/"/g, '&quot;') + '">' +
+          '<div class="cot-info">' +
+            '<div class="cot-folio">' + esc(folio) + (st ? ' ' + pillHTML(st) : '') +
+              (cuadra && !/^cuadra$/i.test(cuadra)
+                ? ' <span style="background:var(--amber-bg);color:var(--amber);padding:1px 8px;' +
+                  'border-radius:20px;font-size:10.5px">' + esc(cuadra) + '</span>' : '') +
+            '</div>' +
+            '<div class="cot-cli">' + esc(cCli ? (r[cCli] || 'Sin cliente') : '') + '</div>' +
+            '<div class="cot-sub">' + esc(cFec ? formatDateCell(r[cFec]) : '') +
+              (cFac && String(r[cFac] || '').trim()
+                ? ' · factura ' + esc(String(r[cFac]).trim()) : '') +
+              (cMet && String(r[cMet] || '').trim() ? ' · ' + esc(String(r[cMet]).trim()) : '') +
+            '</div>' +
+          '</div>' +
+          '<div class="prov-cifras">' +
+            '<div><span class="k">Total</span><b>' + esc(formatMoney(tot)) + '</b></div>' +
+            '<div><span class="k">Cobrado</span><b style="color:var(--success)">' +
+              esc(formatMoney(pag)) + '</b><span class="k">' + pct + '%</span></div>' +
+            '<div><span class="k">Por cobrar</span><b style="color:' +
+              (saldado ? 'var(--success)' : 'var(--danger)') + '">' +
+              esc(formatMoney(por)) + '</b></div>' +
+          '</div>' +
+          '<span class="cat-chev">' + (ab ? '▲' : '▼') + '</span></button>';
+      if (ab) {
+        var yaMostradas = [cRef, cCli, cTot, cPag, cPor, cFec, cSt];
+        var extras = visibleHeaders().filter(function (x) {
+          return yaMostradas.indexOf(x) === -1 && String(r[x] || '').trim() !== '';
+        });
+        h += '<div class="cot-body">' +
+          '<div style="height:8px;background:var(--paper);border-radius:20px;overflow:hidden;margin:4px 0 14px">' +
+            '<div style="height:100%;width:' + pct + '%;background:var(--success);border-radius:20px"></div>' +
+          '</div>' +
+          (cNota && String(r[cNota] || '').trim()
+            ? '<div class="s" style="background:var(--paper);border-radius:8px;padding:8px 12px;' +
+              'margin-bottom:12px"><b>Nota:</b> ' + esc(String(r[cNota]).trim()) + '</div>' : '') +
+          '<table class="mini-table"><tbody>' +
+          extras.map(function (x) {
+            return '<tr><td style="color:var(--muted);width:230px">' + esc(x) + '</td>' +
+              '<td>' + esc(String(r[x] == null ? '' : r[x])) + '</td></tr>';
+          }).join('') + '</tbody></table>' +
+          (esSoloLectura(state.key) ? '' :
+            '<div class="cot-acciones"><button type="button" class="ed-abrir" data-row="' +
+            r._row + '">Editar</button></div>') +
+          '</div>';
+      }
+      h += '</div>';
+    });
+    if (!h.length) return '';
+    return h + '</div>';
+  }
+
   function renderCotizaciones(rows) {
     var cRef = findHeaderByName('No. de Referencia') || findHeaderByName('Folio');
     if (!cRef) return null;
@@ -5094,6 +5181,10 @@
     if (state.key === 'prov_pedidos' && catalogoAgrupado) {
       var hp = renderPedidosProv(rows);
       if (hp) { document.getElementById('tableWrap').innerHTML = hp; return; }
+    }
+    if (state.key === 'fin_cxc' && catalogoAgrupado) {
+      var hx = renderCxc(rows);
+      if (hx) { document.getElementById('tableWrap').innerHTML = hx; return; }
     }
     if ((state.key === 'cotizaciones' || state.key === 'ventas_registro') && catalogoAgrupado) {
       var hq = renderCotizaciones(rows);
@@ -8048,7 +8139,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-191';
+    var mia = '2026.08.11-192';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
@@ -8158,6 +8249,13 @@
   });
   document.getElementById('tableWrap').addEventListener('click', function (e) {
     // Editar un producto dentro de la tarjeta de una venta o cotización
+    var cx = e.target.closest('[data-cxc]');
+    if (cx) {
+      var kx = cx.getAttribute('data-cxc');
+      cxcAbierta[kx] = !cxcAbierta[kx];
+      renderTable();
+      return;
+    }
     var lleg = e.target.closest('.llegaron-btn');
     if (lleg) { abrirEntrada(lleg.getAttribute('data-ped')); return; }
     var edA = e.target.closest('.ed-abrir');
@@ -8282,6 +8380,13 @@
   });
   document.getElementById('tableWrap').addEventListener('click', function (e) {
     // Editar un producto dentro de la tarjeta de una venta o cotización
+    var cx = e.target.closest('[data-cxc]');
+    if (cx) {
+      var kx = cx.getAttribute('data-cxc');
+      cxcAbierta[kx] = !cxcAbierta[kx];
+      renderTable();
+      return;
+    }
     var lleg = e.target.closest('.llegaron-btn');
     if (lleg) { abrirEntrada(lleg.getAttribute('data-ped')); return; }
     var edA = e.target.closest('.ed-abrir');
