@@ -708,7 +708,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-196</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-197</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -986,7 +986,7 @@
     fin_cxc:             'Saldos por cobrar de cada pedido.',
     fin_ingresos:        'Cobros recibidos, ligados al folio del pedido.'
   };
-  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'fac_control', 'cfdi_control', 'cfdi_prov', 'prov_razon', 'rh_resumen', 'fin_gastos_op'];
+  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'fac_control', 'cfdi_control', 'cfdi_prov', 'prov_razon', 'rh_resumen', 'fin_gastos_op', 'fin_efectivo'];
   function esLector() {
     return state.rol === 'lector' || state.rol === 'viewer' || state.rol === 'lectura';
   }
@@ -2975,7 +2975,189 @@
       }).join('') + '</tbody></table>');
   }
 
+  // ===== Efectivo: Caja Chica y Efectivo General =====
+  var efeDatos = null, efeCaja = 'Caja Chica', efeTipo = 'salida';
+  function loadEfectivo() {
+    document.getElementById('tableWrap').innerHTML =
+      '<div class="state" style="padding:50px 0">Leyendo las cajas…</div>';
+    document.getElementById('summary').innerHTML = '';
+    mostrarAlta(false);
+    api('efectivo', { token: state.token, anio: new Date().getFullYear() }).then(function (d) {
+      efeDatos = d;
+      var box = document.getElementById('summary');
+      box.style.display = 'flex';
+      box.innerHTML = (d.cajas || []).map(function (c) {
+        return '<div class="sum-card"><div class="k">' + esc(c.caja) + '</div>' +
+          '<div class="v"' + (c.saldo < 0 ? ' style="color:var(--danger)"' : '') + '>' +
+          esc(formatMoney(c.saldo || 0)) + '</div>' +
+          '<div class="k" style="text-transform:none;letter-spacing:0">' +
+          (c.error ? esc(c.error)
+                   : 'entró ' + esc(fmtMoneyShort(c.entradas)) + ' · salió ' +
+                     esc(fmtMoneyShort(c.salidas))) + '</div></div>';
+      }).join('') +
+      '<div class="sum-card"><div class="k">Total en efectivo</div><div class="v">' +
+        esc(formatMoney((d.totales || {}).saldo || 0)) + '</div></div>';
+
+      var h = '<button type="button" class="primary" id="efeNuevo" style="margin-bottom:16px">' +
+        '+ Registrar movimiento</button>';
+
+      // Pestañas de caja
+      h += '<div class="mes-chips" style="margin-bottom:12px">' +
+        (d.cajas || []).map(function (c) {
+          return '<button type="button" class="mes-chip' + (efeCaja === c.caja ? ' on' : '') +
+            '" data-efecaja="' + esc(c.caja).replace(/"/g, '&quot;') + '">' + esc(c.caja) + '</button>';
+        }).join('') + '</div>';
+
+      var caja = (d.cajas || []).filter(function (c) { return c.caja === efeCaja; })[0];
+      if (!caja || caja.error) {
+        h += '<div class="state">' + esc(caja ? caja.error : 'No se encontró esa caja.') + '</div>';
+      } else {
+        if ((caja.conceptos || []).length) {
+          h += '<div class="g-doble" style="margin-bottom:16px">' +
+            gBarras('En qué se va el efectivo', caja.conceptos.filter(function (x) { return x.salidas > 0; })
+              .slice(0, 8).map(function (x) {
+                return { etiqueta: x.concepto, valor: x.salidas, color: 'var(--danger)' }; }), fmtMoneyShort) +
+            gBarras('De dónde entra', caja.conceptos.filter(function (x) { return x.entradas > 0; })
+              .slice(0, 8).map(function (x) {
+                return { etiqueta: x.concepto, valor: x.entradas, color: 'var(--success)' }; }), fmtMoneyShort) +
+            '</div>';
+        }
+        h += '<table class="mini-table"><thead><tr><th>Fecha</th><th>Concepto</th>' +
+          '<th>Descripción</th><th style="text-align:right">Entrada</th>' +
+          '<th style="text-align:right">Salida</th><th style="text-align:right">Saldo</th>' +
+          '</tr></thead><tbody>' +
+          caja.movimientos.map(function (m) {
+            return '<tr><td>' + esc(formatDateCell(m.fecha)) + '</td>' +
+              '<td><b>' + esc(m.concepto) + '</b></td>' +
+              '<td class="s">' + esc((m.descripcion || '').slice(0, 50)) + '</td>' +
+              '<td class="num" style="color:var(--success)">' +
+                (m.entrada ? esc(formatMoney(m.entrada)) : '') + '</td>' +
+              '<td class="num" style="color:var(--danger)">' +
+                (m.salida ? esc(formatMoney(m.salida)) : '') + '</td>' +
+              '<td class="num s">' + (m.saldo ? esc(formatMoney(m.saldo)) : '') + '</td></tr>';
+          }).join('') + '</tbody></table>';
+      }
+      document.getElementById('tableWrap').innerHTML = h;
+      document.getElementById('count').textContent = caja && caja.movimientos
+        ? caja.movimientos.length + ' movimientos' : '';
+      document.querySelectorAll('#tableWrap [data-efecaja]').forEach(function (b) {
+        b.addEventListener('click', function () { efeCaja = b.getAttribute('data-efecaja'); loadEfectivo(); });
+      });
+      var bn = document.getElementById('efeNuevo');
+      if (bn) bn.addEventListener('click', abrirEfectivo);
+    }).catch(function (e) {
+      document.getElementById('tableWrap').innerHTML =
+        '<div class="state">' + esc((e && e.message) || 'No se pudieron leer las cajas.') + '</div>';
+    });
+  }
+
+  function abrirEfectivo() {
+    if (!efeDatos) return;
+    var hoy = new Date();
+    var iso = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0') + '-' +
+              String(hoy.getDate()).padStart(2, '0');
+    efeTipo = 'salida';
+    document.getElementById('aventaTitulo').textContent = 'Registrar movimiento de efectivo';
+    document.getElementById('aventaCuerpo').innerHTML = cuerpoEfectivo(iso);
+    document.getElementById('aventaOk').textContent = 'Registrar';
+    document.getElementById('aventaModal').classList.add('on');
+    engancharEfectivo();
+  }
+  function cuerpoEfectivo(iso) {
+    var cajas = (efeDatos.cajas || []).map(function (c) { return c.caja; });
+    return '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:14px">' +
+        '<div class="fld" style="margin:0"><label>¿Qué día fue?</label>' +
+          '<input type="date" id="efeFecha" value="' + iso + '"></div>' +
+        '<div class="fld" style="margin:0"><label>¿De qué caja?</label>' +
+          '<select id="efeCajaSel">' + cajas.map(function (c) {
+            return '<option' + (c === efeCaja ? ' selected' : '') + '>' + esc(c) + '</option>';
+          }).join('') + '</select></div>' +
+        '<div class="fld" style="margin:0"><label>¿Entró o salió?</label>' +
+          '<select id="efeTipo">' +
+            '<option value="salida">Salió dinero</option>' +
+            '<option value="entrada">Entró dinero</option>' +
+          '</select></div>' +
+        '<div class="fld" style="margin:0"><label>¿Cuánto?</label>' +
+          '<input type="number" id="efeMonto" step="0.01" min="0" style="width:140px"></div>' +
+      '</div>' +
+      '<div id="efeCampos"></div>' +
+      '<div class="fld"><label>Descripción</label>' +
+        '<input id="efeDesc" placeholder="Para qué fue, a quién se le dio…"></div>' +
+      '<div id="efeSaldo" class="s" style="color:var(--muted);margin-top:10px"></div>';
+  }
+  // Los campos del catálogo cambian según sea entrada o salida
+  function camposEfectivo() {
+    var cat = (efeDatos.catalogo || {})[efeTipo] || {};
+    var orden = ['Concepto', 'Categoría', 'Subcategoría',
+                 efeTipo === 'entrada' ? 'Lista de Clientes_Perch' : 'Lista de Proveedores 2024_Perch'];
+    var h = '<div style="display:flex;gap:14px;flex-wrap:wrap">';
+    orden.forEach(function (nombre) {
+      var lista = cat[nombre];
+      if (!lista || !lista.length) return;
+      var etq = nombre.indexOf('Clientes') !== -1 ? 'Cliente'
+              : nombre.indexOf('Proveedores') !== -1 ? 'Proveedor' : nombre;
+      h += '<div class="fld" style="margin:0;min-width:200px"><label>' + esc(etq) + '</label>' +
+        '<input list="efeL' + esc(norm(nombre).replace(/[^a-z]/g, '')) + '" ' +
+        'data-efe="' + esc(nombre).replace(/"/g, '&quot;') + '" placeholder="— elegir —">' +
+        '<datalist id="efeL' + esc(norm(nombre).replace(/[^a-z]/g, '')) + '">' +
+          lista.map(function (v) { return '<option value="' + esc(v) + '">'; }).join('') +
+        '</datalist></div>';
+    });
+    return h + '</div>';
+  }
+  function engancharEfectivo() {
+    var pintar = function () {
+      document.getElementById('efeCampos').innerHTML = camposEfectivo();
+      var c = (efeDatos.cajas || []).filter(function (x) {
+        return x.caja === document.getElementById('efeCajaSel').value; })[0];
+      var m = parseFloat(document.getElementById('efeMonto').value || '0') || 0;
+      var saldo = c ? (c.saldo || 0) : 0;
+      var nuevo = saldo + (efeTipo === 'entrada' ? m : -m);
+      document.getElementById('efeSaldo').innerHTML =
+        'Saldo actual: <b>' + esc(formatMoney(saldo)) + '</b>' +
+        (m ? ' → queda <b style="color:' + (nuevo < 0 ? 'var(--danger)' : 'var(--ink)') + '">' +
+          esc(formatMoney(nuevo)) + '</b>' : '') +
+        (nuevo < 0 ? ' <span style="color:var(--danger)">· no alcanza</span>' : '');
+    };
+    document.getElementById('efeTipo').addEventListener('change', function () {
+      efeTipo = this.value; pintar();
+    });
+    document.getElementById('efeCajaSel').addEventListener('change', pintar);
+    document.getElementById('efeMonto').addEventListener('input', pintar);
+    pintar();
+  }
+  function registrarEfectivo() {
+    var f = document.getElementById('efeFecha');
+    var rec = {
+      token: state.token, guardar: 1,
+      caja: document.getElementById('efeCajaSel').value,
+      tipo: document.getElementById('efeTipo').value,
+      monto: document.getElementById('efeMonto').value,
+      fecha: f && f.value ? isoToLargo(f.value) : '',
+      descripcion: document.getElementById('efeDesc').value
+    };
+    document.querySelectorAll('#efeCampos [data-efe]').forEach(function (el) {
+      var nombre = el.getAttribute('data-efe');
+      if (!el.value) return;
+      if (nombre === 'Concepto') rec.concepto = el.value;
+      else rec[nombre] = el.value;
+    });
+    if (!rec.monto || !parseFloat(rec.monto)) { toast('Falta el monto.', 'err'); return; }
+    if (!rec.concepto) { toast('Elige el concepto.', 'err'); return; }
+    var btn = document.getElementById('aventaOk');
+    btn.disabled = true; btn.textContent = 'Registrando...';
+    api('efectivo', rec).then(function (o) {
+      toast(o.mensaje || 'Movimiento registrado.', 'ok');
+      cerrarMandarAVenta();
+      efeCaja = rec.caja;
+      loadEfectivo();
+    }).catch(fail).then(function () {
+      btn.disabled = false; btn.textContent = 'Registrar';
+    });
+  }
+
   function loadArea() {
+    if (state.key === 'fin_efectivo') return loadEfectivo();
     if (state.key === 'fin_gastos_op') return loadGastosOp();
     if (state.key === 'rh_resumen') return loadRH();
     if (state.key === 'prov_razon') return loadProvRazon();
@@ -8400,7 +8582,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-196';
+    var mia = '2026.08.11-197';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
@@ -8434,7 +8616,8 @@
   document.getElementById('aventaClose').addEventListener('click', cerrarMandarAVenta);
   document.getElementById('aventaCancel').addEventListener('click', cerrarMandarAVenta);
   document.getElementById('aventaOk').addEventListener('click', function () {
-    if (document.getElementById('entFecha')) registrarEntrada();
+    if (document.getElementById('efeFecha')) registrarEfectivo();
+    else if (document.getElementById('entFecha')) registrarEntrada();
     else registrarSalidas();
   });
   document.getElementById('ventaClose').addEventListener('click', cerrarConvertirVenta);
