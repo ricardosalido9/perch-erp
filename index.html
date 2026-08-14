@@ -652,7 +652,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-165</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-166</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -2298,7 +2298,9 @@
              esc(fmtMoneyShort(t.montoSinFactura)) + ' sin comprobar', 'var(--amber)') +
         card('Facturas recibidas', fmtNum(t.facturasRecibidas),
              fmtNum(t.complementosRecibidos) + ' complementos') +
-        card('Proveedores al día', fmtNum(t.conFactura), '', 'var(--success)');
+        card('Proveedores al día', fmtNum(t.conFactura), '', 'var(--success)') +
+        (t.enEfectivo ? card('Pagado en efectivo', fmtNum(t.enEfectivo),
+          esc(fmtMoneyShort(t.efectivoMonto)) + ' fuera del cruce') : '');
 
       var dgp = d.diagnostico || {};
       if (!dgp.seLeyoComplementos) {
@@ -2311,8 +2313,9 @@
       if (cfdiPVista === 'factura') {
         var L = d.sinFactura || [];
         h = '<div class="s" style="margin:8px 0;color:var(--muted)">Lo pagado del año contra lo que ' +
-          'facturaron. Se excluyen nómina, impuestos y traspasos. Un pago parcial de una factura PPD ' +
-          'no cuenta como faltante: por eso se compara el total, no pago por pago.</div>' +
+          'facturaron. <b>Solo cuentan los pagos por depósito o transferencia</b>; el efectivo queda ' +
+          'fuera. Se excluyen nómina, impuestos y traspasos. Un pago parcial de una factura PPD no ' +
+          'cuenta como faltante: por eso se compara el total del año, no pago por pago.</div>' +
           '<table class="mini-table"><thead><tr><th>Proveedor</th>' +
           '<th style="text-align:right">Le pagué</th><th style="text-align:right">Me facturó</th>' +
           '<th style="text-align:right">Falta facturar</th><th style="text-align:right">Pagos</th>' +
@@ -7579,7 +7582,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-165';
+    var mia = '2026.08.11-166';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
