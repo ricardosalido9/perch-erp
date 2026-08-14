@@ -708,7 +708,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-193</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-194</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -2832,6 +2832,17 @@
         kpi('Total ' + d.anio, esc(fmtMoneyShort(t.totalAnio)), 'en lo que va del año') +
         '</div>';
 
+      // Si no cruzó ninguna categoría, se dice qué etiquetas sí hay en la hoja
+      if (!d.filas.length) {
+        h += '<div style="background:var(--amber-bg);border:1px solid var(--amber);border-radius:10px;' +
+          'padding:12px 16px;font-size:13px;color:var(--amber);margin-bottom:16px">' +
+          '<b>Ninguna categoría de gasto operativo cruzó con la hoja.</b> Se busca en la columna ' +
+          esc(d.columnas.subcategoria) + ' y en ' + esc(d.columnas.categoria) + '.' +
+          ((d.otrasCategorias || []).length
+            ? '<div style="margin-top:6px">Las etiquetas que sí hay son: ' +
+              esc(d.otrasCategorias.slice(0, 20).map(function (x) { return x.categoria; }).join(' · ')) +
+              '</div>' : '') + '</div>';
+      }
       // Avisos
       if ((d.avisos || []).length) {
         h += '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">' +
@@ -2871,7 +2882,8 @@
         (d.sueldosDeNomina
           ? '<b>Sueldos y salarios</b> sale del bruto de la nómina (lo que costó el mes). '
           : '') +
-        'Las demás categorías salen de EGRESOS (cuándo salió el dinero del banco). ' +
+        'Las demás salen de EGRESOS, de la columna <b>' + esc(d.columnas.subcategoria) +
+        '</b> (cuándo salió el dinero del banco). ' +
         'Cada celda se compara contra el promedio de esa categoría: ' +
         '<span style="color:var(--danger)">roja</span> si gastó de más, ' +
         '<span style="color:var(--success)">verde</span> si gastó de menos.</div>';
@@ -8295,7 +8307,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-193';
+    var mia = '2026.08.11-194';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
