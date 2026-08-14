@@ -652,7 +652,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-162</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-164</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1680,6 +1680,22 @@
 
   // ===== Qué tiene guardado cada proveedor =====
   var invProvAbierto = {}, invLineaAbierta = {};
+  // Baja un PDF que viene en base64. Se usa Blob porque las direcciones "data:"
+  // fallan en Chrome cuando el archivo pasa de un par de megas.
+  function bajarPdf(base64, nombre) {
+    var bin = atob(base64);
+    var buf = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+    var blob = new Blob([buf], { type: 'application/pdf' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = nombre;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(url); a.remove(); }, 4000);
+  }
+
   function loadInvProv() {
     document.getElementById('tableWrap').innerHTML =
       '<div class="state" style="padding:50px 0">Revisando lo que tiene cada proveedor…</div>';
@@ -1779,14 +1795,12 @@
           var prov = b.getAttribute('data-prov');
           b.disabled = true; b.textContent = 'Armando el PDF...';
           api('prov-pdf', { token: state.token, proveedor: prov }).then(function (o) {
-            if (o.pdf) {
-              var a = document.createElement('a');
-              a.href = 'data:application/pdf;base64,' + o.pdf;
-              a.download = 'Estado de cuenta - ' + prov + '.pdf';
-              a.click();
-            }
-            if (o.link) window.open(o.link, '_blank');
-          }).catch(fail).then(function () {
+            if (!o.pdf) throw new Error('El servidor no devolvió el PDF.');
+            bajarPdf(o.pdf, 'Estado de cuenta - ' + prov + '.pdf');
+          }).catch(function (err) {
+            avisoFijo('<b>No se pudo bajar el estado de cuenta.</b><div style="margin-top:6px">' +
+              esc((err && err.message) || '') + '</div>');
+          }).then(function () {
             b.disabled = false; b.textContent = 'Estado de cuenta en PDF';
           });
         });
@@ -2286,6 +2300,13 @@
              fmtNum(t.complementosRecibidos) + ' complementos') +
         card('Proveedores al día', fmtNum(t.conFactura), '', 'var(--success)');
 
+      var dgp = d.diagnostico || {};
+      if (!dgp.seLeyoComplementos) {
+        box.innerHTML += '<div style="background:var(--amber-bg);border:1px solid var(--amber);' +
+          'border-radius:10px;padding:10px 14px;font-size:13px;color:var(--amber);margin-top:12px">' +
+          '<b>No se encontró la pestaña de complementos en ese archivo.</b> Sin ella no se puede saber ' +
+          'qué complementos ya llegaron. Dime cómo se llama y la conecto.</div>';
+      }
       var h = '';
       if (cfdiPVista === 'factura') {
         var L = d.sinFactura || [];
@@ -2297,14 +2318,32 @@
           '<th style="text-align:right">Falta facturar</th><th style="text-align:right">Pagos</th>' +
           '<th style="text-align:right">Facturas</th></tr></thead><tbody>' +
           L.map(function (r) {
-            return '<tr><td><b>' + esc(r.proveedor) + '</b></td>' +
+            return '<tr><td><b>' + esc(r.proveedor) + '</b>' +
+              ((r.razonesSociales || []).length
+                ? '<div class="s" style="color:var(--muted);font-size:11.5px">factura como ' +
+                  esc(r.razonesSociales.join(' · ')) + '</div>'
+                : (r.nFacturas ? '' : '<div class="s" style="color:var(--amber);font-size:11.5px">' +
+                   'no se encontró ninguna factura a su nombre</div>')) + '</td>' +
               '<td class="num">' + esc(formatMoney(r.pagado)) + '</td>' +
               '<td class="num">' + esc(formatMoney(r.facturado)) + '</td>' +
               '<td class="num" style="color:var(--danger);font-weight:600">' +
                 esc(formatMoney(r.faltaFacturar)) + '</td>' +
               '<td class="num">' + fmtNum(r.nPagos) + '</td>' +
               '<td class="num">' + fmtNum(r.nFacturas) + '</td></tr>';
-          }).join('') + '</tbody></table>';
+          }).join('') + '</tbody></table>' +
+          (((d.diagnostico || {}).emisoresSinIdentificar || []).length
+            ? '<div style="margin-top:18px"><b class="s">Facturas de emisores que no están en tu Lista de ' +
+              'Proveedores</b><div class="s" style="color:var(--muted);margin:4px 0 8px">Si alguno es un ' +
+              'proveedor que ya tienes con otro nombre, agrégalo a la lista y se va a cruzar solo.</div>' +
+              '<table class="mini-table"><thead><tr><th>Emisor del CFDI</th>' +
+              '<th style="text-align:right">Facturas</th><th style="text-align:right">Monto</th>' +
+              '</tr></thead><tbody>' +
+              d.diagnostico.emisoresSinIdentificar.map(function (e) {
+                return '<tr><td>' + esc(e.nombre) + '</td>' +
+                  '<td class="num">' + fmtNum(e.facturas) + '</td>' +
+                  '<td class="num">' + esc(formatMoney(e.monto)) + '</td></tr>';
+              }).join('') + '</tbody></table></div>'
+            : '');
         document.getElementById('count').textContent = L.length + ' proveedores';
       } else {
         var L2 = cfdiPVista === 'ok' ? (d.conComplemento || []) : (d.faltaComplemento || []);
@@ -7540,7 +7579,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-162';
+    var mia = '2026.08.11-164';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
