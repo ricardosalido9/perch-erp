@@ -708,7 +708,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-192</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-193</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -985,7 +985,7 @@
     fin_cxc:             'Saldos por cobrar de cada pedido.',
     fin_ingresos:        'Cobros recibidos, ligados al folio del pedido.'
   };
-  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'fac_control', 'cfdi_control', 'cfdi_prov', 'prov_razon', 'rh_resumen'];
+  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'fac_control', 'cfdi_control', 'cfdi_prov', 'prov_razon', 'rh_resumen', 'fin_gastos_op'];
   function esLector() {
     return state.rol === 'lector' || state.rol === 'viewer' || state.rol === 'lectura';
   }
@@ -2807,7 +2807,163 @@
     });
   }
 
+  // ===== Gastos operativos: qué cuesta operar y qué se salió del promedio =====
+  var gopDetalle = null;
+  function loadGastosOp() {
+    document.getElementById('tableWrap').innerHTML =
+      '<div class="state" style="padding:50px 0">Analizando los gastos del año…</div>';
+    document.getElementById('summary').innerHTML = '';
+    mostrarAlta(false);
+    api('gastos-op', { token: state.token, anio: new Date().getFullYear() }).then(function (d) {
+      var t = d.totales || {};
+      var kpi = function (k, v, sub, color) {
+        return '<div class="kpi"><div class="k">' + esc(k) + '</div>' +
+          '<div class="v"' + (color ? ' style="color:' + color + '"' : '') + '>' + v + '</div>' +
+          (sub ? '<div class="s">' + sub + '</div>' : '') + '</div>';
+      };
+      var desv = t.desvioUltimoMes || 0;
+      var h = '<div class="kpi-grid" style="margin-bottom:16px">' +
+        kpi('Gasto fijo mensual', esc(fmtMoneyShort(t.gastoFijo)),
+            fmtNum(t.categoriasRecurrentes) + ' categorías recurrentes', true) +
+        kpi('Promedio mensual', esc(fmtMoneyShort(t.promedioMensual)), 'todo incluido') +
+        kpi(MESES_ES[(d.mesPrevio || 1) - 1], esc(fmtMoneyShort(t.ultimoMes)),
+            (desv >= 0 ? '+' : '') + desv + '% contra el promedio',
+            Math.abs(desv) < 8 ? '' : (desv > 0 ? 'var(--danger)' : 'var(--success)')) +
+        kpi('Total ' + d.anio, esc(fmtMoneyShort(t.totalAnio)), 'en lo que va del año') +
+        '</div>';
+
+      // Avisos
+      if ((d.avisos || []).length) {
+        h += '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">' +
+          d.avisos.map(function (a) {
+            var color = a.tipo === 'subio' ? 'var(--danger)'
+                      : a.tipo === 'bajo' ? 'var(--success)' : 'var(--amber)';
+            var bg = a.tipo === 'subio' ? 'var(--danger-bg)'
+                   : a.tipo === 'bajo' ? 'var(--success-bg)' : 'var(--amber-bg)';
+            return '<div style="background:' + bg + ';border:1px solid ' + color + ';color:' + color +
+              ';border-radius:10px;padding:8px 14px;font-size:13px">' +
+              '<b>' + esc(a.categoria) + '</b> ' + esc(a.texto) + '</div>';
+          }).join('') + '</div>';
+      }
+
+      // Gráfica del total por mes
+      if ((d.totalPorMes || []).length) {
+        var maxT = Math.max.apply(null, d.totalPorMes.map(function (x) { return x.monto; })) || 1;
+        h += '<div class="g-panel" style="margin-bottom:16px">' +
+          '<div class="g-titulo">Gasto operativo por mes · la línea es el promedio</div>' +
+          '<div class="g-cols" style="height:160px;position:relative">' +
+          (t.promedioMensual ? '<div style="position:absolute;left:0;right:0;border-top:1px dashed ' +
+            'var(--muted);bottom:' + Math.round((t.promedioMensual / maxT) * 110 + 22) + 'px;' +
+            'pointer-events:none"></div>' : '') +
+          d.totalPorMes.map(function (m) {
+            var alto = Math.max(3, Math.round((m.monto / maxT) * 110));
+            var arriba = t.promedioMensual && m.monto > t.promedioMensual * 1.05;
+            return '<div class="g-col" title="' + MESES_ES[m.mes - 1] + ': ' + fmtMoneyShort(m.monto) + '">' +
+              '<span class="g-cifra">' + esc(fmtMoneyShort(m.monto)) + '</span>' +
+              '<div class="g-tubo" style="height:' + alto + 'px;background:' +
+                (arriba ? 'var(--danger)' : 'var(--accent-ink)') + '"></div>' +
+              '<span class="g-etq">' + MESES_ES[m.mes - 1].slice(0, 3) + '</span></div>';
+          }).join('') + '</div></div>';
+      }
+
+      // La tabla: una fila por categoría, una columna por mes
+      h += '<div class="s" style="color:var(--muted);margin:16px 0 8px">' +
+        (d.sueldosDeNomina
+          ? '<b>Sueldos y salarios</b> sale del bruto de la nómina (lo que costó el mes). '
+          : '') +
+        'Las demás categorías salen de EGRESOS (cuándo salió el dinero del banco). ' +
+        'Cada celda se compara contra el promedio de esa categoría: ' +
+        '<span style="color:var(--danger)">roja</span> si gastó de más, ' +
+        '<span style="color:var(--success)">verde</span> si gastó de menos.</div>';
+
+      h += '<div style="overflow-x:auto"><table class="mini-table" style="min-width:760px">' +
+        '<thead><tr><th style="min-width:220px">Categoría</th>' +
+        '<th style="text-align:right">Promedio</th>' +
+        d.meses.map(function (m) {
+          return '<th style="text-align:right">' + MESES_ES[m - 1].slice(0, 3) + '</th>';
+        }).join('') +
+        '<th style="text-align:right">Total</th></tr></thead><tbody>' +
+        d.filas.map(function (f) {
+          return '<tr><td><b>' + esc(f.categoria) + '</b>' +
+            (f.recurrente ? ' <span style="background:var(--paper);color:var(--muted);padding:1px 7px;' +
+              'border-radius:20px;font-size:10px">fijo</span>' : '') +
+            (f.deNomina ? ' <span class="s" style="color:var(--muted);font-size:10.5px">de nómina</span>' : '') +
+            '</td>' +
+            '<td class="num">' + esc(formatMoney(f.promedio)) + '</td>' +
+            f.porMes.map(function (m) {
+              if (m.sinGasto) return '<td class="num s" style="color:var(--line)">—</td>';
+              var fuerte = Math.abs(m.desvio) >= 12;
+              var color = !fuerte ? '' : (m.desvio > 0 ? 'var(--danger)' : 'var(--success)');
+              return '<td class="num gop-celda" data-cat="' + esc(f.categoria).replace(/"/g, '&quot;') +
+                '" data-mes="' + m.mes + '" style="cursor:pointer' +
+                (color ? ';color:' + color + ';font-weight:600' : '') + '" title="' +
+                (m.desvio >= 0 ? '+' : '') + m.desvio + '% contra el promedio · ' +
+                m.movimientos + ' movimientos">' + esc(fmtMoneyShort(m.monto)) + '</td>';
+            }).join('') +
+            '<td class="num"><b>' + esc(fmtMoneyShort(f.total)) + '</b></td></tr>';
+        }).join('') +
+        '<tr style="border-top:2px solid var(--line);font-weight:600"><td>Total del mes</td>' +
+        '<td class="num">' + esc(formatMoney(t.promedioMensual)) + '</td>' +
+        d.totalPorMes.map(function (m) {
+          return '<td class="num">' + esc(fmtMoneyShort(m.monto)) + '</td>';
+        }).join('') +
+        '<td class="num">' + esc(fmtMoneyShort(t.totalAnio)) + '</td></tr>' +
+        '</tbody></table></div>';
+
+      // Lo que quedó fuera
+      if (d.sinCategoria.n || (d.otrasCategorias || []).length) {
+        h += '<h3 class="sec-t">Lo que no entró en estas categorías</h3>' +
+          (d.sinCategoria.n
+            ? '<div class="s" style="color:var(--amber);margin-bottom:8px">' +
+              fmtNum(d.sinCategoria.n) + ' movimientos sin categoría por ' +
+              esc(formatMoney(d.sinCategoria.monto)) + '. Clasifícalos en EGRESOS para que cuenten.</div>'
+            : '') +
+          ((d.otrasCategorias || []).length
+            ? '<table class="mini-table"><thead><tr><th>Categoría</th>' +
+              '<th style="text-align:right">Movimientos</th><th style="text-align:right">Monto</th>' +
+              '</tr></thead><tbody>' + d.otrasCategorias.map(function (x) {
+                return '<tr><td>' + esc(x.categoria) + '</td>' +
+                  '<td class="num">' + fmtNum(x.n) + '</td>' +
+                  '<td class="num">' + esc(formatMoney(x.monto)) + '</td></tr>';
+              }).join('') + '</tbody></table>' : '');
+      }
+      document.getElementById('tableWrap').innerHTML = h;
+      document.getElementById('count').textContent = fmtNum(d.filas.length) + ' categorías';
+      gopDetalle = d;
+      // Al tocar una celda se ve qué la compone
+      document.querySelectorAll('#tableWrap .gop-celda').forEach(function (td) {
+        td.addEventListener('click', function () {
+          verDetalleGasto(td.getAttribute('data-cat'), +td.getAttribute('data-mes'));
+        });
+      });
+    }).catch(function (e) {
+      document.getElementById('tableWrap').innerHTML =
+        '<div class="state">' + esc((e && e.message) || 'No se pudo analizar los gastos.') + '</div>';
+    });
+  }
+  function verDetalleGasto(cat, mes) {
+    if (!gopDetalle) return;
+    var f = gopDetalle.filas.filter(function (x) { return x.categoria === cat; })[0];
+    if (!f) return;
+    var m = f.porMes.filter(function (x) { return x.mes === mes; })[0];
+    if (!m || !m.detalle.length) return;
+    avisoFijo('<b>' + esc(cat) + ' · ' + MESES_ES[mes - 1] + '</b>' +
+      '<div class="s" style="color:var(--muted);margin:4px 0 10px">' +
+        esc(formatMoney(m.monto)) + ' en ' + fmtNum(m.movimientos) + ' movimientos · ' +
+        (m.desvio >= 0 ? '+' : '') + m.desvio + '% contra el promedio de ' +
+        esc(formatMoney(f.promedio)) + '</div>' +
+      '<table class="mini-table"><thead><tr><th>Fecha</th><th>Concepto</th><th>Proveedor</th>' +
+      '<th style="text-align:right">Monto</th></tr></thead><tbody>' +
+      m.detalle.map(function (g) {
+        return '<tr><td>' + esc(formatDateCell(g.fecha)) + '</td>' +
+          '<td title="' + esc(g.descripcion || '') + '">' + esc(g.concepto || '') + '</td>' +
+          '<td>' + esc(g.proveedor || '') + '</td>' +
+          '<td class="num">' + esc(formatMoney(g.monto)) + '</td></tr>';
+      }).join('') + '</tbody></table>');
+  }
+
   function loadArea() {
+    if (state.key === 'fin_gastos_op') return loadGastosOp();
     if (state.key === 'rh_resumen') return loadRH();
     if (state.key === 'prov_razon') return loadProvRazon();
     if (state.key === 'cfdi_prov') return loadCfdiProv();
@@ -8139,7 +8295,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-192';
+    var mia = '2026.08.11-193';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
