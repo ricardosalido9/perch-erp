@@ -652,7 +652,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-177</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-178</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -2340,7 +2340,10 @@
       if (cfdiPVista === 'factura') {
         var L = d.sinFactura || [];
         h = '<div class="s" style="margin:8px 0;color:var(--muted)">Lo pagado del año contra lo que ' +
-          'facturaron. <b>Solo cuentan los pagos con método "Depósito/Transferencia electrónica"</b>; ' +
+          'facturaron <b>en ' + fmtNum(t.anio || 2026) + '</b>' +
+          (t.deOtroAnio ? ' (' + fmtNum(t.deOtroAnio) + ' pagos de otros años quedaron fuera)' : '') +
+          (t.sinFecha ? ' · ' + fmtNum(t.sinFecha) + ' pagos sin fecha legible no se contaron' : '') +
+          '. <b>Solo cuentan los pagos con método "Depósito/Transferencia electrónica"</b>; ' +
           'el efectivo, los cheques y los que no traen método quedan fuera. Se excluyen nómina, impuestos y traspasos. Un pago parcial de una factura PPD no ' +
           'cuenta como faltante: por eso se compara el total del año, no pago por pago.</div>' +
           '<table class="mini-table"><thead><tr><th>Proveedor</th>' +
@@ -7650,7 +7653,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-177';
+    var mia = '2026.08.11-178';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
