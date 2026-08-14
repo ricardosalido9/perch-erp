@@ -708,7 +708,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-188</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-189</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -4152,6 +4152,89 @@
       pct.toFixed(0) + '% de meta (' + fmtMoneyShort(meta) + ')</span>';
   }
 
+  // ===== Qué entró y qué salió, por concepto =====
+  function bloqueFlujo(f) {
+    if (!f || f.error) return '';
+    var ing = f.ingresos || {}, egr = f.egresos || {};
+    if (!ing.total && !egr.total) return '';
+    var res = f.resultado || 0;
+    var margen = ing.total ? Math.round((res / ing.total) * 100) : 0;
+
+    var kpi = function (k, v, sub, color) {
+      return '<div class="kpi"><div class="k">' + esc(k) + '</div>' +
+        '<div class="v"' + (color ? ' style="color:' + color + '"' : '') + '>' + v + '</div>' +
+        (sub ? '<div class="s">' + sub + '</div>' : '') + '</div>';
+    };
+    var h = '<h3 class="sec-t" style="margin-top:26px">Qué entró y qué salió en ' + f.anio + '</h3>' +
+      '<div class="s" style="color:var(--muted);margin-bottom:12px">Sin traspasos entre cuentas' +
+      ((ing.nTraspasos || egr.nTraspasos)
+        ? ': se dejaron fuera ' + fmtNum((ing.nTraspasos || 0) + (egr.nTraspasos || 0)) +
+          ' movimientos por ' + esc(fmtMoneyShort((ing.traspasos || 0) + (egr.traspasos || 0)))
+        : '') + '.</div>' +
+      '<div class="kpi-grid" style="margin-bottom:16px">' +
+        kpi('Entró', esc(fmtMoneyShort(ing.total)),
+            fmtNum((ing.conceptos || []).length) + ' conceptos', 'var(--success)') +
+        kpi('Salió', esc(fmtMoneyShort(egr.total)),
+            fmtNum((egr.conceptos || []).length) + ' conceptos', 'var(--danger)') +
+        kpi('Diferencia', esc(fmtMoneyShort(res)), margen + '% de lo que entró',
+            res >= 0 ? 'var(--success)' : 'var(--danger)') +
+      '</div>';
+
+    // Barras por concepto, lado a lado
+    var barras = function (titulo, lista, color, totalRef) {
+      if (!lista || !lista.length) return '';
+      var top = lista.slice(0, 10);
+      var max = Math.max.apply(null, top.map(function (x) { return x.monto; })) || 1;
+      return '<div class="g-panel"><div class="g-titulo">' + esc(titulo) + '</div>' +
+        '<div class="g-barras">' + top.map(function (x) {
+          var pct = Math.max(2, Math.round((x.monto / max) * 100));
+          var share = totalRef ? Math.round((x.monto / totalRef) * 100) : 0;
+          return '<div class="g-fila"><span title="' + esc(x.concepto) + '" style="overflow:hidden;' +
+            'text-overflow:ellipsis;white-space:nowrap">' + esc(x.concepto) + '</span>' +
+            '<div class="g-riel"><div class="g-relleno" style="width:' + pct + '%;background:' +
+              color + '"></div></div>' +
+            '<span class="g-val">' + esc(fmtMoneyShort(x.monto)) +
+              (share ? ' <span class="s" style="color:var(--muted);font-weight:400">' + share + '%</span>' : '') +
+            '</span></div>';
+        }).join('') +
+        (lista.length > 10
+          ? '<div class="s" style="color:var(--muted);margin-top:6px">y ' + fmtNum(lista.length - 10) +
+            ' conceptos más</div>' : '') +
+        '</div></div>';
+    };
+    h += '<div class="g-doble">' +
+      barras('Ingresos por concepto', ing.conceptos, 'var(--success)', ing.total) +
+      barras('Egresos por concepto', egr.conceptos, 'var(--danger)', egr.total) +
+      '</div>';
+
+    // Mes a mes: entró contra salió
+    if ((f.porMes || []).length) {
+      var max2 = 1;
+      f.porMes.forEach(function (m) {
+        max2 = Math.max(max2, m.ingresos || 0, m.egresos || 0);
+      });
+      h += '<div class="g-panel" style="margin-bottom:16px">' +
+        '<div class="g-titulo">Mes a mes — ' +
+        '<span style="color:var(--success)">entró</span> contra ' +
+        '<span style="color:var(--danger)">salió</span></div>' +
+        '<div class="g-cols" style="height:170px">' +
+        f.porMes.map(function (m) {
+          var hi = Math.max(2, Math.round((m.ingresos / max2) * 110));
+          var he = Math.max(2, Math.round((m.egresos / max2) * 110));
+          return '<div class="g-col" title="' + MESES_ES[m.mes - 1] + ': entró ' +
+            fmtMoneyShort(m.ingresos) + ', salió ' + fmtMoneyShort(m.egresos) + '">' +
+            '<span class="g-cifra" style="color:' + (m.resultado >= 0 ? 'var(--success)' : 'var(--danger)') +
+              '">' + esc(fmtMoneyShort(m.resultado)) + '</span>' +
+            '<div style="display:flex;gap:3px;align-items:flex-end;width:100%;justify-content:center">' +
+              '<div class="g-tubo" style="height:' + hi + 'px;background:var(--success);max-width:18px"></div>' +
+              '<div class="g-tubo" style="height:' + he + 'px;background:var(--danger);max-width:18px"></div>' +
+            '</div>' +
+            '<span class="g-etq">' + MESES_ES[m.mes - 1].slice(0, 3) + '</span></div>';
+        }).join('') + '</div></div>';
+    }
+    return h;
+  }
+
   function renderDashboard() {
     var d = dashData; if (!d) return;
     var V = (d.ventas || []).filter(function (r) { return enRango(r.d); });
@@ -4613,6 +4696,7 @@
       (vRows ? '<table class="mini-table"><thead><tr><th>Fecha</th><th>Cliente</th><th>Producto</th><th style="text-align:right">Total s/IVA</th><th style="text-align:right">Utilidad</th></tr></thead><tbody>' + vRows + '</tbody></table>'
              : '<div class="dash-empty">Sin ventas en el periodo.</div>') + '</div></div></div>';
 
+    h += bloqueFlujo(d.flujo);
     document.getElementById('dashView').innerHTML = h;
 
     document.getElementById('dApply').addEventListener('click', function () {
@@ -7954,7 +8038,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-188';
+    var mia = '2026.08.11-189';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
