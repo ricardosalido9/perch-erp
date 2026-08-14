@@ -652,7 +652,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-159</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-160</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -912,6 +912,7 @@
     cta_clientes:        'Lo que se vendió contra lo que de verdad entró, ligado por folio.',
     fac_control:         'A quién falta facturarle y a quién falta emitirle el complemento de pago.',
     cfdi_control:        'Los CFDIs del SAT: qué factura no tiene su complemento emitido.',
+    cfdi_prov:           'Qué facturas y complementos nos deben los proveedores de lo que ya les pagamos.',
     op_stock:            'Lo disponible por producto y material, con lo que está por llegar.',
     op_revisar:          'Renglones que no cuadran y hay que corregir en Pedidos.',
     prov_pedidos:        'Pedidos a proveedores. La fecha y el status se ponen solos; el costo lo propone el catálogo.',
@@ -925,7 +926,7 @@
     fin_cxc:             'Saldos por cobrar de cada pedido.',
     fin_ingresos:        'Cobros recibidos, ligados al folio del pedido.'
   };
-  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'fac_control', 'cfdi_control'];
+  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'fac_control', 'cfdi_control', 'cfdi_prov'];
   function esLector() {
     return state.rol === 'lector' || state.rol === 'viewer' || state.rol === 'lectura';
   }
@@ -2227,7 +2228,104 @@
     });
   }
 
+  // ===== Facturas que deben los proveedores =====
+  var cfdiPVista = 'complemento';
+  function loadCfdiProv() {
+    document.getElementById('tableWrap').innerHTML =
+      '<div class="state" style="padding:50px 0">Cruzando pagos contra facturas recibidas…</div>';
+    document.getElementById('summary').innerHTML = '';
+    mostrarAlta(false);
+    api('cfdi-prov', { token: state.token }).then(function (d) {
+      if (d.sinArchivo) {
+        document.getElementById('tableWrap').innerHTML =
+          '<div class="state" style="padding:40px 0">' + esc(d.mensaje) + '</div>';
+        return;
+      }
+      var t = d.totales || {};
+      var box = document.getElementById('summary');
+      box.style.display = 'block';
+      var chip = function (k, txt2, n) {
+        return '<button type="button" class="mes-chip' + (cfdiPVista === k ? ' on' : '') +
+          '" data-cfdip="' + k + '">' + txt2 + ' (' + fmtNum(n) + ')</button>';
+      };
+      var card = function (k, v, extra, color) {
+        return '<div class="sum-card"><div class="k">' + esc(k) + '</div><div class="v"' +
+          (color ? ' style="color:' + color + '"' : '') + '>' + v + '</div>' +
+          (extra ? '<div class="k" style="text-transform:none;letter-spacing:0">' + extra + '</div>' : '') + '</div>';
+      };
+      box.innerHTML =
+        '<div class="mes-chips">' +
+          chip('complemento', 'Me deben complemento', t.faltaComplemento) +
+          chip('factura', 'Me deben factura', t.sinFactura) +
+          chip('ok', 'Ya complementadas', t.conComplemento) +
+        '</div><div class="summary-cards">' +
+        card('Me deben complemento', fmtNum(t.faltaComplemento),
+             esc(fmtMoneyShort(t.montoFaltaComp)) + (t.vencidos ? ' · ' + fmtNum(t.vencidos) + ' vencidos' : ''),
+             t.vencidos ? 'var(--danger)' : 'var(--amber)') +
+        card('Me deben factura', fmtNum(t.sinFactura),
+             esc(fmtMoneyShort(t.montoSinFactura)) + ' sin comprobar', 'var(--amber)') +
+        card('Facturas recibidas', fmtNum(t.facturasRecibidas),
+             fmtNum(t.complementosRecibidos) + ' complementos') +
+        card('Proveedores al día', fmtNum(t.conFactura), '', 'var(--success)');
+
+      var h = '';
+      if (cfdiPVista === 'factura') {
+        var L = d.sinFactura || [];
+        h = '<div class="s" style="margin:8px 0;color:var(--muted)">Lo pagado del año contra lo que ' +
+          'facturaron. Se excluyen nómina, impuestos y traspasos. Un pago parcial de una factura PPD ' +
+          'no cuenta como faltante: por eso se compara el total, no pago por pago.</div>' +
+          '<table class="mini-table"><thead><tr><th>Proveedor</th>' +
+          '<th style="text-align:right">Le pagué</th><th style="text-align:right">Me facturó</th>' +
+          '<th style="text-align:right">Falta facturar</th><th style="text-align:right">Pagos</th>' +
+          '<th style="text-align:right">Facturas</th></tr></thead><tbody>' +
+          L.map(function (r) {
+            return '<tr><td><b>' + esc(r.proveedor) + '</b></td>' +
+              '<td class="num">' + esc(formatMoney(r.pagado)) + '</td>' +
+              '<td class="num">' + esc(formatMoney(r.facturado)) + '</td>' +
+              '<td class="num" style="color:var(--danger);font-weight:600">' +
+                esc(formatMoney(r.faltaFacturar)) + '</td>' +
+              '<td class="num">' + fmtNum(r.nPagos) + '</td>' +
+              '<td class="num">' + fmtNum(r.nFacturas) + '</td></tr>';
+          }).join('') + '</tbody></table>';
+        document.getElementById('count').textContent = L.length + ' proveedores';
+      } else {
+        var L2 = cfdiPVista === 'ok' ? (d.conComplemento || []) : (d.faltaComplemento || []);
+        h = (cfdiPVista === 'complemento'
+          ? '<div class="s" style="margin:8px 0;color:var(--muted)">Facturas <b>PPD</b> que nos emitieron ' +
+            'y cuyo complemento no ha llegado. Sin él no se puede acreditar el IVA de ese pago.</div>'
+          : '') +
+          '<table class="mini-table"><thead><tr><th>Proveedor</th><th>Factura</th><th>Emitida</th>' +
+          '<th style="text-align:right">Total</th><th style="text-align:right">Complementado</th>' +
+          (cfdiPVista === 'complemento' ? '<th style="text-align:right">Falta</th><th>Situación</th>' : '') +
+          '</tr></thead><tbody>' +
+          L2.map(function (r) {
+            return '<tr' + (r.urgente ? ' style="background:var(--danger-bg)"' : '') + '>' +
+              '<td><b>' + esc(r.proveedor) + '</b></td>' +
+              '<td class="s" title="' + esc(r.uuid) + '">' +
+                esc((r.serie || '') + (r.folioF ? '-' + r.folioF : '') || r.uuid.slice(0, 8)) + '</td>' +
+              '<td>' + esc(formatDateCell(r.fecha)) + '</td>' +
+              '<td class="num">' + esc(formatMoney(r.total)) + '</td>' +
+              '<td class="num">' + esc(formatMoney(r.complementado || 0)) + '</td>' +
+              (cfdiPVista === 'complemento'
+                ? '<td class="num" style="color:var(--danger)">' + esc(formatMoney(r.falta || 0)) + '</td>' +
+                  '<td' + (r.urgente ? ' style="color:var(--danger);font-weight:600"' : '') + '>' +
+                  (r.urgente ? 'Vencido hace ' + fmtNum(r.diasDeRetraso) + ' días' : esc(r.motivo)) + '</td>'
+                : '') + '</tr>';
+          }).join('') + '</tbody></table>';
+        document.getElementById('count').textContent = L2.length + ' facturas';
+      }
+      document.getElementById('tableWrap').innerHTML = h;
+      document.querySelectorAll('#summary [data-cfdip]').forEach(function (b) {
+        b.addEventListener('click', function () { cfdiPVista = b.getAttribute('data-cfdip'); loadCfdiProv(); });
+      });
+    }).catch(function (e) {
+      document.getElementById('tableWrap').innerHTML =
+        '<div class="state">' + esc((e && e.message) || 'No se pudo leer los CFDIs recibidos.') + '</div>';
+    });
+  }
+
   function loadArea() {
+    if (state.key === 'cfdi_prov') return loadCfdiProv();
     if (state.key === 'cfdi_control') return loadCfdi();
     if (state.key === 'fac_control') return loadFacturacion();
     if (state.key === 'cta_clientes') return loadCtaClientes();
@@ -7376,7 +7474,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-159';
+    var mia = '2026.08.11-160';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {

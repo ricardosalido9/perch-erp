@@ -43,7 +43,8 @@ const RUTAS = {
   'cta-clientes': require('../lib/handlers/clientes-cuenta'),
   'cxc-notas':    require('../lib/handlers/cxc-notas'),
   facturacion:    require('../lib/handlers/facturacion'),
-  cfdi:           require('../lib/handlers/cfdi')
+  cfdi:           require('../lib/handlers/cfdi'),
+  'cfdi-prov':    require('../lib/handlers/cfdi-recibidos')
 };
 
 module.exports = async (req, res) => {
