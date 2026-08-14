@@ -708,7 +708,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-195</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-196</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -4340,7 +4340,7 @@
         (sub ? '<div class="s">' + sub + '</div>' : '') + '</div>';
     };
     var h = '<h3 class="sec-t" style="margin-top:26px">Qué entró y qué salió en ' + f.anio + '</h3>' +
-      '<div class="s" style="color:var(--muted);margin-bottom:12px">Sin traspasos entre cuentas' +
+      '<div class="s" style="color:var(--muted);margin-bottom:12px">Sin traspasos ni pagos de tarjeta' +
       ((ing.nTraspasos || egr.nTraspasos)
         ? ': se dejaron fuera ' + fmtNum((ing.nTraspasos || 0) + (egr.nTraspasos || 0)) +
           ' movimientos por ' + esc(fmtMoneyShort((ing.traspasos || 0) + (egr.traspasos || 0)))
@@ -8400,7 +8400,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-195';
+    var mia = '2026.08.11-196';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
