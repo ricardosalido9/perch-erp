@@ -652,7 +652,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-161</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-162</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -2181,6 +2181,23 @@
         (t.sinMetodo ? card('Sin PUE ni PPD', fmtNum(t.sinMetodo), 'en el CFDI', 'var(--amber)') : '') +
         '</div>';
 
+      // Si no clasificó nada, se explica por qué
+      var dg = d.diagnostico || {};
+      if (!t.faltaComplemento && !t.conComplemento && !t.pue && t.facturas) {
+        box.innerHTML += '<div style="background:var(--amber-bg);border:1px solid var(--amber);' +
+          'border-radius:10px;padding:12px 16px;font-size:13px;color:var(--amber);margin-top:12px">' +
+          '<b>Se leyeron ' + fmtNum(t.facturas) + ' renglones pero ninguno se pudo clasificar.</b>' +
+          '<div style="margin-top:6px">Tipos encontrados en la columna Tipo: ' +
+          esc(Object.keys(dg.tiposEncontrados || {}).map(function (k) {
+            return k + ' (' + dg.tiposEncontrados[k] + ')'; }).join(' · ') || 'ninguno') + '</div>' +
+          '<div style="margin-top:4px">Métodos de pago: ' +
+          esc(Object.keys(dg.metodosEncontrados || {}).map(function (k) {
+            return k + ' (' + dg.metodosEncontrados[k] + ')'; }).join(' · ') || 'ninguno') + '</div>' +
+          (dg.seLeyoComplementos
+            ? '<div style="margin-top:4px">Complementos: ' + fmtNum(dg.filasComplementos) + ' renglones.</div>'
+            : '<div style="margin-top:4px"><b>No se encontró la pestaña de complementos.</b></div>') +
+          '</div>';
+      }
       var lista = cfdiVista === 'con' ? d.conComplemento
         : cfdiVista === 'pue' ? d.pue
         : cfdiVista === 'nocxc' ? d.sinEnCxc
@@ -7523,7 +7540,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-161';
+    var mia = '2026.08.11-162';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
