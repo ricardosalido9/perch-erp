@@ -41,7 +41,8 @@ const RUTAS = {
   'pago-traza':   require('../lib/handlers/pago-traza'),
   'prov-pdf':     require('../lib/handlers/prov-pdf'),
   'cta-clientes': require('../lib/handlers/clientes-cuenta'),
-  'cxc-notas':    require('../lib/handlers/cxc-notas')
+  'cxc-notas':    require('../lib/handlers/cxc-notas'),
+  facturacion:    require('../lib/handlers/facturacion')
 };
 
 module.exports = async (req, res) => {

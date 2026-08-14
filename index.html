@@ -652,7 +652,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-157</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-158</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -910,6 +910,7 @@
     inv_prov:            'Qué tiene terminado cada proveedor, qué falta por fabricar y a dónde se fue.',
     expediente:          'Todo de cada cliente: desde el primer contacto hasta la última venta.',
     cta_clientes:        'Lo que se vendió contra lo que de verdad entró, ligado por folio.',
+    fac_control:         'A quién falta facturarle y a quién falta emitirle el complemento de pago.',
     op_stock:            'Lo disponible por producto y material, con lo que está por llegar.',
     op_revisar:          'Renglones que no cuadran y hay que corregir en Pedidos.',
     prov_pedidos:        'Pedidos a proveedores. La fecha y el status se ponen solos; el costo lo propone el catálogo.',
@@ -923,7 +924,7 @@
     fin_cxc:             'Saldos por cobrar de cada pedido.',
     fin_ingresos:        'Cobros recibidos, ligados al folio del pedido.'
   };
-  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes'];
+  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'fac_control'];
   function esLector() {
     return state.rol === 'lector' || state.rol === 'viewer' || state.rol === 'lectura';
   }
@@ -2033,7 +2034,109 @@
     });
   }
 
+  // ===== Facturas y complementos pendientes =====
+  var facVista = 'complemento';
+  function loadFacturacion() {
+    document.getElementById('tableWrap').innerHTML =
+      '<div class="state" style="padding:50px 0">Revisando facturas y complementos…</div>';
+    document.getElementById('summary').innerHTML = '';
+    mostrarAlta(false);
+    api('facturacion', { token: state.token }).then(function (d) {
+      var t = d.totales || {};
+      var box = document.getElementById('summary');
+      box.style.display = 'block';
+      var chip = function (k, txt2, n, color) {
+        return '<button type="button" class="mes-chip' + (facVista === k ? ' on' : '') +
+          '" data-fac="' + k + '">' + txt2 + ' (' + fmtNum(n) + ')</button>';
+      };
+      var card = function (k, v, extra, color) {
+        return '<div class="sum-card"><div class="k">' + esc(k) + '</div><div class="v"' +
+          (color ? ' style="color:' + color + '"' : '') + '>' + v + '</div>' +
+          (extra ? '<div class="k" style="text-transform:none;letter-spacing:0">' + extra + '</div>' : '') + '</div>';
+      };
+      box.innerHTML =
+        ((d.columnasQueFaltan || []).length
+          ? '<div style="background:var(--amber-bg);border:1px solid var(--amber);border-radius:10px;' +
+            'padding:10px 14px;font-size:13px;color:var(--amber);margin-bottom:12px">' +
+            '<b>Faltan columnas en CxC para que esto funcione completo:</b> ' +
+            esc(d.columnasQueFaltan.join(' · ')) + '</div>'
+          : '') +
+        '<div class="mes-chips">' +
+          chip('complemento', 'Falta complemento', t.faltaComplemento) +
+          chip('facturar', 'Falta facturar', t.faltaFacturar) +
+          chip('definir', 'Falta decir PUE o PPD', t.sinDefinir) +
+          chip('aldia', 'Al día', t.alDia) +
+        '</div><div class="summary-cards">' +
+        card('Falta complemento', fmtNum(t.faltaComplemento),
+             t.vencidos ? fmtNum(t.vencidos) + ' ya vencidos' : 'ninguno vencido',
+             t.vencidos ? 'var(--danger)' : 'var(--amber)') +
+        card('Falta facturar', fmtNum(t.faltaFacturar),
+             esc(fmtMoneyShort(t.montoFacturar)), 'var(--amber)') +
+        card('Sin PUE ni PPD', fmtNum(t.sinDefinir), 'no se sabe si llevan complemento') +
+        card('Al día', fmtNum(t.alDia), '', 'var(--success)') +
+        '</div>';
+
+      var lista = facVista === 'facturar' ? d.faltaFacturar
+        : facVista === 'definir' ? d.sinDefinir
+        : facVista === 'aldia' ? d.alDia : d.faltaComplemento;
+      var h = '';
+      if (!lista.length) {
+        h = '<div class="state" style="padding:40px 0">Nada pendiente por aquí.</div>';
+      } else if (facVista === 'complemento') {
+        h = '<div class="s" style="margin:8px 0;color:var(--muted)">Facturas <b>PPD</b> que ya recibieron ' +
+          'pago y siguen sin complemento. El SAT lo pide a más tardar el día 5 del mes siguiente al pago.</div>' +
+          '<table class="mini-table"><thead><tr><th>Folio</th><th>Cliente</th><th>Factura</th>' +
+          '<th>Último pago</th><th style="text-align:right">Cobrado</th><th>Vence</th><th>Situación</th>' +
+          '</tr></thead><tbody>' +
+          lista.map(function (r) {
+            return '<tr' + (r.urgente ? ' style="background:var(--danger-bg)"' : '') + '>' +
+              '<td><b>' + esc(r.folio) + '</b></td><td>' + esc(r.cliente) + '</td>' +
+              '<td class="s" title="' + esc(r.uuid) + '">' + esc((r.uuid || '').slice(0, 13)) + '…</td>' +
+              '<td>' + esc(fechaLegible(r.ultimoPago)) + '</td>' +
+              '<td class="num">' + esc(formatMoney(r.cobrado)) + '</td>' +
+              '<td>' + esc(fechaLegible(r.vence)) + '</td>' +
+              '<td' + (r.urgente ? ' style="color:var(--danger);font-weight:600"' : '') + '>' +
+                esc(r.motivo) + '</td></tr>';
+          }).join('') + '</tbody></table>';
+      } else if (facVista === 'facturar') {
+        h = '<div class="s" style="margin:8px 0;color:var(--muted)">Ventas donde el cliente pidió factura ' +
+          'y todavía no hay UUID capturado en CxC.</div>' +
+          '<table class="mini-table"><thead><tr><th>Folio</th><th>Cliente</th><th>Fecha</th>' +
+          '<th style="text-align:right">Total</th><th style="text-align:right">Ya pagó</th><th>Situación</th>' +
+          '</tr></thead><tbody>' +
+          lista.map(function (r) {
+            return '<tr><td><b>' + esc(r.folio) + '</b></td><td>' + esc(r.cliente) + '</td>' +
+              '<td>' + esc(formatDateCell(r.fecha)) + '</td>' +
+              '<td class="num">' + esc(formatMoney(r.total)) + '</td>' +
+              '<td class="num">' + esc(formatMoney(r.cobrado)) + '</td>' +
+              '<td' + (r.pagos ? ' style="color:var(--danger)"' : '') + '>' + esc(r.motivo) + '</td></tr>';
+          }).join('') + '</tbody></table>';
+      } else {
+        h = '<table class="mini-table"><thead><tr><th>Folio</th><th>Cliente</th><th>Factura</th>' +
+          '<th>Método</th><th style="text-align:right">Cobrado</th><th>Complemento</th>' +
+          '</tr></thead><tbody>' +
+          lista.map(function (r) {
+            return '<tr><td><b>' + esc(r.folio) + '</b></td><td>' + esc(r.cliente) + '</td>' +
+              '<td class="s" title="' + esc(r.uuid) + '">' + esc((r.uuid || '').slice(0, 13)) + '…</td>' +
+              '<td>' + esc(r.metodo || '—') + '</td>' +
+              '<td class="num">' + esc(formatMoney(r.cobrado)) + '</td>' +
+              '<td>' + (r.complemento ? '<span style="color:var(--success)">emitido</span>'
+                                      : (r.fechaComplemento || '—')) + '</td></tr>';
+          }).join('') + '</tbody></table>';
+      }
+      document.getElementById('tableWrap').innerHTML = h;
+      document.getElementById('count').textContent = lista.length + ' registros';
+      document.querySelectorAll('#summary [data-fac]').forEach(function (b) {
+        b.addEventListener('click', function () { facVista = b.getAttribute('data-fac'); loadFacturacion(); });
+      });
+    }).catch(function (e) {
+      document.getElementById('tableWrap').innerHTML =
+        '<div class="state">' + esc((e && e.message) || 'No se pudo revisar la facturación.') + '</div>';
+    });
+  }
+
   function loadArea() {
+    if (state.key === 'fac_control') return loadFacturacion();
     if (state.key === 'cta_clientes') return loadCtaClientes();
     if (state.key === 'expediente') return loadClientes();
     if (state.key === 'inv_prov') return loadInvProv();
@@ -7180,7 +7283,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-157';
+    var mia = '2026.08.11-158';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
