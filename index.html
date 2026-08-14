@@ -652,7 +652,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-160</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-161</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -913,6 +913,7 @@
     fac_control:         'A quién falta facturarle y a quién falta emitirle el complemento de pago.',
     cfdi_control:        'Los CFDIs del SAT: qué factura no tiene su complemento emitido.',
     cfdi_prov:           'Qué facturas y complementos nos deben los proveedores de lo que ya les pagamos.',
+    prov_razon:          'El puente entre el nombre corto de Egresos y la razón social del CFDI.',
     op_stock:            'Lo disponible por producto y material, con lo que está por llegar.',
     op_revisar:          'Renglones que no cuadran y hay que corregir en Pedidos.',
     prov_pedidos:        'Pedidos a proveedores. La fecha y el status se ponen solos; el costo lo propone el catálogo.',
@@ -926,7 +927,7 @@
     fin_cxc:             'Saldos por cobrar de cada pedido.',
     fin_ingresos:        'Cobros recibidos, ligados al folio del pedido.'
   };
-  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'fac_control', 'cfdi_control', 'cfdi_prov'];
+  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'fac_control', 'cfdi_control', 'cfdi_prov', 'prov_razon'];
   function esLector() {
     return state.rol === 'lector' || state.rol === 'viewer' || state.rol === 'lectura';
   }
@@ -2324,7 +2325,55 @@
     });
   }
 
+  // ===== Nombres comerciales contra razones sociales =====
+  function loadProvRazon() {
+    document.getElementById('tableWrap').innerHTML =
+      '<div class="state" style="padding:50px 0">Revisando los nombres de los proveedores…</div>';
+    document.getElementById('summary').innerHTML = '';
+    mostrarAlta(false);
+    api('cfdi-prov', { token: state.token }).then(function (d) {
+      if (d.sinArchivo) {
+        document.getElementById('tableWrap').innerHTML =
+          '<div class="state" style="padding:40px 0">' + esc(d.mensaje) + '</div>';
+        return;
+      }
+      var t = d.totales || {};
+      var box = document.getElementById('summary');
+      box.style.display = 'flex';
+      box.innerHTML =
+        '<div class="sum-card"><div class="k">Nombres reconocidos</div><div class="v">' +
+          fmtNum(t.enLista) + '</div><div class="k" style="text-transform:none;letter-spacing:0">' +
+          'entre comerciales, razones sociales y RFC</div></div>' +
+        (t.sinRazonSocial ? '<div class="sum-card"><div class="k">Sin razón social</div>' +
+          '<div class="v" style="color:var(--amber)">' + fmtNum(t.sinRazonSocial) + '</div>' +
+          '<div class="k" style="text-transform:none;letter-spacing:0">no se pueden cruzar con su CFDI</div></div>' : '') +
+        (t.sinProveedor ? '<div class="sum-card"><div class="k">Egresos sin proveedor</div>' +
+          '<div class="v" style="color:var(--amber)">' + fmtNum(t.sinProveedor) + '</div></div>' : '');
+
+      var L = d.sinRazonSocial || [];
+      var h = '<div class="s" style="margin:8px 0;color:var(--muted)">En EGRESOS se escribe el nombre corto ' +
+        '(TANDEM) y en el CFDI viene la razón social (Tandem Muebles SA de CV). La Lista de Proveedores ' +
+        'es el puente entre los dos. Si a un proveedor le falta su razón social, sus facturas no se ' +
+        'pueden cruzar.</div>';
+      if (!L.length) {
+        h += '<div class="state" style="padding:30px 0">Todos los proveedores tienen su razón social.</div>';
+      } else {
+        h += '<table class="mini-table"><thead><tr><th>Proveedor</th><th>Qué falta</th>' +
+          '</tr></thead><tbody>' + L.map(function (p2) {
+            return '<tr><td><b>' + esc(p2) + '</b></td>' +
+              '<td style="color:var(--amber)">Falta su razón social en la Lista de Proveedores</td></tr>';
+          }).join('') + '</tbody></table>';
+      }
+      document.getElementById('tableWrap').innerHTML = h;
+      document.getElementById('count').textContent = L.length + ' por completar';
+    }).catch(function (e) {
+      document.getElementById('tableWrap').innerHTML =
+        '<div class="state">' + esc((e && e.message) || 'No se pudo revisar.') + '</div>';
+    });
+  }
+
   function loadArea() {
+    if (state.key === 'prov_razon') return loadProvRazon();
     if (state.key === 'cfdi_prov') return loadCfdiProv();
     if (state.key === 'cfdi_control') return loadCfdi();
     if (state.key === 'fac_control') return loadFacturacion();
@@ -7474,7 +7523,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-160';
+    var mia = '2026.08.11-161';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
