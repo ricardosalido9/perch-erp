@@ -652,7 +652,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-153</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-155</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -4270,6 +4270,11 @@
       'TIPO CLIENTE':      TIPOS_CLIENTE
     },
     // Para cambiar la lista de status, edita este renglón y listo.
+    op_envios: {
+      'Origen': ['Bodega Perch', 'Proveedor'],
+      'Quién lo paga': ['Perch', 'Cliente'],
+      'Zona': ['CDMX', 'Área metropolitana', 'Foráneo', 'Recolección en tienda']
+    },
     prov_pedidos: {
       'Destino': ['Bodega Perch', 'Proveedor'],
       'Status':  ['PENDIENTE COMPLETO', 'EN PROCESO', 'ENTREGADO', 'CANCELADO']
@@ -4321,7 +4326,7 @@
     // Catálogo: listas de lo que ya existe, pero se puede escribir uno nuevo
     inventario: ['Productos', 'Material', 'Material Extra', 'Tipo de Producto'],
     prov_pedidos: ['Proveedor'],
-    op_envios: ['Paqueteria', 'Cliente', 'Origen', 'Destino'],
+    op_envios: ['Paqueteria', 'Cliente', 'Destino', 'Ciudad'],
     leads:      ['Contacto'],
     showroom:   ['Cliente', 'Despacho'],
     cotizaciones:    ['Cliente', 'Despacho', 'Vendedor'],
@@ -4420,8 +4425,9 @@
       'Fecha', 'Pedido', 'Cliente', 'Paqueteria', 'Status',
       'Fecha Estimada de Entrega', 'Fecha de Entrega Real',
       'Origen', 'Destino', 'Ciudad', 'Zona', 'Piezas',
-      'Costo del Envío', 'Costo del Envío c / IVA', 'Guía', 'Ticket de Remisión',
-      'Quién lo paga', 'Comentarios'
+      'Costo del Envío c / IVA', 'Costo del Envío',
+      'Cobrado al Cliente', 'Utilidad del Envío', '% Margen del Envío',
+      'Guía', 'Ticket de Remisión', 'Quién lo paga', 'Comentarios'
     ],
     prov_pedidos: [
       'Fecha', 'Fecha Estimada de Entrega', 'Pedido Proveedor', 'Proveedor',
@@ -4566,7 +4572,11 @@
   // op: 'sub' a-b, 'add' a+b, 'mul' a*b, 'div' a/b. format:'percent' muestra %.
   var COMPUTED_FIELDS = {
     op_envios: {
-      'Costo del Envío c / IVA': { op: 'mul', a: 'Costo del Envío', b: 1.16 }
+      // Se captura el total con IVA (lo que dice el ticket) y se saca el costo base
+      'Costo del Envío':         { op: 'div', a: 'Costo del Envío c / IVA', b: 1.16 },
+      // Lo que se le cobró al cliente menos lo que costó mandarlo
+      'Utilidad del Envío':      { op: 'resta', a: 'Cobrado al Cliente', b: 'Costo del Envío c / IVA' },
+      '% Margen del Envío':      { op: 'pct',   a: 'Utilidad del Envío', b: 'Cobrado al Cliente' }
     },
     prov_pedidos: {
       'Costo Total':       { op: 'mul', a: 'Costo Unitario', b: 'Cantidad' },
@@ -4812,6 +4822,23 @@
   function tablaLU() {
     return (state.lookups || []).filter(function (l) { return l.type === 'tabla'; })[0];
   }
+  // La ciudad se saca de la dirección de envío: es lo último que suele venir
+  var CIUDADES = ['CDMX', 'Ciudad de México', 'Monterrey', 'Guadalajara', 'Querétaro', 'Puebla',
+                  'Cancún', 'Mérida', 'Tijuana', 'León', 'Toluca', 'Cuernavaca', 'Playa del Carmen',
+                  'San Miguel de Allende', 'Valle de Bravo', 'Estado de México'];
+  function ciudadDeDireccion(dir) {
+    var t = norm(dir || '');
+    if (!t) return '';
+    var hit = CIUDADES.filter(function (c) { return t.indexOf(norm(c)) !== -1; })[0];
+    if (hit) return hit;
+    // Las delegaciones de CDMX se resuelven a CDMX
+    var dele = ['cuajimalpa', 'miguel hidalgo', 'benito juarez', 'coyoacan', 'alvaro obregon',
+                'tlalpan', 'azcapotzalco', 'iztapalapa', 'polanco', 'condesa', 'roma', 'del valle',
+                'lomas de chapultepec', 'santa fe', 'satelite', 'naucalpan', 'huixquilucan'];
+    if (dele.some(function (d) { return t.indexOf(d) !== -1; })) return 'CDMX';
+    return '';
+  }
+
   function aplicarTabla() {
     var t = tablaLU();
     if (!t) return;
@@ -5337,6 +5364,21 @@
       if (d.op === 'mul') {
         var a = toNum(val(d.a)), b = (typeof d.b === 'number') ? d.b : toNum(val(d.b));
         rec[real] = (a && b) ? Math.round(a * b * 100) / 100 : '';
+        return;
+      }
+      if (d.op === 'div') {
+        var da = toNum(val(d.a)), db = (typeof d.b === 'number') ? d.b : toNum(val(d.b));
+        rec[real] = (da && db) ? Math.round((da / db) * 100) / 100 : '';
+        return;
+      }
+      if (d.op === 'resta') {
+        var x = toNum(val(d.a)), z = toNum(val(d.b));
+        rec[real] = (x || z) ? Math.round((x - z) * 100) / 100 : '';
+        return;
+      }
+      if (d.op === 'pct') {
+        var n2 = toNum(val(d.a)), dd = toNum(val(d.b));
+        rec[real] = dd ? Math.round((n2 / dd) * 10000) / 100 + '%' : '';
         return;
       }
       if (d.op === 'copy') { rec[real] = val(d.a); return; }
@@ -7010,7 +7052,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-153';
+    var mia = '2026.08.11-155';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
