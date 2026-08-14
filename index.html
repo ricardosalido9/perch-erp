@@ -652,7 +652,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-173</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-174</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1926,13 +1926,13 @@
   }
 
   // ===== Estado de cuenta de clientes: ventas contra ingresos =====
-  var ctaCliAbierto = {}, ctaCliFiltro = 'saldo';
+  var ctaCliAbierto = {}, ctaCliFiltro = 'saldo', ctaSoloActivas = true;
   function loadCtaClientes() {
     document.getElementById('tableWrap').innerHTML =
       '<div class="state" style="padding:50px 0">Cruzando ventas contra ingresos…</div>';
     document.getElementById('summary').innerHTML = '';
     mostrarAlta(false);
-    api('cta-clientes', { token: state.token }).then(function (d) {
+    api('cta-clientes', { token: state.token, soloActivas: ctaSoloActivas }).then(function (d) {
       var t = d.totales || {};
       var box = document.getElementById('summary');
       box.style.display = 'flex';
@@ -1964,6 +1964,11 @@
         return true;
       });
       var h = '<div class="mes-chips">' +
+        '<button type="button" class="mes-chip' + (ctaSoloActivas ? ' on' : '') +
+          '" data-activas="1">Solo CxC activas (' + fmtNum(d.cxcActivas || 0) + ')</button>' +
+        '<button type="button" class="mes-chip' + (ctaSoloActivas ? '' : ' on') +
+          '" data-activas="0">Todo el histórico</button>' +
+        '<span style="width:16px"></span>' +
         chip('saldo', 'Con saldo') + chip('nada', 'Sin un solo pago') +
         chip('dif', 'No cuadran con CxC') + chip('', 'Todos') +
         '<button type="button" class="mes-chip" id="anotarCxc" style="margin-left:auto">' +
@@ -2029,6 +2034,12 @@
       });
       document.querySelectorAll('#tableWrap [data-ctacli]').forEach(function (b) {
         b.addEventListener('click', function () { ctaCliFiltro = b.getAttribute('data-ctacli'); loadCtaClientes(); });
+      });
+      document.querySelectorAll('#tableWrap [data-activas]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          ctaSoloActivas = b.getAttribute('data-activas') === '1';
+          loadCtaClientes();
+        });
       });
       var ba = document.getElementById('anotarCxc');
       if (ba) ba.addEventListener('click', function () {
@@ -7629,7 +7640,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-173';
+    var mia = '2026.08.11-174';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
