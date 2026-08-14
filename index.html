@@ -318,6 +318,16 @@
   #lineItemsBox .li-imp { flex:none; font-weight:600; min-width:92px; text-align:right; }
   #lineItemsBox .li-row.editando { background:var(--amber-bg); border-radius:8px; }
   /* Gráficas del resumen de RH: barras y donas hechas con CSS, sin librerías */
+  /* Formularios en rejilla, como el resto del ERP */
+  .form-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
+    gap:12px 16px; margin-bottom:6px; }
+  .form-grid .fld { margin:0; }
+  .efe-saldo { display:flex; align-items:center; gap:10px; margin-top:16px;
+    background:var(--paper); border-radius:10px; padding:12px 16px; font-size:15px; }
+  .efe-saldo .k { font-size:11px; color:var(--muted); text-transform:uppercase;
+    letter-spacing:.6px; }
+  .efe-saldo b { font-variant-numeric:tabular-nums; }
+  .efe-saldo .efe-flecha { color:var(--muted); }
   .g-panel { background:var(--surface); border:1px solid var(--line); border-radius:12px;
     padding:16px 18px; }
   .g-titulo { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.6px;
@@ -607,6 +617,16 @@
   #lineItemsBox .li-imp { flex:none; font-weight:600; min-width:92px; text-align:right; }
   #lineItemsBox .li-row.editando { background:var(--amber-bg); border-radius:8px; }
   /* Gráficas del resumen de RH: barras y donas hechas con CSS, sin librerías */
+  /* Formularios en rejilla, como el resto del ERP */
+  .form-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
+    gap:12px 16px; margin-bottom:6px; }
+  .form-grid .fld { margin:0; }
+  .efe-saldo { display:flex; align-items:center; gap:10px; margin-top:16px;
+    background:var(--paper); border-radius:10px; padding:12px 16px; font-size:15px; }
+  .efe-saldo .k { font-size:11px; color:var(--muted); text-transform:uppercase;
+    letter-spacing:.6px; }
+  .efe-saldo b { font-variant-numeric:tabular-nums; }
+  .efe-saldo .efe-flecha { color:var(--muted); }
   .g-panel { background:var(--surface); border:1px solid var(--line); border-radius:12px;
     padding:16px 18px; }
   .g-titulo { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.6px;
@@ -708,7 +728,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-200</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-201</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -3077,38 +3097,40 @@
   }
   function cuerpoEfectivo(iso) {
     var cajas = (efeDatos.cajas || []).map(function (c) { return c.caja; });
-    return '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:14px">' +
-        '<div class="fld" style="margin:0"><label>¿Qué día fue?</label>' +
+    return '<div class="form-grid">' +
+        '<div class="fld"><label>Fecha</label>' +
           '<input type="date" id="efeFecha" value="' + iso + '"></div>' +
-        '<div class="fld" style="margin:0"><label>¿De qué caja?</label>' +
+        '<div class="fld"><label>Caja</label>' +
           '<select id="efeCajaSel">' + cajas.map(function (c) {
             return '<option' + (c === efeCaja ? ' selected' : '') + '>' + esc(c) + '</option>';
           }).join('') + '</select></div>' +
-        '<div class="fld" style="margin:0"><label>¿Entró o salió?</label>' +
+        '<div class="fld"><label>Movimiento</label>' +
           '<select id="efeTipo">' +
             '<option value="salida">Salió dinero</option>' +
             '<option value="entrada">Entró dinero</option>' +
           '</select></div>' +
-        '<div class="fld" style="margin:0"><label>¿Cuánto?</label>' +
-          '<input type="number" id="efeMonto" step="0.01" min="0" style="width:140px"></div>' +
+        '<div class="fld"><label>Monto</label>' +
+          '<input type="number" id="efeMonto" step="0.01" min="0" placeholder="0.00"></div>' +
       '</div>' +
       '<div id="efeCampos"></div>' +
-      '<div class="fld"><label>Descripción</label>' +
-        '<input id="efeDesc" placeholder="Para qué fue, a quién se le dio…"></div>' +
-      '<div id="efeSaldo" class="s" style="color:var(--muted);margin-top:10px"></div>';
+      '<div class="form-grid"><div class="fld" style="grid-column:1/-1">' +
+        '<label>Descripción</label>' +
+        '<input id="efeDesc" placeholder="Para qué fue, a quién se le dio…"></div></div>' +
+      '<div id="efeSaldo" class="efe-saldo"></div>';
   }
   // Los campos del catálogo cambian según sea entrada o salida
   function camposEfectivo() {
     var cat = (efeDatos.catalogo || {})[efeTipo] || {};
-    var orden = ['Concepto', 'Categoría', 'Subcategoría',
+    // Solo concepto y con quién. Las categorías se resuelven en la hoja.
+    var orden = ['Concepto',
                  efeTipo === 'entrada' ? 'Lista de Clientes_Perch' : 'Lista de Proveedores 2024_Perch'];
-    var h = '<div style="display:flex;gap:14px;flex-wrap:wrap">';
+    var h = '<div class="form-grid">';
     orden.forEach(function (nombre) {
       var lista = cat[nombre];
       if (!lista || !lista.length) return;
       var etq = nombre.indexOf('Clientes') !== -1 ? 'Cliente'
               : nombre.indexOf('Proveedores') !== -1 ? 'Proveedor' : nombre;
-      h += '<div class="fld" style="margin:0;min-width:200px"><label>' + esc(etq) + '</label>' +
+      h += '<div class="fld"><label>' + esc(etq) + '</label>' +
         '<input list="efeL' + esc(norm(nombre).replace(/[^a-z]/g, '')) + '" ' +
         'data-efe="' + esc(nombre).replace(/"/g, '&quot;') + '" placeholder="— elegir —">' +
         '<datalist id="efeL' + esc(norm(nombre).replace(/[^a-z]/g, '')) + '">' +
@@ -3126,10 +3148,12 @@
       var saldo = c ? (c.saldo || 0) : 0;
       var nuevo = saldo + (efeTipo === 'entrada' ? m : -m);
       document.getElementById('efeSaldo').innerHTML =
-        'Saldo actual: <b>' + esc(formatMoney(saldo)) + '</b>' +
-        (m ? ' → queda <b style="color:' + (nuevo < 0 ? 'var(--danger)' : 'var(--ink)') + '">' +
+        '<span class="k">Saldo en ' + esc(document.getElementById('efeCajaSel').value) + '</span>' +
+        '<b>' + esc(formatMoney(saldo)) + '</b>' +
+        (m ? '<span class="efe-flecha">→</span><b style="color:' +
+          (nuevo < 0 ? 'var(--danger)' : 'var(--success)') + '">' +
           esc(formatMoney(nuevo)) + '</b>' : '') +
-        (nuevo < 0 ? ' <span style="color:var(--danger)">· no alcanza</span>' : '');
+        (nuevo < 0 ? '<span style="color:var(--danger);font-size:12px">no alcanza</span>' : '');
     };
     document.getElementById('efeTipo').addEventListener('change', function () {
       efeTipo = this.value; pintar();
@@ -8594,7 +8618,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-200';
+    var mia = '2026.08.11-201';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
