@@ -658,7 +658,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-186</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-187</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -921,6 +921,7 @@
     cfdi_control:        'Los CFDIs del SAT: qué factura no tiene su complemento emitido.',
     cfdi_prov:           'Qué facturas y complementos nos deben los proveedores de lo que ya les pagamos.',
     prov_razon:          'El puente entre el nombre corto de Egresos y la razón social del CFDI.',
+    fac_impuestos:       'Impuestos por mes: base, tasa, a cargo, a favor y si ya se pagó.',
     op_stock:            'Lo disponible por producto y material, con lo que está por llegar.',
     op_revisar:          'Renglones que no cuadran y hay que corregir en Pedidos.',
     prov_pedidos:        'Pedidos a proveedores. La fecha y el status se ponen solos; el costo lo propone el catálogo.',
@@ -7832,7 +7833,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-186';
+    var mia = '2026.08.11-187';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
