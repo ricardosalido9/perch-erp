@@ -652,7 +652,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-150</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-153</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -898,6 +898,7 @@
     costos:              'La venta contra tres costos: el real, el de la hoja y el del catálogo.',
     conciliacion:        'Lo que Nico captura a mano contra lo que de verdad salió del banco.',
     prov_revision:       'Pedidos cuyo saldo no cuadra. Salen filtrados los que faltan por resolver.',
+    op_envios:           'Qué se mandó, con quién, a dónde y cuánto costó.',
     fac_complementos:    'A quién le falta el complemento de pago después de que ya pagó.',
     fac_proveedores:     'Qué facturas nos deben los proveedores de lo que ya les pagamos.',
     fac_impuestos:       'Impuestos por mes: base, tasa, a cargo, a favor y si ya se pagó.',
@@ -4196,6 +4197,7 @@
     state.headers.forEach(function (h) { record[h] = (orig[h] != null) ? orig[h] : ''; });
     inputs.forEach(function (i) { record[i.getAttribute('data-col')] = i.value; });
     btn.disabled = true; btn.textContent = 'Guardando...';
+    sellarFecha(record);
     api('update', { token: state.token, key: state.key, row: rowNum, record: record })
       .then(function () { toast('Cambios guardados.', 'ok'); editingRow = -1; loadArea(); })
       .catch(function (e) { fail(e); btn.disabled = false; btn.textContent = 'Guardar'; });
@@ -4319,6 +4321,7 @@
     // Catálogo: listas de lo que ya existe, pero se puede escribir uno nuevo
     inventario: ['Productos', 'Material', 'Material Extra', 'Tipo de Producto'],
     prov_pedidos: ['Proveedor'],
+    op_envios: ['Paqueteria', 'Cliente', 'Origen', 'Destino'],
     leads:      ['Contacto'],
     showroom:   ['Cliente', 'Despacho'],
     cotizaciones:    ['Cliente', 'Despacho', 'Vendedor'],
@@ -4413,6 +4416,13 @@
     // Igual que Ventas: primero los datos del pedido, luego uno o varios productos.
     // Mes, Año y Status no se preguntan: se ponen solos.
     // El pedido a proveedor es general: a quién va cada pieza se decide en "Mandar a venta".
+    op_envios: [
+      'Fecha', 'Pedido', 'Cliente', 'Paqueteria', 'Status',
+      'Fecha Estimada de Entrega', 'Fecha de Entrega Real',
+      'Origen', 'Destino', 'Ciudad', 'Zona', 'Piezas',
+      'Costo del Envío', 'Costo del Envío c / IVA', 'Guía', 'Ticket de Remisión',
+      'Quién lo paga', 'Comentarios'
+    ],
     prov_pedidos: [
       'Fecha', 'Fecha Estimada de Entrega', 'Pedido Proveedor', 'Proveedor',
       'Producto', 'Material', 'Tela', 'Especificaciones', 'Cantidad', 'Costo Unitario',
@@ -4487,7 +4497,32 @@
   function isDiscValField(h) { var s = specialCfg(); return !!(s && s.descuento && norm(s.descuento.val) === norm(h)); }
   // Campos que NO se muestran en "Agregar registro" (el resto sí). Por área.
   // Columnas que el ERP calcula al guardar, sin preguntarlas
+  // Al marcar un envío como Entregado se sella el día en que se entregó
+  var SELLO_FECHA = {
+    op_envios: { status: 'Status', valor: /entregad/i, campo: 'Fecha de Entrega Real' },
+    ventas_registro: { status: 'Status', valor: /entregad/i, campo: 'Fecha de entrega real' }
+  };
+  function sellarFecha(rec, key) {
+    var s2 = SELLO_FECHA[key || state.key];
+    if (!s2) return;
+    var cSt = findHeaderByName(s2.status), cF = findHeaderByName(s2.campo);
+    if (!cSt || !cF) return;
+    if (!s2.valor.test(String(rec[cSt] || ''))) return;
+    if (String(rec[cF] || '').trim()) return;        // ya tenía fecha: no se pisa
+    var d = new Date();
+    rec[cF] = d.getDate() + ' ' + MESES_ES[d.getMonth()].toLowerCase() + ' ' + d.getFullYear();
+  }
+
   var AUTO_AL_GUARDAR = {
+    op_envios: function (rec) {
+      sellarFecha(rec, 'op_envios');
+      var d = parseDate(rec[findHeaderByName('Fecha')] || '');
+      var cM = findHeaderByName('Mes'), cA = findHeaderByName('Año');
+      if (d !== null) {
+        if (cM) rec[cM] = Math.floor(d / 100) % 100;
+        if (cA) rec[cA] = Math.floor(d / 10000);
+      }
+    },
     prov_pedidos: function (rec) {
       var f = rec[findHeaderByName('Fecha')] || '';
       var d = parseDate(f);
@@ -4500,7 +4535,8 @@
   };
 
   // Campos que se llenan con la fecha de hoy y no se editan
-  var AUTOFECHA_FIELDS = { prov_pedidos: ['Fecha'], leads: ['Fecha'], showroom: ['Fecha'] };
+  var AUTOFECHA_FIELDS = { prov_pedidos: ['Fecha'], leads: ['Fecha'], showroom: ['Fecha'],
+                           op_envios: ['Fecha'] };
   function esAutoFecha(h) {
     return (AUTOFECHA_FIELDS[state.key] || []).some(function (f) { return norm(f) === norm(h); });
   }
@@ -4508,6 +4544,7 @@
   var EXCLUDE_FIELDS = {
     // Catálogo: el precio del año pasado y el IVA no se capturan en un producto nuevo
     inventario:       ['Precio de venta 2025', 'Precio de Venta 2025', 'IVA'],
+    op_envios:        ['Mes', 'Año'],
     prov_pedidos:     ['Mes', 'Año', 'Status', 'Entradas', 'Pendientes por entregar',
                        'Ventas + Exhibición', 'Stock', 'Valor', 'Folio cliente', 'Cliente',
                        'Dirección de Entrega', 'Ubicación'],
@@ -4528,6 +4565,9 @@
   // Campos calculados (solo lectura). Se recalculan en orden por dependencias.
   // op: 'sub' a-b, 'add' a+b, 'mul' a*b, 'div' a/b. format:'percent' muestra %.
   var COMPUTED_FIELDS = {
+    op_envios: {
+      'Costo del Envío c / IVA': { op: 'mul', a: 'Costo del Envío', b: 1.16 }
+    },
     prov_pedidos: {
       'Costo Total':       { op: 'mul', a: 'Costo Unitario', b: 'Cantidad' },
       'Costo Total + IVA': { op: 'mul', a: 'Costo Total', b: 1.16 }
@@ -6970,7 +7010,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-150';
+    var mia = '2026.08.11-153';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
@@ -7098,6 +7138,7 @@
         if (col) recEd[col] = inp.value;
       });
       edO.disabled = true; edO.textContent = 'Guardando...';
+      sellarFecha(recEd);
       api('update', { token: state.token, key: state.key, row: filaEd, record: recEd })
         .then(function () { toast('Producto corregido.', 'ok'); filaEditando = -1; loadArea(); })
         .catch(function (er) { fail(er); edO.disabled = false; edO.textContent = 'Guardar'; });
@@ -7221,6 +7262,7 @@
         if (col) recEd[col] = inp.value;
       });
       edO.disabled = true; edO.textContent = 'Guardando...';
+      sellarFecha(recEd);
       api('update', { token: state.token, key: state.key, row: filaEd, record: recEd })
         .then(function () { toast('Producto corregido.', 'ok'); filaEditando = -1; loadArea(); })
         .catch(function (er) { fail(er); edO.disabled = false; edO.textContent = 'Guardar'; });
