@@ -708,7 +708,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-198</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-200</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -2993,7 +2993,9 @@
           '<div class="k" style="text-transform:none;letter-spacing:0">' +
           (c.error ? esc(c.error)
                    : 'entró ' + esc(fmtMoneyShort(c.entradas)) + ' · salió ' +
-                     esc(fmtMoneyShort(c.salidas))) + '</div></div>';
+                     esc(fmtMoneyShort(c.salidas)) +
+                     (c.saldoConError ? '<br><span style="color:var(--amber)">' +
+                       fmtNum(c.saldoConError) + ' saldos rotos</span>' : '')) + '</div></div>';
       }).join('') +
       '<div class="sum-card"><div class="k">Total en efectivo</div><div class="v">' +
         esc(formatMoney((d.totales || {}).saldo || 0)) + '</div></div>';
@@ -3022,19 +3024,29 @@
                 return { etiqueta: x.concepto, valor: x.entradas, color: 'var(--success)' }; }), fmtMoneyShort) +
             '</div>';
         }
+        if (caja.saldoConError) {
+          h += '<div style="background:var(--amber-bg);border:1px solid var(--amber);border-radius:10px;' +
+            'padding:10px 14px;font-size:13px;color:var(--amber);margin-bottom:12px">' +
+            '<b>' + fmtNum(caja.saldoConError) + ' renglones tienen la fórmula del saldo rota</b> ' +
+            '(dicen #VALUE!). Sumando entradas menos salidas, el saldo sería ' +
+            esc(formatMoney(caja.saldoCalculado)) + '.</div>';
+        }
         h += '<table class="mini-table"><thead><tr><th>Fecha</th><th>Concepto</th>' +
-          '<th>Descripción</th><th style="text-align:right">Entrada</th>' +
+          '<th>Descripción</th><th>Quién</th><th style="text-align:right">Entrada</th>' +
           '<th style="text-align:right">Salida</th><th style="text-align:right">Saldo</th>' +
           '</tr></thead><tbody>' +
           caja.movimientos.map(function (m) {
-            return '<tr><td>' + esc(formatDateCell(m.fecha)) + '</td>' +
-              '<td><b>' + esc(m.concepto) + '</b></td>' +
-              '<td class="s">' + esc((m.descripcion || '').slice(0, 50)) + '</td>' +
+            return '<tr><td>' + esc(m.fecha ? formatDateCell(m.fecha) : '') + '</td>' +
+              '<td><b>' + esc(m.concepto || '—') + '</b></td>' +
+              '<td class="s">' + esc((m.descripcion || '').slice(0, 46)) + '</td>' +
+              '<td class="s">' + esc(m.cliente || m.proveedor || '') + '</td>' +
               '<td class="num" style="color:var(--success)">' +
                 (m.entrada ? esc(formatMoney(m.entrada)) : '') + '</td>' +
               '<td class="num" style="color:var(--danger)">' +
                 (m.salida ? esc(formatMoney(m.salida)) : '') + '</td>' +
-              '<td class="num s">' + (m.saldo ? esc(formatMoney(m.saldo)) : '') + '</td></tr>';
+              '<td class="num s">' + (m.saldoConError
+                ? '<span style="color:var(--amber)" title="La fórmula del saldo está rota">—</span>'
+                : (m.saldo !== null ? esc(formatMoney(m.saldo)) : '')) + '</td></tr>';
           }).join('') + '</tbody></table>';
       }
       document.getElementById('tableWrap').innerHTML = h;
@@ -8582,7 +8594,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-198';
+    var mia = '2026.08.11-200';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {

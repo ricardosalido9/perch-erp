@@ -50,7 +50,8 @@ const RUTAS = {
   rh:             require('../lib/handlers/rh'),
   'rh-traza':     require('../lib/handlers/rh-traza'),
   'gastos-op':    require('../lib/handlers/gastos-op'),
-  efectivo:       require('../lib/handlers/efectivo')
+  efectivo:       require('../lib/handlers/efectivo'),
+  'efe-traza':    require('../lib/handlers/efe-traza')
 };
 
 module.exports = async (req, res) => {
