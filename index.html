@@ -652,7 +652,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-169</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-170</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -2261,7 +2261,7 @@
   }
 
   // ===== Facturas que deben los proveedores =====
-  var cfdiPVista = 'complemento';
+  var cfdiPVista = 'complemento', cfdiProvAbierto = {};
   function loadCfdiProv() {
     document.getElementById('tableWrap').innerHTML =
       '<div class="state" style="padding:50px 0">Cruzando pagos contra facturas recibidas…</div>';
@@ -2321,7 +2321,9 @@
           '<th style="text-align:right">Falta facturar</th><th style="text-align:right">Pagos</th>' +
           '<th style="text-align:right">Facturas</th></tr></thead><tbody>' +
           L.map(function (r) {
-            return '<tr><td><b>' + esc(r.proveedor) + '</b>' +
+            var ab = !!cfdiProvAbierto[r.proveedor];
+            return '<tr class="prov-fila" data-prov2="' + esc(r.proveedor).replace(/"/g, '&quot;') +
+              '" style="cursor:pointer"><td><b>' + (ab ? '▾ ' : '▸ ') + esc(r.proveedor) + '</b>' +
               ((r.razonesSociales || []).length
                 ? '<div class="s" style="color:var(--muted);font-size:11.5px">factura como ' +
                   esc(r.razonesSociales.join(' · ')) + '</div>'
@@ -2332,7 +2334,29 @@
               '<td class="num" style="color:var(--danger);font-weight:600">' +
                 esc(formatMoney(r.faltaFacturar)) + '</td>' +
               '<td class="num">' + fmtNum(r.nPagos) + '</td>' +
-              '<td class="num">' + fmtNum(r.nFacturas) + '</td></tr>';
+              '<td class="num">' + fmtNum(r.nFacturas) + '</td></tr>' +
+              (ab && (r.pagosDescubiertos || []).length
+                ? '<tr><td colspan="6" style="background:var(--paper);padding:10px 14px">' +
+                  '<div class="s" style="margin-bottom:6px;color:var(--slate)"><b>Pagos sin factura.</b> ' +
+                  'Las facturas se aplican del pago más viejo al más nuevo, así que estos son los que ' +
+                  'quedaron descubiertos:</div>' +
+                  '<table class="mini-table" style="background:var(--surface)"><thead><tr>' +
+                  '<th>Fecha</th><th>Concepto</th><th>Pedido</th><th>Cuenta</th>' +
+                  '<th style="text-align:right">Monto</th><th style="text-align:right">Sin factura</th>' +
+                  '</tr></thead><tbody>' +
+                  r.pagosDescubiertos.map(function (g) {
+                    return '<tr><td>' + esc(formatDateCell(g.fecha)) + '</td>' +
+                      '<td title="' + esc(g.descripcion || '') + '">' +
+                        esc((g.concepto || g.descripcion || '').slice(0, 40)) + '</td>' +
+                      '<td>' + esc(g.pedido || '') + '</td>' +
+                      '<td class="s">' + esc(g.cuenta || '') + '</td>' +
+                      '<td class="num">' + esc(formatMoney(g.monto)) + '</td>' +
+                      '<td class="num" style="color:var(--danger);font-weight:600">' +
+                        esc(formatMoney(g.sinCubrir)) +
+                        (g.cubierto === 'a medias' ? ' <span class="s">(parcial)</span>' : '') +
+                      '</td></tr>';
+                  }).join('') + '</tbody></table></td></tr>'
+                : '');
           }).join('') + '</tbody></table>' +
           (((d.diagnostico || {}).emisoresSinIdentificar || []).length
             ? '<div style="margin-top:18px"><b class="s">Facturas de emisores que no están en tu Lista de ' +
@@ -2377,6 +2401,13 @@
       document.getElementById('tableWrap').innerHTML = h;
       document.querySelectorAll('#summary [data-cfdip]').forEach(function (b) {
         b.addEventListener('click', function () { cfdiPVista = b.getAttribute('data-cfdip'); loadCfdiProv(); });
+      });
+      document.querySelectorAll('#tableWrap .prov-fila').forEach(function (tr) {
+        tr.addEventListener('click', function () {
+          var k = tr.getAttribute('data-prov2');
+          cfdiProvAbierto[k] = !cfdiProvAbierto[k];
+          loadCfdiProv();
+        });
       });
     }).catch(function (e) {
       document.getElementById('tableWrap').innerHTML =
@@ -7582,7 +7613,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-169';
+    var mia = '2026.08.11-170';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
