@@ -652,7 +652,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-178</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-180</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -2273,6 +2273,11 @@
 
   // ===== Facturas que deben los proveedores =====
   var cfdiPVista = 'complemento', cfdiProvAbierto = {};
+  function nombreDeMes(m) {
+    if (!m) return '';
+    var a = Math.floor(m / 100), i = (m % 100) - 1;
+    return (MESES_ES[i] || '') + ' ' + a;
+  }
   function loadCfdiProv() {
     document.getElementById('tableWrap').innerHTML =
       '<div class="state" style="padding:50px 0">Cruzando pagos contra facturas recibidas…</div>';
@@ -2354,6 +2359,12 @@
             var ab = !!cfdiProvAbierto[r.proveedor];
             return '<tr class="prov-fila" data-prov2="' + esc(r.proveedor).replace(/"/g, '&quot;') +
               '" style="cursor:pointer"><td><b>' + (ab ? '▾ ' : '▸ ') + esc(r.proveedor) + '</b>' +
+              (r.formaDeFacturar === 'mensual'
+                ? ' <span style="background:var(--paper);color:var(--slate);padding:1px 7px;' +
+                  'border-radius:20px;font-size:10.5px">factura mensual</span>' +
+                  (r.mesesQueNoCuadran ? ' <span style="color:var(--danger);font-size:11px">' +
+                    fmtNum(r.mesesQueNoCuadran) + ' meses sin cuadrar</span>' : '')
+                : '') +
               ((r.razonesSociales || []).length
                 ? '<div class="s" style="color:var(--muted);font-size:11.5px">factura como ' +
                   esc(r.razonesSociales.join(' · ')) + '</div>'
@@ -2366,7 +2377,29 @@
                 esc(r.faltaFacturar > 1 ? formatMoney(r.faltaFacturar) : 'cuadra') + '</td>' +
               '<td class="num">' + fmtNum(r.nPagos) + '</td>' +
               '<td class="num">' + fmtNum(r.nFacturas) + '</td></tr>' +
-              (ab
+              (ab && r.porMes
+                ? '<tr><td colspan="6" style="background:var(--paper);padding:12px 14px">' +
+                  '<div class="s" style="margin-bottom:8px;color:var(--slate)"><b>Factura una vez al mes.</b> ' +
+                  'Por eso se comparan los pagos del mes contra la factura de ese mes, no pago por pago. ' +
+                  'Una factura emitida en los primeros días cuenta para el mes anterior.</div>' +
+                  '<table class="mini-table" style="background:var(--surface)"><thead><tr>' +
+                  '<th>Mes</th><th style="text-align:right">Le pagué</th>' +
+                  '<th style="text-align:right">Me facturó</th><th style="text-align:right">Pagos</th>' +
+                  '<th style="text-align:right">Facturas</th><th>Situación</th></tr></thead><tbody>' +
+                  r.porMes.map(function (m) {
+                    return '<tr' + (m.cuadra ? '' : ' style="background:var(--danger-bg)"') + '>' +
+                      '<td><b>' + esc(nombreDeMes(m.mes)) + '</b></td>' +
+                      '<td class="num">' + esc(formatMoney(m.pagado)) + '</td>' +
+                      '<td class="num">' + esc(formatMoney(m.facturado)) + '</td>' +
+                      '<td class="num">' + fmtNum(m.nPagos) + '</td>' +
+                      '<td class="num">' + fmtNum(m.nFacturas) + '</td>' +
+                      '<td' + (m.cuadra ? ' style="color:var(--success)"'
+                                        : ' style="color:var(--danger);font-weight:600"') + '>' +
+                        esc(m.motivo) + (m.falta ? ' · faltan ' + esc(formatMoney(m.falta)) : '') +
+                      '</td></tr>';
+                  }).join('') + '</tbody></table></td></tr>'
+                : '') +
+              (ab && !r.porMes
                 ? '<tr><td colspan="6" style="background:var(--paper);padding:12px 14px">' +
                   '<div class="s" style="margin-bottom:8px;color:var(--slate)"><b>Cada pago con su ' +
                   'factura.</b> Se busca una factura del mismo monto; si no hay, el pago queda sin ' +
@@ -7653,7 +7686,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-178';
+    var mia = '2026.08.11-180';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
