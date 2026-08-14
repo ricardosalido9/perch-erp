@@ -652,7 +652,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-180</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-182</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -2319,6 +2319,20 @@
           esc(fmtMoneyShort(t.efectivoMonto)) + ' en efectivo u otra forma') : '');
 
       var dgp = d.diagnostico || {};
+      if ((d.duplicados || []).length) {
+        box.innerHTML += '<div style="background:var(--amber-bg);border:1px solid var(--amber);' +
+          'border-radius:10px;padding:12px 16px;font-size:13px;color:var(--amber);margin-top:12px">' +
+          '<b>Hay nombres repetidos en la Lista de Proveedores.</b> Estas razones sociales están ' +
+          'dentro de otro proveedor pero también tienen su propio renglón, así que sus facturas se ' +
+          'quedan con el renglón propio:' +
+          '<ul style="margin:6px 0 0 18px;padding:0">' +
+          d.duplicados.map(function (x) {
+            return '<li>"' + esc(x.razonSocial) + '" está dentro de <b>' + esc(x.dentroDe) +
+              '</b> y también aparece solo.</li>';
+          }).join('') + '</ul>' +
+          '<div style="margin-top:8px">Para juntarlos: quítale el renglón propio y deja solo la ' +
+          'razón social dentro del otro. Para separarlos: quítalo de la razón social del otro.</div></div>';
+      }
       if (dgp.columnaMetodoDePago === '(NO SE ENCONTRÓ)') {
         box.innerHTML += '<div style="background:var(--danger-bg);border:1px solid var(--danger);' +
           'border-radius:10px;padding:10px 14px;font-size:13px;color:var(--danger);margin-top:12px">' +
@@ -2387,15 +2401,19 @@
                   '<th style="text-align:right">Me facturó</th><th style="text-align:right">Pagos</th>' +
                   '<th style="text-align:right">Facturas</th><th>Situación</th></tr></thead><tbody>' +
                   r.porMes.map(function (m) {
-                    return '<tr' + (m.cuadra ? '' : ' style="background:var(--danger-bg)"') + '>' +
+                    var pend = m.porPagar > 0;
+                    return '<tr' + (m.cuadra ? (pend ? ' style="background:var(--amber-bg)"' : '')
+                                             : ' style="background:var(--danger-bg)"') + '>' +
                       '<td><b>' + esc(nombreDeMes(m.mes)) + '</b></td>' +
                       '<td class="num">' + esc(formatMoney(m.pagado)) + '</td>' +
                       '<td class="num">' + esc(formatMoney(m.facturado)) + '</td>' +
                       '<td class="num">' + fmtNum(m.nPagos) + '</td>' +
                       '<td class="num">' + fmtNum(m.nFacturas) + '</td>' +
-                      '<td' + (m.cuadra ? ' style="color:var(--success)"'
+                      '<td' + (m.cuadra ? (pend ? ' style="color:var(--amber)"' : ' style="color:var(--success)"')
                                         : ' style="color:var(--danger);font-weight:600"') + '>' +
-                        esc(m.motivo) + (m.falta ? ' · faltan ' + esc(formatMoney(m.falta)) : '') +
+                        esc(m.motivo) +
+                        (m.falta ? ' · faltan ' + esc(formatMoney(m.falta)) : '') +
+                        (pend ? ' · por pagar ' + esc(formatMoney(m.porPagar)) : '') +
                       '</td></tr>';
                   }).join('') + '</tbody></table></td></tr>'
                 : '') +
@@ -7686,7 +7704,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-180';
+    var mia = '2026.08.11-182';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
