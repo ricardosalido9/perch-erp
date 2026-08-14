@@ -708,7 +708,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-190</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-191</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -2659,13 +2659,16 @@
           '<div class="v">' + v + '</div>' + (sub ? '<div class="s">' + sub + '</div>' : '') + '</div>';
       };
       var neto = t.netoMensual || 0, costo = t.costoMensual || 0;
-      var carga = (neto && costo) ? Math.round(((costo - neto) / neto) * 100) : 0;
+      var carga = (neto && costo && costo > neto) ? Math.round(((costo - neto) / neto) * 100) : 0;
       var h = '<div class="kpi-grid" style="margin-bottom:18px">' +
         kpi('Plantilla', fmtNum(t.activos), 'personas activas', true) +
         kpi('Costo mensual', esc(fmtMoneyShort(costo)),
-            'neto ' + esc(fmtMoneyShort(neto))) +
+            t.costoSegunNomina != null
+              ? 'promedio de ' + fmtNum(t.mesesPagados) + ' meses pagados'
+              : 'según la lista de colaboradores') +
+        kpi('Neto mensual', esc(fmtMoneyShort(neto)), 'lo que reciben') +
         kpi('Costo por persona', esc(fmtMoneyShort(t.activos ? costo / t.activos : 0)), 'promedio') +
-        kpi('Carga social', carga + '%', 'sobre el neto') +
+        (carga ? kpi('Carga social', carga + '%', 'sobre el neto') : '') +
         kpi('Altas ' + d.anio, fmtNum(t.altasAnio), 'entraron este año') +
         kpi('Bajas ' + d.anio, fmtNum(t.bajasAnio), 'salieron este año') +
         kpi('Rotación', fmtNum(t.rotacion) + '%', 'bajas sobre plantilla') +
@@ -2756,19 +2759,21 @@
             fmtNum(d.nomina.sinTimbrar) + ' pagos sin timbrar por ' +
             esc(formatMoney(d.nomina.montoSinTimbrar)) + '</span>' : '') + '</h3>' +
           '<table class="mini-table"><thead><tr><th>Mes</th>' +
-          '<th style="text-align:right">Pagado</th><th style="text-align:right">Personas</th>' +
-          '<th style="text-align:right">Periodos</th><th style="text-align:right">Por persona</th>' +
-          '</tr></thead><tbody>' +
+          '<th style="text-align:right">Bruto</th><th style="text-align:right">Neto</th>' +
+          '<th style="text-align:right">Personas</th><th style="text-align:right">Periodos</th>' +
+          '<th style="text-align:right">Por persona</th></tr></thead><tbody>' +
           d.nomina.porMes.map(function (m) {
             return '<tr><td>' + esc(nombreDeMesNumero(m.mes)) + '</td>' +
               '<td class="num">' + esc(formatMoney(m.monto)) + '</td>' +
+              '<td class="num s">' + esc(formatMoney(m.neto || 0)) + '</td>' +
               '<td class="num">' + fmtNum(m.personas) + '</td>' +
               '<td class="num">' + fmtNum(m.semanas) + '</td>' +
               '<td class="num s">' + esc(formatMoney(m.personas ? m.monto / m.personas : 0)) + '</td></tr>';
           }).join('') +
           '<tr style="border-top:2px solid var(--line);font-weight:600"><td>Total</td>' +
-          '<td class="num">' + esc(formatMoney(d.nomina.total)) + '</td><td></td><td></td><td></td></tr>' +
-          '</tbody></table>';
+          '<td class="num">' + esc(formatMoney(d.nomina.total)) + '</td>' +
+          '<td class="num">' + esc(formatMoney(d.nomina.totalNeto || 0)) + '</td>' +
+          '<td></td><td></td><td></td></tr></tbody></table>';
       }
       // Aniversarios
       if ((d.aniversarios || []).length) {
@@ -8043,7 +8048,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-190';
+    var mia = '2026.08.11-191';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
