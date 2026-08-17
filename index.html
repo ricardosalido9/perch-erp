@@ -728,7 +728,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-207</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-208</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -4767,6 +4767,65 @@
     return h;
   }
 
+  // ===== Reporte de cierre del mes =====
+  var cierrePdf = null;
+  function abrirCierre() {
+    var hoy = new Date();
+    var mesPrev = hoy.getMonth();            // el mes pasado, en base 1
+    if (mesPrev === 0) mesPrev = 12;
+    var anioPrev = hoy.getMonth() === 0 ? hoy.getFullYear() - 1 : hoy.getFullYear();
+    var opts = '';
+    for (var i = 1; i <= 12; i++) {
+      opts += '<option value="' + i + '"' + (i === mesPrev ? ' selected' : '') + '>' +
+        MESES_ES[i - 1] + '</option>';
+    }
+    var anios = '';
+    for (var a = hoy.getFullYear(); a >= hoy.getFullYear() - 2; a--) {
+      anios += '<option value="' + a + '"' + (a === anioPrev ? ' selected' : '') + '>' + a + '</option>';
+    }
+    document.getElementById('aventaTitulo').textContent = 'Reporte de cierre';
+    document.getElementById('aventaCuerpo').innerHTML =
+      '<div class="form-grid">' +
+        '<div class="fld"><label>Mes</label><select id="ciMes">' + opts + '</select></div>' +
+        '<div class="fld"><label>Año</label><select id="ciAnio">' + anios + '</select></div>' +
+      '</div>' +
+      '<div class="fld"><label>Notas del mes <span class="s" style="color:var(--muted)">' +
+        'opcional, aparecen al final</span></label>' +
+        '<textarea id="ciNotas" rows="3" placeholder="Qué explica el mes, qué quedó pendiente…"></textarea></div>' +
+      '<div id="ciVista" style="margin-top:14px"></div>';
+    document.getElementById('aventaOk').textContent = 'Armar el reporte';
+    document.getElementById('aventaModal').classList.add('on');
+    cierrePdf = null;
+  }
+  function generarCierre() {
+    var btn = document.getElementById('aventaOk');
+    var mes = +document.getElementById('ciMes').value;
+    var anio = +document.getElementById('ciAnio').value;
+    btn.disabled = true; btn.textContent = 'Armando…';
+    document.getElementById('ciVista').innerHTML =
+      '<div class="state" style="padding:30px 0">Juntando los datos del mes…</div>';
+    api('cierre', { token: state.token, mes: mes, anio: anio,
+                    notas: document.getElementById('ciNotas').value })
+      .then(function (o) {
+        if (!o.pdf) throw new Error('No se pudo armar el reporte.');
+        cierrePdf = o;
+        var r = o.resumen || {};
+        document.getElementById('ciVista').innerHTML =
+          '<div class="s" style="color:var(--muted);margin-bottom:8px">' +
+            esc(formatMoney(r.ventas)) + ' en ' + fmtNum(r.operaciones) + ' ventas · ' +
+            fmtNum(r.productos) + ' productos · ' + fmtNum(r.clientes) + ' clientes</div>' +
+          '<iframe src="data:application/pdf;base64,' + o.pdf +
+          '" style="width:100%;height:52vh;border:1px solid var(--line);border-radius:10px"></iframe>';
+        btn.textContent = 'Descargar';
+      })
+      .catch(function (e) {
+        document.getElementById('ciVista').innerHTML =
+          '<div class="state">' + esc((e && e.message) || 'No se pudo armar.') + '</div>';
+        btn.textContent = 'Armar el reporte';
+      })
+      .then(function () { btn.disabled = false; });
+  }
+
   function renderDashboard() {
     var d = dashData; if (!d) return;
     var V = (d.ventas || []).filter(function (r) { return enRango(r.d); });
@@ -5229,7 +5288,14 @@
              : '<div class="dash-empty">Sin ventas en el periodo.</div>') + '</div></div></div>';
 
     h += bloqueFlujo(d.flujo);
+    h += '<div style="margin:26px 0 10px;padding-top:18px;border-top:1px solid var(--line);' +
+      'display:flex;align-items:center;gap:14px;flex-wrap:wrap">' +
+      '<button type="button" class="primary" id="btnCierre">Reporte de cierre del mes</button>' +
+      '<span class="s" style="color:var(--muted)">Un PDF con lo vendido, el margen, los productos, ' +
+      'los clientes y de dónde llegaron. Listo para entregar.</span></div>';
     document.getElementById('dashView').innerHTML = h;
+    var bc = document.getElementById('btnCierre');
+    if (bc) bc.addEventListener('click', abrirCierre);
 
     document.getElementById('dApply').addEventListener('click', function () {
       dashRange.from = document.getElementById('dFrom').value;
@@ -8753,7 +8819,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-207';
+    var mia = '2026.08.11-208';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
@@ -8787,6 +8853,11 @@
   document.getElementById('aventaClose').addEventListener('click', cerrarMandarAVenta);
   document.getElementById('aventaCancel').addEventListener('click', cerrarMandarAVenta);
   document.getElementById('aventaOk').addEventListener('click', function () {
+    if (document.getElementById('ciMes')) {
+      if (cierrePdf) { bajarPdf(cierrePdf.pdf, cierrePdf.nombre); return; }
+      generarCierre();
+      return;
+    }
     if (document.getElementById('efeFecha')) registrarEfectivo();
     else if (document.getElementById('entFecha')) registrarEntrada();
     else registrarSalidas();
