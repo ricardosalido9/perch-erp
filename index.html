@@ -728,7 +728,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-203</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-207</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1006,7 +1006,7 @@
     fin_cxc:             'Saldos por cobrar de cada pedido.',
     fin_ingresos:        'Cobros recibidos, ligados al folio del pedido.'
   };
-  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'fac_control', 'cfdi_control', 'cfdi_prov', 'prov_razon', 'rh_resumen', 'fin_gastos_op', 'fin_efectivo'];
+  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'fac_control', 'cfdi_control', 'cfdi_prov', 'prov_razon', 'rh_resumen', 'fin_gastos_op', 'fin_efectivo', 'fac_impuestos'];
   function esLector() {
     return state.rol === 'lector' || state.rol === 'viewer' || state.rol === 'lectura';
   }
@@ -2438,7 +2438,8 @@
       if (cfdiPVista === 'factura') {
         var L = d.sinFactura || [];
         h = '<div class="s" style="margin:8px 0;color:var(--muted)">Lo pagado del año contra lo que ' +
-          'facturaron <b>en ' + fmtNum(t.anio || 2026) + '</b>' +
+          'facturaron <b>en ' + fmtNum(t.anio || 2026) + '</b>. Cada pago se casa con una factura ' +
+          'del mismo monto; si no hay, con la más cercana en fecha, y se marca la diferencia' +
           (t.deOtroAnio ? ' (' + fmtNum(t.deOtroAnio) + ' pagos de otros años quedaron fuera)' : '') +
           (t.sinFecha ? ' · ' + fmtNum(t.sinFecha) + ' pagos sin fecha legible no se contaron' : '') +
           '. <b>Solo cuentan los pagos con método "Depósito/Transferencia electrónica"</b>; ' +
@@ -2508,7 +2509,10 @@
                   (r.todosLosPagos || []).map(function (g) {
                     var gris = !g.entraAlCruce;
                     var f = g.factura;
-                    return '<tr' + (gris ? ' style="opacity:.5"' : (!f ? ' style="background:var(--danger-bg)"' : '')) + '>' +
+                    var aprox = f && !g.cuadra;
+                    return '<tr' + (gris ? ' style="opacity:.5"'
+                              : (!f ? ' style="background:var(--danger-bg)"'
+                                    : (aprox ? ' style="background:var(--amber-bg)"' : ''))) + '>' +
                       '<td>' + esc(formatDateCell(g.fecha)) + '</td>' +
                       '<td class="s">' + esc((g.metodo || '').slice(0, 22)) + '</td>' +
                       '<td>' + esc(g.pedido || '') + '</td>' +
@@ -2519,7 +2523,12 @@
                           ? '<td class="s">' + esc((f.serie || '') + (f.folioF ? '-' + f.folioF : '') ||
                               (f.uuid || '').slice(0, 8)) + '</td>' +
                             '<td>' + esc(formatDateCell(f.fecha)) + '</td>' +
-                            '<td class="num">' + esc(formatMoney(f.total)) + '</td>' +
+                            '<td class="num">' + esc(formatMoney(f.total)) +
+                              (g.facturadoDeMas ? '<div class="s" style="color:var(--amber)">facturó ' +
+                                esc(formatMoney(g.facturadoDeMas)) + ' de más</div>' : '') +
+                              (g.pagadoDeMas ? '<div class="s" style="color:var(--danger)">pagué ' +
+                                esc(formatMoney(g.pagadoDeMas)) + ' de más</div>' : '') +
+                            '</td>' +
                             '<td class="s">' + (g.diasDeDiferencia !== null && g.diasDeDiferencia !== undefined
                               ? fmtNum(g.diasDeDiferencia) : '') + '</td>'
                           : '<td colspan="4" style="color:var(--danger);font-weight:600">' +
@@ -3192,7 +3201,133 @@
     });
   }
 
+  // ===== Resumen fiscal del mes =====
+  function loadImpuestos() {
+    document.getElementById('tableWrap').innerHTML =
+      '<div class="state" style="padding:50px 0">Calculando el IVA del año…</div>';
+    document.getElementById('summary').innerHTML = '';
+    mostrarAlta(false);
+    api('impuestos', { token: state.token, anio: new Date().getFullYear() }).then(function (d) {
+      if (d.sinDatos) {
+        var g = d.diagnostico || {};
+        document.getElementById('tableWrap').innerHTML =
+          '<div style="background:var(--amber-bg);border:1px solid var(--amber);border-radius:10px;' +
+          'padding:14px 18px;font-size:13px;color:var(--amber);max-width:760px;margin:20px auto">' +
+          '<b>' + esc(d.mensaje) + '</b>' +
+          '<div style="margin-top:10px;color:var(--slate)">Emitidos: busca la pestaña "' +
+            esc(g.pestanaEmitidos) + '". Las que hay son: ' +
+            esc((g.pestanasEmitidos || []).join(' · ') || 'no se pudo listar') + '</div>' +
+          '<div style="margin-top:6px;color:var(--slate)">Recibidos: busca "' +
+            esc(g.pestanaRecibidos) + '". Las que hay son: ' +
+            esc((g.pestanasRecibidos || []).join(' · ') || 'no se pudo listar') + '</div>' +
+          '</div>';
+        return;
+      }
+      var m = d.elMes;
+      var t = d.totalAnio || {};
+      var kpi = function (k, v, sub, color) {
+        return '<div class="kpi"><div class="k">' + esc(k) + '</div>' +
+          '<div class="v"' + (color ? ' style="color:' + color + '"' : '') + '>' + v + '</div>' +
+          (sub ? '<div class="s">' + sub + '</div>' : '') + '</div>';
+      };
+      var h = '';
+      if (m) {
+        var aCargo = m.ivaAPagar > 0;
+        h += '<div class="s" style="color:var(--muted);margin-bottom:10px">' +
+          'Lo que toca declarar: <b>' + esc(MESES_ES[m.mes - 1]) + '</b> · se paga a más tardar el ' +
+          esc(fechaLegible(d.venceDeclaracion)) + '</div>' +
+          '<div class="kpi-grid" style="margin-bottom:18px">' +
+          kpi('IVA trasladado', esc(fmtMoneyShort(m.ivaTrasladado)),
+              'de ' + fmtNum(m.facturas) + ' facturas emitidas', true) +
+          kpi('IVA acreditable', esc(fmtMoneyShort(m.ivaAcreditable)),
+              'de ' + fmtNum(m.recibidas) + ' facturas recibidas') +
+          (m.ivaRetenido ? kpi('IVA retenido', esc(fmtMoneyShort(m.ivaRetenido)), 'nos retuvieron') : '') +
+          kpi(aCargo ? 'IVA a pagar' : 'IVA a favor',
+              esc(fmtMoneyShort(Math.abs(m.ivaAPagar))),
+              aCargo ? 'sale de la cuenta' : 'queda a favor',
+              aCargo ? 'var(--danger)' : 'var(--success)') +
+          (m.isrRetenido ? kpi('ISR retenido', esc(fmtMoneyShort(m.isrRetenido)), '') : '') +
+          '</div>';
+      }
+      // Pendientes que afectan el cálculo
+      if ((d.pendientes || []).length) {
+        h += '<h3 class="sec-t" style="margin-top:0">Antes de declarar, revisa esto</h3>' +
+          '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:20px">' +
+          d.pendientes.map(function (x) {
+            var color = x.urgente ? 'var(--danger)' : 'var(--amber)';
+            var bg = x.urgente ? 'var(--danger-bg)' : 'var(--amber-bg)';
+            return '<div style="background:' + bg + ';border:1px solid ' + color + ';border-radius:10px;' +
+              'padding:11px 16px;display:flex;justify-content:space-between;align-items:center;gap:16px">' +
+              '<div><b style="color:' + color + '">' + esc(x.titulo) + '</b>' +
+              '<div class="s" style="color:var(--slate);margin-top:2px">' + esc(x.detalle) + '</div></div>' +
+              '<div style="text-align:right;white-space:nowrap"><b style="color:' + color + '">' +
+              esc(formatMoney(x.monto)) + '</b></div></div>';
+          }).join('') + '</div>';
+      }
+      if (!(d.meses || []).length) {
+        var f = d.fuentes || {};
+        h += '<div style="background:var(--amber-bg);border:1px solid var(--amber);border-radius:10px;' +
+          'padding:14px 18px;font-size:13px;color:var(--amber);margin-bottom:16px">' +
+          '<b>Se leyeron ' + fmtNum(f.emitidas) + ' CFDIs emitidos y ' + fmtNum(f.recibidas) +
+          ' recibidos, pero ninguno es de ' + d.anio + '.</b>' +
+          ((f.aniosEncontrados || []).length
+            ? '<div style="margin-top:6px;color:var(--slate)">Los años que sí hay: ' +
+              esc(f.aniosEncontrados.map(function (x) { return x.anio + ' (' + x.n + ')'; }).join(' · ')) +
+              '</div>'
+            : '<div style="margin-top:6px;color:var(--slate)">No se pudo leer ninguna fecha. ' +
+              'La columna de fecha se busca como "' + esc((f.columnasClave || {}).fecha) + '".</div>') +
+          '</div>';
+      }
+      // La tabla del año
+      h += '<h3 class="sec-t">El año mes a mes</h3>' +
+        '<div style="overflow-x:auto"><table class="mini-table" style="min-width:820px">' +
+        '<thead><tr><th>Mes</th>' +
+        '<th style="text-align:right">Facturé</th><th style="text-align:right">IVA trasladado</th>' +
+        '<th style="text-align:right">Me facturaron</th><th style="text-align:right">IVA acreditable</th>' +
+        '<th style="text-align:right">IVA del mes</th></tr></thead><tbody>' +
+        (d.meses || []).map(function (x) {
+          var aCargo2 = x.ivaAPagar > 0;
+          return '<tr' + (x.mes === d.mesDeclarar ? ' style="background:var(--paper)"' : '') + '>' +
+            '<td><b>' + esc(MESES_ES[x.mes - 1]) + '</b>' +
+              (x.notasCredito ? ' <span class="s" style="color:var(--muted)">' +
+                fmtNum(x.notasCredito) + ' n. de crédito</span>' : '') + '</td>' +
+            '<td class="num">' + esc(formatMoney(x.facturado)) + '</td>' +
+            '<td class="num">' + esc(formatMoney(x.ivaTrasladado)) + '</td>' +
+            '<td class="num">' + esc(formatMoney(x.comprado)) + '</td>' +
+            '<td class="num">' + esc(formatMoney(x.ivaAcreditable)) + '</td>' +
+            '<td class="num" style="font-weight:600;color:' +
+              (aCargo2 ? 'var(--danger)' : 'var(--success)') + '">' +
+              esc(formatMoney(Math.abs(x.ivaAPagar))) +
+              '<span class="s" style="font-weight:400"> ' + (aCargo2 ? 'a pagar' : 'a favor') + '</span>' +
+            '</td></tr>';
+        }).join('') +
+        '<tr style="border-top:2px solid var(--line);font-weight:600"><td>Total ' + d.anio + '</td>' +
+        '<td class="num">' + esc(formatMoney(t.facturado)) + '</td>' +
+        '<td class="num">' + esc(formatMoney(t.ivaTrasladado)) + '</td>' +
+        '<td class="num">' + esc(formatMoney(t.comprado)) + '</td>' +
+        '<td class="num">' + esc(formatMoney(t.ivaAcreditable)) + '</td>' +
+        '<td class="num" style="color:' + (t.ivaAPagar > 0 ? 'var(--danger)' : 'var(--success)') + '">' +
+        esc(formatMoney(Math.abs(t.ivaAPagar))) + '</td></tr>' +
+        '</tbody></table></div>';
+
+      h += '<div class="s" style="color:var(--muted);margin-top:14px">' +
+        'Sale de los CFDIs del SAT: ' + fmtNum(d.fuentes.emitidas) + ' emitidos y ' +
+        fmtNum(d.fuentes.recibidas) + ' recibidos. Las canceladas no cuentan (' +
+        fmtNum(d.canceladas.emitidas + d.canceladas.recibidas) + ' este año) y las notas de crédito restan.' +
+        '<br>Este es el cálculo de IVA por facturación. El pago real puede cambiar por ' +
+        'saldos a favor de meses anteriores o ajustes que haga el contador.</div>';
+
+      document.getElementById('tableWrap').innerHTML = h;
+      document.getElementById('summary').style.display = 'none';
+      document.getElementById('count').textContent = (d.meses || []).length + ' meses';
+    }).catch(function (e) {
+      document.getElementById('tableWrap').innerHTML =
+        '<div class="state">' + esc((e && e.message) || 'No se pudo calcular.') + '</div>';
+    });
+  }
+
   function loadArea() {
+    if (state.key === 'fac_impuestos') return loadImpuestos();
     if (state.key === 'fin_efectivo') return loadEfectivo();
     if (state.key === 'fin_gastos_op') return loadGastosOp();
     if (state.key === 'rh_resumen') return loadRH();
@@ -8618,7 +8753,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-203';
+    var mia = '2026.08.11-207';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {

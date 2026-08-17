@@ -51,6 +51,7 @@ const RUTAS = {
   'rh-traza':     require('../lib/handlers/rh-traza'),
   'gastos-op':    require('../lib/handlers/gastos-op'),
   efectivo:       require('../lib/handlers/efectivo'),
+  impuestos:      require('../lib/handlers/impuestos'),
   'efe-traza':    require('../lib/handlers/efe-traza')
 };
 
