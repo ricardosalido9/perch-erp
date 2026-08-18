@@ -728,7 +728,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-208</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-210</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -909,6 +909,7 @@
         <div id="altaError" style="display:none;margin-bottom:16px;padding:12px 14px;border-radius:10px;
              background:var(--danger-bg);border:1px solid var(--danger);color:var(--danger);font-size:13px"></div>
         <div class="form-grid" id="formFields"></div>
+        <div id="avisoFolio"></div>
         <div id="avisoYaTiene"></div>
         <div id="lineItemsBox" style="display:none"></div>
       </div>
@@ -1920,12 +1921,12 @@
         if (cliFiltro === 'lead') return c.leads && !c.cotizaciones;
         if (cliFiltro === 'abiertas') return c.abiertas > 0;
         if (cliFiltro === 'faltan') return c.faltan.length > 0;
-        if (cliFiltro === 'frios') return c.diasSinContacto !== null && c.diasSinContacto > 30 && !c.ventas;
+        if (cliFiltro === 'frios') return c.diasSinContacto !== null && c.diasSinContacto > 90 && !c.ventas;
         return true;
       });
       var h = '<div class="mes-chips">' + chip('', 'Todos') +
         chip('lead', 'Solo lead') + chip('abiertas', 'Con cotización abierta') +
-        chip('frios', 'Sin contacto +30 días') + chip('faltan', 'Con datos faltantes') +
+        chip('frios', 'Sin contacto +90 días') + chip('faltan', 'Con datos faltantes') +
         '<input id="cliBuscar" placeholder="Buscar cliente…" value="' + esc(cliBuscar) +
         '" style="min-width:200px;margin-left:6px"></div><div class="cot-grid">';
 
@@ -5639,7 +5640,12 @@
           var p = parseNumber(cPU ? r[cPU] : null) || 0;
           var enEd = (filaEditando === r._row);
           if (enEd) {
-            // Se editan los campos que se cambian de verdad: cantidad, precio y material
+            // Se edita todo lo que se cambia de verdad al ajustar una cotización
+            var cPct = findHeaderByName('% descuento');
+            var cDsc = findHeaderByName('Descuentos');
+            var cDes2 = findHeaderByName('Descripción') || findHeaderByName('Descripcion');
+            var cMed = findHeaderByName('Medidas');
+            var cEsp = findHeaderByName('Especificaciones');
             h += '<tr class="fila-edit"><td>' + esc(r[cProd] || '') + '</td>' +
               '<td><input class="row-input ed-campo" data-col="' + esc(cMat || '') + '" value="' +
                 esc(cMat ? (r[cMat] || '') : '') + '" style="width:120px"></td>' +
@@ -5651,6 +5657,25 @@
               '<td style="white-space:nowrap"><button type="button" class="row-btn primary ed-ok" data-row="' +
                 r._row + '">Guardar</button> ' +
               '<button type="button" class="row-btn ed-no">Cancelar</button></td></tr>';
+            // Segundo renglón: descuento y textos, que no caben arriba
+            h += '<tr class="fila-edit"><td colspan="6" style="padding-top:0">' +
+              '<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">' +
+              (cPct ? '<div><label class="k">% descuento</label><br>' +
+                '<input class="row-input ed-campo" data-col="' + esc(cPct) + '" value="' +
+                esc(r[cPct] || '') + '" placeholder="15%" style="width:90px"></div>' : '') +
+              (cDsc ? '<div><label class="k">Descuento $</label><br>' +
+                '<input class="row-input ed-campo" type="number" step="0.01" data-col="' + esc(cDsc) +
+                '" value="' + esc(r[cDsc] || '') + '" style="width:110px"></div>' : '') +
+              (cDes2 ? '<div style="flex:1;min-width:220px"><label class="k">Descripción</label><br>' +
+                '<input class="row-input ed-campo" data-col="' + esc(cDes2) + '" value="' +
+                esc(r[cDes2] || '') + '" style="width:100%"></div>' : '') +
+              (cMed ? '<div><label class="k">Medidas</label><br>' +
+                '<input class="row-input ed-campo" data-col="' + esc(cMed) + '" value="' +
+                esc(r[cMed] || '') + '" style="width:170px"></div>' : '') +
+              (cEsp ? '<div style="flex:1;min-width:200px"><label class="k">Especificaciones</label><br>' +
+                '<input class="row-input ed-campo" data-col="' + esc(cEsp) + '" value="' +
+                esc(r[cEsp] || '') + '" style="width:100%"></div>' : '') +
+              '</div></td></tr>';
           } else {
             h += '<tr><td>' + esc(r[cProd] || '') + '</td><td>' + esc(cMat ? (r[cMat] || '') : '') + '</td>' +
               '<td class="num">' + fmtNum(c) + '</td><td class="num">' + esc(formatMoney(p)) + '</td>' +
@@ -5665,6 +5690,9 @@
         }
         h += '</tbody></table>' +
           '<div class="cot-acciones">' +
+            (esSoloLectura(state.key) ? '' :
+              '<button type="button" class="row-btn primary add-a-folio" data-folio="' +
+              esc(k).replace(/"/g, '&quot;') + '">+ Agregar producto</button>') +
             '<button type="button" class="pdf-btn" data-folio="' + esc(k).replace(/"/g, '&quot;') + '">Ver PDF</button>' +
             (state.key === 'ventas_registro'
               ? (cSt ? '<span class="cot-st"><label>Status</label>' + selectStatusCot(k, st) + '</span>' : '')
@@ -5945,13 +5973,38 @@
       'TIPO CLIENTE':      TIPOS_CLIENTE
     },
     // Para cambiar la lista de status, edita este renglón y listo.
+    // Los tiempos de entrega se manejan como rangos, no como fecha exacta
+    cotizaciones: {
+      'Tiempo de entrega': ['2-5 días', '1-2 semanas', '2-4 semanas', '6-8 semanas',
+                            '10-12 semanas', '12-16 semanas'],
+      'Cómo llegó': ['Friends and Family', 'Social Media', 'Whatsapp', 'Recomendación',
+                     'Calendly', 'Reach Out', 'Cliente Recurrente', 'Despacho Recurrente',
+                     'Página Web', 'Pauta'],
+      'Visitó el showroom': ['Sí', 'No', 'TBD']
+    },
+    ventas_registro: {
+      'Cómo llegó': ['Friends and Family', 'Social Media', 'Whatsapp', 'Recomendación',
+                     'Calendly', 'Reach Out', 'Cliente Recurrente', 'Despacho Recurrente',
+                     'Página Web', 'Pauta'],
+      'Visitó el showroom': ['Sí', 'No', 'TBD']
+    },
+    leads: {
+      'Cómo llegó': ['Friends and Family', 'Social Media', 'Whatsapp', 'Recomendación',
+                     'Calendly', 'Reach Out', 'Cliente Recurrente', 'Despacho Recurrente',
+                     'Página Web', 'Pauta']
+    },
+    showroom: {
+      'Cómo llegó': ['Friends and Family', 'Social Media', 'Whatsapp', 'Recomendación',
+                     'Calendly', 'Reach Out', 'Cliente Recurrente', 'Despacho Recurrente',
+                     'Página Web', 'Pauta']
+    },
     op_envios: {
       'Origen': ['Bodega Perch', 'Proveedor'],
       'Quién lo paga': ['Perch', 'Cliente'],
       'Zona': ['CDMX', 'Área metropolitana', 'Foráneo', 'Recolección en tienda']
     },
     prov_pedidos: {
-      'Destino': ['Bodega Perch', 'Proveedor'],
+      'Destino': ['Bodega Perch', 'Proveedor', 'Directo a cliente'],
       'Status':  ['PENDIENTE COMPLETO', 'EN PROCESO', 'ENTREGADO', 'CANCELADO']
     },
     ventas_registro: {
@@ -6105,7 +6158,7 @@
       'Guía', 'Ticket de Remisión', 'Quién lo paga', 'Comentarios'
     ],
     prov_pedidos: [
-      'Fecha', 'Fecha Estimada de Entrega', 'Pedido Proveedor', 'Proveedor',
+      'Fecha', 'Fecha Estimada de Entrega', 'Folio cliente', 'Pedido Proveedor', 'Proveedor',
       'Producto', 'Material', 'Tela', 'Especificaciones', 'Cantidad', 'Costo Unitario',
       'Costo Total', 'Costo Total + IVA', 'Destino'
     ],
@@ -6180,6 +6233,31 @@
   // Columnas que el ERP calcula al guardar, sin preguntarlas
   // Al marcar un envío como Entregado se sella el día en que se entregó
   var SELLO_FECHA = {
+    // Los tiempos de entrega se manejan como rangos, no como fecha exacta
+    cotizaciones: {
+      'Tiempo de entrega': ['2-5 días', '1-2 semanas', '2-4 semanas', '6-8 semanas',
+                            '10-12 semanas', '12-16 semanas'],
+      'Cómo llegó': ['Friends and Family', 'Social Media', 'Whatsapp', 'Recomendación',
+                     'Calendly', 'Reach Out', 'Cliente Recurrente', 'Despacho Recurrente',
+                     'Página Web', 'Pauta'],
+      'Visitó el showroom': ['Sí', 'No', 'TBD']
+    },
+    ventas_registro: {
+      'Cómo llegó': ['Friends and Family', 'Social Media', 'Whatsapp', 'Recomendación',
+                     'Calendly', 'Reach Out', 'Cliente Recurrente', 'Despacho Recurrente',
+                     'Página Web', 'Pauta'],
+      'Visitó el showroom': ['Sí', 'No', 'TBD']
+    },
+    leads: {
+      'Cómo llegó': ['Friends and Family', 'Social Media', 'Whatsapp', 'Recomendación',
+                     'Calendly', 'Reach Out', 'Cliente Recurrente', 'Despacho Recurrente',
+                     'Página Web', 'Pauta']
+    },
+    showroom: {
+      'Cómo llegó': ['Friends and Family', 'Social Media', 'Whatsapp', 'Recomendación',
+                     'Calendly', 'Reach Out', 'Cliente Recurrente', 'Despacho Recurrente',
+                     'Página Web', 'Pauta']
+    },
     op_envios: { status: 'Status', valor: /entregad/i, campo: 'Fecha de Entrega Real' },
     ventas_registro: { status: 'Status', valor: /entregad/i, campo: 'Fecha de entrega real' }
   };
@@ -6246,6 +6324,31 @@
   // Campos calculados (solo lectura). Se recalculan en orden por dependencias.
   // op: 'sub' a-b, 'add' a+b, 'mul' a*b, 'div' a/b. format:'percent' muestra %.
   var COMPUTED_FIELDS = {
+    // Los tiempos de entrega se manejan como rangos, no como fecha exacta
+    cotizaciones: {
+      'Tiempo de entrega': ['2-5 días', '1-2 semanas', '2-4 semanas', '6-8 semanas',
+                            '10-12 semanas', '12-16 semanas'],
+      'Cómo llegó': ['Friends and Family', 'Social Media', 'Whatsapp', 'Recomendación',
+                     'Calendly', 'Reach Out', 'Cliente Recurrente', 'Despacho Recurrente',
+                     'Página Web', 'Pauta'],
+      'Visitó el showroom': ['Sí', 'No', 'TBD']
+    },
+    ventas_registro: {
+      'Cómo llegó': ['Friends and Family', 'Social Media', 'Whatsapp', 'Recomendación',
+                     'Calendly', 'Reach Out', 'Cliente Recurrente', 'Despacho Recurrente',
+                     'Página Web', 'Pauta'],
+      'Visitó el showroom': ['Sí', 'No', 'TBD']
+    },
+    leads: {
+      'Cómo llegó': ['Friends and Family', 'Social Media', 'Whatsapp', 'Recomendación',
+                     'Calendly', 'Reach Out', 'Cliente Recurrente', 'Despacho Recurrente',
+                     'Página Web', 'Pauta']
+    },
+    showroom: {
+      'Cómo llegó': ['Friends and Family', 'Social Media', 'Whatsapp', 'Recomendación',
+                     'Calendly', 'Reach Out', 'Cliente Recurrente', 'Despacho Recurrente',
+                     'Página Web', 'Pauta']
+    },
     op_envios: {
       // Se captura el total con IVA (lo que dice el ticket) y se saca el costo base
       'Costo del Envío':         { op: 'div', a: 'Costo del Envío c / IVA', b: 1.16 },
@@ -6330,8 +6433,9 @@
                  'Costos Total', 'Precio', 'Descripción', 'Medidas'],
     prov_pedidos: ['Fecha Estimada de Entrega', 'Proveedor', 'Pedido Proveedor',
                    'Producto', 'Material', 'Cantidad', 'Costo Unitario'],
-    leads:      ['Fecha', 'Contacto', 'Cómo llegó'],
-    showroom:   ['Fecha', 'Cliente']
+    // Cada obligatorio puede escribirse de varias formas: basta con que exista una
+    leads:      ['Fecha', ['Contacto', 'Nombre', 'Cliente'], 'Cómo llegó'],
+    showroom:   ['Fecha', ['Cliente', 'Nombre', 'Contacto']]
   };
   // Campos que se autocompletan con el siguiente número disponible (editables).
   var AUTONUM_FIELDS = ['No Producto', 'No. Producto','No. Identificación', 'No. de Identificación', 'No. de Cliente'];
@@ -7505,6 +7609,51 @@
     renderLineList();
   }
 
+  // Agregar un producto a una cotización o venta que ya existe.
+  // Se abre el alta normal con los datos del folio ya puestos.
+  var folioDestino = null;
+  function agregarAFolio(folio) {
+    var cRef = findHeaderByName('No. de Referencia') || findHeaderByName('Folio');
+    if (!cRef) { toast('Esta área no maneja folios.', 'err'); return; }
+    var base = (state.rows || []).filter(function (r) {
+      return String(r[cRef] || '').trim() === folio;
+    })[0];
+    if (!base) { toast('No se encontró ese folio.', 'err'); return; }
+    folioDestino = folio;
+    abrirModalAlta();
+    // Se copian los datos del pedido, no los del producto
+    setTimeout(function () {
+      var lc = lineCfg() || {};
+      var deProducto = (lc.line || []).map(norm);
+      state.headers.forEach(function (h) {
+        if (deProducto.indexOf(norm(h)) !== -1) return;      // eso se captura nuevo
+        if ((COMPUTED_FIELDS[state.key] || {})[h]) return;   // los cómputos se recalculan
+        var v = base[h];
+        if (v == null || String(v).trim() === '') return;
+        var el = document.querySelector('#formFields [data-col="' + h + '"]');
+        if (!el) return;
+        if (el.type === 'date') {
+          var d = parseDate(v);
+          if (d !== null) {
+            el.value = String(Math.floor(d / 10000)) + '-' +
+              String(Math.floor(d / 100) % 100).padStart(2, '0') + '-' +
+              String(d % 100).padStart(2, '0');
+          }
+        } else {
+          el.value = String(v);
+        }
+      });
+      recalcComputed();
+      var aviso = document.getElementById('avisoFolio');
+      if (aviso) {
+        aviso.innerHTML = '<div style="background:var(--paper);border-radius:8px;padding:9px 14px;' +
+          'font-size:13px;color:var(--slate);margin-bottom:12px">Se va a agregar a <b>' + esc(folio) +
+          '</b>, con los mismos datos del cliente y la entrega. Captura solo el producto nuevo.</div>';
+      }
+      toast('Captura el producto que quieres agregar a ' + folio + '.', 'ok');
+    }, 120);
+  }
+
   function save(destino) {
     var lc = lineCfg();
     if (lc) { return saveOrder(lc, destino); }   // ventas: una fila por producto
@@ -7519,8 +7668,20 @@
     if (!has) { toast('Completá al menos un campo.', 'err'); return; }
     var reqs = REQUIRED_FIELDS[state.key] || [];
     for (var ri = 0; ri < reqs.length; ri++) {
-      var rh = findHeaderByName(reqs[ri]);
-      if (!rh || !String(record[rh] || '').trim()) { toast('Falta llenar: ' + reqs[ri], 'err'); return; }
+      var pedido = reqs[ri];
+      var opciones = (typeof pedido === 'string') ? [pedido] : pedido;
+      // Se busca cuál de los nombres posibles existe en la hoja
+      var rh = null;
+      for (var oi = 0; oi < opciones.length && !rh; oi++) rh = findHeaderByName(opciones[oi]);
+      // Si ninguno existe como columna, no se puede exigir: se salta.
+      // Antes esto bloqueaba el guardado sin decir por qué.
+      if (!rh) continue;
+      if (!String(record[rh] || '').trim()) {
+        toast('Falta llenar: ' + rh, 'err');
+        var elFalta = document.querySelector('#formFields [data-col="' + rh + '"]');
+        if (elFalta) { elFalta.focus(); elFalta.scrollIntoView({ block: 'center' }); }
+        return;
+      }
     }
     var btn = document.getElementById('saveBtn'); btn.disabled = true; btn.textContent = 'Guardando...';
     api('add', { token: state.token, key: state.key, record: record }).then(function () {
@@ -7615,7 +7776,9 @@
             (n === 1 ? ' producto' : ' productos') + folio + '.', 'ok');
       state.lineItems = []; envioValor = ''; descPedido = { tipo: '', monto: '' };
     editandoProducto = false; lineaEditando = -1;
+    folioDestino = null;
     var ay = document.getElementById('avisoYaTiene'); if (ay) ay.innerHTML = '';
+    var af = document.getElementById('avisoFolio'); if (af) af.innerHTML = '';
       cerrarModalAlta();
       var folioNuevo = (out && out.folio) ? out.folio : '';
       // ¿Le faltan datos a este cliente? Se piden ahora, no después
@@ -8819,7 +8982,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-208';
+    var mia = '2026.08.11-210';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
@@ -8944,6 +9107,8 @@
     }
     var lleg = e.target.closest('.llegaron-btn');
     if (lleg) { abrirEntrada(lleg.getAttribute('data-ped')); return; }
+    var addF = e.target.closest('.add-a-folio');
+    if (addF) { agregarAFolio(addF.getAttribute('data-folio')); return; }
     var edA = e.target.closest('.ed-abrir');
     if (edA) { filaEditando = parseInt(edA.getAttribute('data-row'), 10); renderTable(); return; }
     var edN = e.target.closest('.ed-no');
@@ -9075,6 +9240,8 @@
     }
     var lleg = e.target.closest('.llegaron-btn');
     if (lleg) { abrirEntrada(lleg.getAttribute('data-ped')); return; }
+    var addF = e.target.closest('.add-a-folio');
+    if (addF) { agregarAFolio(addF.getAttribute('data-folio')); return; }
     var edA = e.target.closest('.ed-abrir');
     if (edA) { filaEditando = parseInt(edA.getAttribute('data-row'), 10); renderTable(); return; }
     var edN = e.target.closest('.ed-no');
