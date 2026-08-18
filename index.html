@@ -300,6 +300,20 @@
   .edit-btn, .save-btn, .cancel-btn { padding:5px 10px; font-size:13px; }
   .cancel-btn { margin-left:6px; }
 
+  /* Cómo se paga, al pie del pedido */
+  .li-pago { margin-top:14px; padding-top:14px; border-top:1px dashed var(--line); }
+  .li-pago-t { font-size:12px; color:var(--muted); text-transform:uppercase;
+    letter-spacing:.6px; margin-bottom:8px; }
+  .li-pago-campos { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+    gap:10px 14px; }
+  .li-pago-campos label { display:block; font-size:12px; color:var(--slate); margin-bottom:3px; }
+  .li-pago-campos label .s { color:var(--muted); font-size:11px; }
+  .li-pago-campos input { width:100%; padding:7px 10px; border:1px solid var(--line);
+    border-radius:8px; font-size:14px; text-align:right; font-variant-numeric:tabular-nums; }
+  .li-pago-res { margin-top:10px; background:var(--paper); border-radius:8px; padding:10px 14px;
+    font-size:13px; line-height:1.6; }
+  .li-pago-res .k { font-size:11px; color:var(--muted); text-transform:uppercase;
+    letter-spacing:.5px; }
   .form-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:14px; }
   .form-grid .fld { display:flex; flex-direction:column; gap:5px; }
   .form-grid label { font-size:13px; color:var(--slate); font-weight:600; }
@@ -319,6 +333,20 @@
   #lineItemsBox .li-row.editando { background:var(--amber-bg); border-radius:8px; }
   /* Gráficas del resumen de RH: barras y donas hechas con CSS, sin librerías */
   /* Formularios en rejilla, como el resto del ERP */
+  /* Cómo se paga, al pie del pedido */
+  .li-pago { margin-top:14px; padding-top:14px; border-top:1px dashed var(--line); }
+  .li-pago-t { font-size:12px; color:var(--muted); text-transform:uppercase;
+    letter-spacing:.6px; margin-bottom:8px; }
+  .li-pago-campos { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+    gap:10px 14px; }
+  .li-pago-campos label { display:block; font-size:12px; color:var(--slate); margin-bottom:3px; }
+  .li-pago-campos label .s { color:var(--muted); font-size:11px; }
+  .li-pago-campos input { width:100%; padding:7px 10px; border:1px solid var(--line);
+    border-radius:8px; font-size:14px; text-align:right; font-variant-numeric:tabular-nums; }
+  .li-pago-res { margin-top:10px; background:var(--paper); border-radius:8px; padding:10px 14px;
+    font-size:13px; line-height:1.6; }
+  .li-pago-res .k { font-size:11px; color:var(--muted); text-transform:uppercase;
+    letter-spacing:.5px; }
   .form-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
     gap:12px 16px; margin-bottom:6px; }
   .form-grid .fld { margin:0; }
@@ -618,6 +646,20 @@
   #lineItemsBox .li-row.editando { background:var(--amber-bg); border-radius:8px; }
   /* Gráficas del resumen de RH: barras y donas hechas con CSS, sin librerías */
   /* Formularios en rejilla, como el resto del ERP */
+  /* Cómo se paga, al pie del pedido */
+  .li-pago { margin-top:14px; padding-top:14px; border-top:1px dashed var(--line); }
+  .li-pago-t { font-size:12px; color:var(--muted); text-transform:uppercase;
+    letter-spacing:.6px; margin-bottom:8px; }
+  .li-pago-campos { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+    gap:10px 14px; }
+  .li-pago-campos label { display:block; font-size:12px; color:var(--slate); margin-bottom:3px; }
+  .li-pago-campos label .s { color:var(--muted); font-size:11px; }
+  .li-pago-campos input { width:100%; padding:7px 10px; border:1px solid var(--line);
+    border-radius:8px; font-size:14px; text-align:right; font-variant-numeric:tabular-nums; }
+  .li-pago-res { margin-top:10px; background:var(--paper); border-radius:8px; padding:10px 14px;
+    font-size:13px; line-height:1.6; }
+  .li-pago-res .k { font-size:11px; color:var(--muted); text-transform:uppercase;
+    letter-spacing:.5px; }
   .form-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
     gap:12px 16px; margin-bottom:6px; }
   .form-grid .fld { margin:0; }
@@ -728,7 +770,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-212</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-216</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -5957,11 +5999,31 @@
   }
 
   // Cómo llegó el contacto: se usa igual en Leads, Showroom y Cotizaciones
-  var FORMAS_CONTACTO = ['Whatsapp', 'Instagram', 'Pautas', 'Recomendacion', 'Showroom',
-                         'Calendly', 'Reach out', 'Seguimiento', 'Cliente recurrente',
-                         'Despacho recurrente', 'Carrito Abandonado', 'ICFF NY', 'Pagina web'];
+  var FORMAS_CONTACTO = ['Friends and Family', 'Social Media', 'Whatsapp', 'Recomendación',
+                         'Calendly', 'Reach Out', 'Cliente Recurrente', 'Despacho Recurrente',
+                         'Página Web', 'Pauta'];
   var TIPOS_CLIENTE = ['B2B', 'B2C', 'VIP'];
-  var VISITO_SHOWROOM = ['Si', 'No', 'Por visitar'];
+  // TBD: pidió cotización y quizá pase después. Se puede corregir luego.
+  var VISITO_SHOWROOM = ['Sí', 'No', 'Por visitar', 'TBD'];
+  // Cada rango con los días que se suman a la fecha. Siempre el extremo largo:
+  // es lo que se le promete al cliente y evita quedar mal.
+  var TIEMPOS_ENTREGA = ['2-5 días', '1-2 semanas', '2-4 semanas', '6-8 semanas',
+                         '10-12 semanas', '12-16 semanas'];
+  var DIAS_DE_TIEMPO = {
+    '2-5 días': 5, '2-5 dias': 5,
+    '1-2 semanas': 14,
+    '2-4 semanas': 28,
+    '6-8 semanas': 56,
+    '10-12 semanas': 84,
+    '12-16 semanas': 112
+  };
+  // Suma días a una fecha y la devuelve en el formato de la hoja
+  function sumarDias(desde, dias) {
+    var d = desde ? new Date(desde) : new Date();
+    if (isNaN(d.getTime())) d = new Date();
+    d.setDate(d.getDate() + dias);
+    return d.getDate() + ' ' + MESES_ES[d.getMonth()].toLowerCase() + ' ' + d.getFullYear();
+  }
 
   // Si la hoja usa otro nombre para el mismo dato, aquí se reconoce igual
   var ALIAS_CAMPOS = {
@@ -6004,31 +6066,6 @@
       'TIPO CLIENTE':      TIPOS_CLIENTE
     },
     // Para cambiar la lista de status, edita este renglón y listo.
-    // Los tiempos de entrega se manejan como rangos, no como fecha exacta
-    cotizaciones: {
-      'Tiempo de entrega': ['2-5 días', '1-2 semanas', '2-4 semanas', '6-8 semanas',
-                            '10-12 semanas', '12-16 semanas'],
-      'Cómo llegó': ['Friends and Family', 'Social Media', 'Whatsapp', 'Recomendación',
-                     'Calendly', 'Reach Out', 'Cliente Recurrente', 'Despacho Recurrente',
-                     'Página Web', 'Pauta'],
-      'Visitó el showroom': ['Sí', 'No', 'TBD']
-    },
-    ventas_registro: {
-      'Cómo llegó': ['Friends and Family', 'Social Media', 'Whatsapp', 'Recomendación',
-                     'Calendly', 'Reach Out', 'Cliente Recurrente', 'Despacho Recurrente',
-                     'Página Web', 'Pauta'],
-      'Visitó el showroom': ['Sí', 'No', 'TBD']
-    },
-    leads: {
-      'Cómo llegó': ['Friends and Family', 'Social Media', 'Whatsapp', 'Recomendación',
-                     'Calendly', 'Reach Out', 'Cliente Recurrente', 'Despacho Recurrente',
-                     'Página Web', 'Pauta']
-    },
-    showroom: {
-      'Cómo llegó': ['Friends and Family', 'Social Media', 'Whatsapp', 'Recomendación',
-                     'Calendly', 'Reach Out', 'Cliente Recurrente', 'Despacho Recurrente',
-                     'Página Web', 'Pauta']
-    },
     op_envios: {
       'Origen': ['Bodega Perch', 'Proveedor'],
       'Quién lo paga': ['Perch', 'Cliente'],
@@ -6041,9 +6078,15 @@
     ventas_registro: {
       // Mismos valores que la validación de datos de la hoja
       'Status': ['Por entregar', 'En proceso', 'Stand by', 'Entregado'],
-      'Showroom': VISITO_SHOWROOM
+      'Showroom': VISITO_SHOWROOM,
+      'Visitó el showroom': VISITO_SHOWROOM,
+      'Tiempo de entrega': TIEMPOS_ENTREGA,
+      'Tiempo de fabricación': TIEMPOS_ENTREGA
     },
     cotizaciones: {
+      'Tiempo de entrega': TIEMPOS_ENTREGA,
+      'Tiempo de fabricación': TIEMPOS_ENTREGA,
+      'Visitó el showroom': VISITO_SHOWROOM,
       'Status':            ['Pendiente', 'Enviada', 'Vendida', 'Rechazada', 'Por volver a buscar'],
       'Showroom':          VISITO_SHOWROOM,
       'TIPO CLIENTE':      TIPOS_CLIENTE,
@@ -6086,7 +6129,7 @@
     inventario: ['Productos', 'Material', 'Material Extra', 'Tipo de Producto'],
     prov_pedidos: ['Proveedor'],
     op_envios: ['Paqueteria', 'Cliente', 'Destino', 'Ciudad'],
-    leads:      ['Contacto'],
+    leads:      ['Contacto', 'Nombre', 'Cliente', 'Despacho'],
     showroom:   ['Cliente', 'Despacho'],
     cotizaciones:    ['Cliente', 'Despacho', 'Vendedor'],
     ventas_registro: ['Cliente', 'Despacho', 'Vendedor'],
@@ -6200,7 +6243,7 @@
                'Tipo de Línea de Negocio', 'Notas'],
     // Cotizaciones: mismos campos que una venta + la encuesta comercial
     cotizaciones: [
-      'Fecha del Cierre', 'Cliente', 'Despacho', 'Vendedor', 'Fecha de entrega acordada',
+      'Fecha del Cierre', 'Cliente', 'Despacho', 'Vendedor', 'Tiempo de entrega', 'Fecha de entrega acordada',
       'TIPO CLIENTE', 'Cómo Llego', 'Showroom', 'Notas',
       'Direccion de envio', 'Telefono', 'Cantidad', 'Producto', 'Material', 'Material Extra',
       'Tipo de Producto', 'Tela', 'Descripción', 'Medidas', 'Especificaciones',
@@ -6209,7 +6252,8 @@
     // Ventas: solo estos campos aparecen en "Agregar registro" (en este orden).
     // No. de Referencia y Status se generan solos en el servidor; el resto son fórmulas de la hoja.
     ventas_registro: [
-      'Fecha del Cierre', 'Cliente', 'Despacho', 'Vendedor', 'Fecha de entrega acordada',
+      'Fecha del Cierre', 'Cliente', 'Despacho', 'Vendedor',
+      'Tiempo de entrega', 'Fecha de entrega acordada',
       'Direccion de envio', 'Telefono', 'Cantidad', 'Producto', 'Material', 'Material Extra',
       'Tipo de Producto', 'Tela', 'Descripción', 'Medidas', 'Especificaciones',
       'Precio Unitario', '% descuento', 'Descuentos', 'Envio'
@@ -6264,31 +6308,6 @@
   // Columnas que el ERP calcula al guardar, sin preguntarlas
   // Al marcar un envío como Entregado se sella el día en que se entregó
   var SELLO_FECHA = {
-    // Los tiempos de entrega se manejan como rangos, no como fecha exacta
-    cotizaciones: {
-      'Tiempo de entrega': ['2-5 días', '1-2 semanas', '2-4 semanas', '6-8 semanas',
-                            '10-12 semanas', '12-16 semanas'],
-      'Cómo llegó': ['Friends and Family', 'Social Media', 'Whatsapp', 'Recomendación',
-                     'Calendly', 'Reach Out', 'Cliente Recurrente', 'Despacho Recurrente',
-                     'Página Web', 'Pauta'],
-      'Visitó el showroom': ['Sí', 'No', 'TBD']
-    },
-    ventas_registro: {
-      'Cómo llegó': ['Friends and Family', 'Social Media', 'Whatsapp', 'Recomendación',
-                     'Calendly', 'Reach Out', 'Cliente Recurrente', 'Despacho Recurrente',
-                     'Página Web', 'Pauta'],
-      'Visitó el showroom': ['Sí', 'No', 'TBD']
-    },
-    leads: {
-      'Cómo llegó': ['Friends and Family', 'Social Media', 'Whatsapp', 'Recomendación',
-                     'Calendly', 'Reach Out', 'Cliente Recurrente', 'Despacho Recurrente',
-                     'Página Web', 'Pauta']
-    },
-    showroom: {
-      'Cómo llegó': ['Friends and Family', 'Social Media', 'Whatsapp', 'Recomendación',
-                     'Calendly', 'Reach Out', 'Cliente Recurrente', 'Despacho Recurrente',
-                     'Página Web', 'Pauta']
-    },
     op_envios: { status: 'Status', valor: /entregad/i, campo: 'Fecha de Entrega Real' },
     ventas_registro: { status: 'Status', valor: /entregad/i, campo: 'Fecha de entrega real' }
   };
@@ -6301,6 +6320,35 @@
     if (String(rec[cF] || '').trim()) return;        // ya tenía fecha: no se pisa
     var d = new Date();
     rec[cF] = d.getDate() + ' ' + MESES_ES[d.getMonth()].toLowerCase() + ' ' + d.getFullYear();
+  }
+
+  // Cómo se pagó: se escribe en la fila del pedido
+  function guardarFormaDePago(rec) {
+    if (PAGO_AREAS.indexOf(state.key) === -1) return;
+    var c = cuentasDelPago(totalDelPedido());
+    var poner = function (nombres, valor) {
+      for (var i = 0; i < nombres.length; i++) {
+        var h = findHeaderByName(nombres[i]);
+        if (h) { rec[h] = valor; return; }
+      }
+    };
+    if (c.efectivo) poner(['Pago en efectivo', 'Efectivo'], c.efectivo);
+    if (c.transferencia) poner(['Pago por transferencia', 'Transferencia'], c.transferencia);
+    if (c.plataforma) poner(['Pago por plataforma', 'Plataforma', 'Terminal'], c.plataforma);
+    // Cómo se pagó en una sola palabra, para poder filtrar
+    var formas = [];
+    if (c.transferencia) formas.push('Transferencia');
+    if (c.efectivo) formas.push('Efectivo');
+    if (c.plataforma) formas.push('Plataforma');
+    poner(['Método de pago', 'Metodo de pago', 'Forma de pago'], formas.join(' + '));
+    // Si fue todo en efectivo no se factura
+    if (c.todoEfectivo) {
+      poner(['Factura Si / No', 'Factura'], 'No');
+      poner(['Comentarios'], 'Pago en efectivo sin IVA');
+    }
+    // El total con IVA solo sobre lo facturable
+    var cIVA = findHeaderByName('Total con IVA');
+    if (cIVA) rec[cIVA] = Math.round((c.efectivo + c.baseFacturable * 1.16) * 100) / 100;
   }
 
   var AUTO_AL_GUARDAR = {
@@ -6355,31 +6403,6 @@
   // Campos calculados (solo lectura). Se recalculan en orden por dependencias.
   // op: 'sub' a-b, 'add' a+b, 'mul' a*b, 'div' a/b. format:'percent' muestra %.
   var COMPUTED_FIELDS = {
-    // Los tiempos de entrega se manejan como rangos, no como fecha exacta
-    cotizaciones: {
-      'Tiempo de entrega': ['2-5 días', '1-2 semanas', '2-4 semanas', '6-8 semanas',
-                            '10-12 semanas', '12-16 semanas'],
-      'Cómo llegó': ['Friends and Family', 'Social Media', 'Whatsapp', 'Recomendación',
-                     'Calendly', 'Reach Out', 'Cliente Recurrente', 'Despacho Recurrente',
-                     'Página Web', 'Pauta'],
-      'Visitó el showroom': ['Sí', 'No', 'TBD']
-    },
-    ventas_registro: {
-      'Cómo llegó': ['Friends and Family', 'Social Media', 'Whatsapp', 'Recomendación',
-                     'Calendly', 'Reach Out', 'Cliente Recurrente', 'Despacho Recurrente',
-                     'Página Web', 'Pauta'],
-      'Visitó el showroom': ['Sí', 'No', 'TBD']
-    },
-    leads: {
-      'Cómo llegó': ['Friends and Family', 'Social Media', 'Whatsapp', 'Recomendación',
-                     'Calendly', 'Reach Out', 'Cliente Recurrente', 'Despacho Recurrente',
-                     'Página Web', 'Pauta']
-    },
-    showroom: {
-      'Cómo llegó': ['Friends and Family', 'Social Media', 'Whatsapp', 'Recomendación',
-                     'Calendly', 'Reach Out', 'Cliente Recurrente', 'Despacho Recurrente',
-                     'Página Web', 'Pauta']
-    },
     op_envios: {
       // Se captura el total con IVA (lo que dice el ticket) y se saca el costo base
       'Costo del Envío':         { op: 'div', a: 'Costo del Envío c / IVA', b: 1.16 },
@@ -6784,6 +6807,40 @@
     recalcComputed();
   }
 
+  // Al elegir el tiempo de entrega se calcula la fecha, contando desde el cierre
+  function conectarTiempoDeEntrega() {
+    var elT = fieldEl('Tiempo de entrega') || fieldEl('Tiempo de fabricación');
+    var elF = fieldEl('Fecha de entrega acordada');
+    if (!elT) return;
+    var calcular = function () {
+      var dias = DIAS_DE_TIEMPO[String(elT.value || '').trim()];
+      if (!dias) return;
+      // Se cuenta desde la fecha del cierre; si no hay, desde hoy
+      var elC = fieldEl('Fecha del Cierre') || fieldEl('Fecha');
+      var base = null;
+      if (elC && elC.value) {
+        var d = parseDate(elC.value);
+        if (d !== null) {
+          base = new Date(Math.floor(d / 10000), Math.floor(d / 100) % 100 - 1, d % 100);
+        }
+      }
+      var texto = sumarDias(base, dias);
+      if (elF) {
+        if (elF.type === 'date') {
+          var dd = parseDate(texto);
+          if (dd !== null) {
+            elF.value = Math.floor(dd / 10000) + '-' +
+              String(Math.floor(dd / 100) % 100).padStart(2, '0') + '-' +
+              String(dd % 100).padStart(2, '0');
+          }
+        } else {
+          elF.value = texto;
+        }
+        toast('Entrega estimada: ' + texto, 'ok');
+      }
+    };
+    elT.addEventListener('change', calcular);
+  }
   function initCascade() {
     var c = cascadeLU(); if (!c) return;
     var s0 = cascElem(0);
@@ -6883,6 +6940,11 @@
   var envioValor = '';
   // Descuento aplicado a todo el pedido: se reparte entre los productos ya agregados
   var descPedido = { tipo: '', monto: '' };
+  // Cómo se paga el pedido. El efectivo no lleva IVA: el precio ya lo traía dentro.
+  var pagoPedido = { transferencia: '', efectivo: '', plataforma: '' };
+  var PAGO_AREAS = ['ventas_registro', 'cotizaciones'];
+  // El dinero entra completo a la pasarela. Lo que cobran por pasarlo al banco
+  // es un movimiento aparte, no un descuento de la venta.
   function aplicarDescuentoPedido() {
     var cfg = specialCfg();
     if (!cfg || !cfg.descuento) return;
@@ -6940,6 +7002,70 @@
       if (hP) hP.value = (descPedido.tipo === 'pct' && a) ? (/%$/.test(a) ? a : a + '%') : '';
       if (hV) hV.value = (descPedido.tipo === 'val') ? a : '';
     }
+  }
+
+  // Qué se cobra de verdad según cómo se paga.
+  // El efectivo NO lleva IVA: el precio de lista ya lo traía dentro.
+  function cuentasDelPago(totalSinIVA) {
+    var ef = toNum(pagoPedido.efectivo);
+    var pl = toNum(pagoPedido.plataforma);
+    var tr = toNum(pagoPedido.transferencia);
+    var repartido = ef + pl + tr;
+    // Lo que no se repartió se asume por transferencia
+    var resto = Math.max(0, Math.round((totalSinIVA - repartido) * 100) / 100);
+    tr += resto;
+    // Al efectivo se le quita el IVA que el precio traía dentro
+    var efSinIVA = Math.round((ef / 1.16) * 100) / 100;
+    var ivaNoCobrado = Math.round((ef - efSinIVA) * 100) / 100;
+    // Lo demás sí paga IVA
+    var conIVA = Math.round(((tr + pl) * 1.16) * 100) / 100;
+    var comision = 0;
+    return {
+      efectivo: ef, transferencia: tr, plataforma: pl, resto: resto,
+      efectivoSinIVA: efSinIVA, ivaNoCobrado: ivaNoCobrado,
+      baseFacturable: Math.round((tr + pl) * 100) / 100,
+      totalConIVA: conIVA,
+      comision: comision,
+      // Lo que de verdad llega al banco o a caja
+      aCobrar: Math.round((ef + conIVA) * 100) / 100,
+      neto: Math.round((ef + conIVA - comision) * 100) / 100,
+      seFactura: (tr + pl) > 0.01,
+      todoEfectivo: ef > 0.01 && (tr + pl) < 0.01
+    };
+  }
+  function pintarResumenPago() {
+    var caja = document.getElementById('pagoResumen');
+    if (!caja) return;
+    var totalSinIVA = totalDelPedido();
+    var c = cuentasDelPago(totalSinIVA);
+    if (!c.efectivo && !c.plataforma) {
+      caja.innerHTML = '<span class="k">Todo por transferencia</span> · se cobra ' +
+        esc(formatMoney(totalSinIVA * 1.16)) + ' con IVA';
+      return;
+    }
+    caja.innerHTML =
+      (c.efectivo ? '<div><span class="k">En efectivo</span> ' + esc(formatMoney(c.efectivo)) +
+        ' <span class="s" style="color:var(--muted)">sin IVA · no se factura</span></div>' : '') +
+      (c.transferencia ? '<div><span class="k">Por transferencia</span> ' +
+        esc(formatMoney(c.transferencia)) + ' + IVA = <b>' +
+        esc(formatMoney(c.transferencia * 1.16)) + '</b></div>' : '') +
+      (c.plataforma ? '<div><span class="k">Por plataforma</span> ' +
+        esc(formatMoney(c.plataforma)) + ' + IVA = <b>' +
+        esc(formatMoney(c.plataforma * 1.16)) + '</b></div>' : '') +
+      '<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--line)">' +
+        '<span class="k">Se cobra</span> <b>' + esc(formatMoney(c.aCobrar)) + '</b>' +
+        (c.ivaNoCobrado ? ' <span class="s" style="color:var(--muted)">· ' +
+          esc(formatMoney(c.ivaNoCobrado)) + ' de IVA que no se cobra</span>' : '') +
+      '</div>';
+  }
+  // El total del pedido sin IVA, sumando los productos capturados
+  function totalDelPedido() {
+    var t = 0;
+    (state.lineItems || []).forEach(function (r) { t += lineTotal(r); });
+    var pend = currentLineRec();
+    if (pend) t += lineTotal(pend);
+    t += toNum(envioValor);
+    return Math.round(t * 100) / 100;
   }
 
   // Importe de un producto SIN descuento
@@ -7009,7 +7135,10 @@
     var items = state.lineItems || [];
     // Lo que está a medio capturar arriba también se muestra, para que se vea completo
     var pendiente = currentLineRec();
-    var html = '<div class="li-head"><span class="li-title">Productos del pedido</span></div>';
+    var html = '<div class="li-head"><span class="li-title">Productos del pedido</span>' +
+      (PAGO_AREAS.indexOf(state.key) !== -1
+        ? '<button type="button" id="btnProdNuevo" class="row-btn">+ Producto nuevo al catálogo</button>'
+        : '') + '</div>';
     html += '<div class="li-list">';
     if (!items.length && !pendiente) {
       html += '<div class="li-empty">Elige un producto arriba. Toca “Agregar producto al pedido” para sumar otro; al guardar se crea una fila por producto con el mismo folio.</div>';
@@ -7067,9 +7196,38 @@
               '<input id="envioPedido" type="number" step="0.01" min="0" data-col="' + esc(envH) +
               '" placeholder="0.00" value="' + esc(envioValor) + '"></div>';
     }
+    // Cómo se paga: el efectivo no lleva IVA
+    if (PAGO_AREAS.indexOf(state.key) !== -1) {
+      html += '<div class="li-pago"><div class="li-pago-t">Cómo se paga</div>' +
+        '<div class="li-pago-campos">' +
+          '<div><label>Transferencia</label>' +
+            '<input id="pagoTransfer" type="number" step="0.01" min="0" placeholder="0.00" value="' +
+            esc(pagoPedido.transferencia) + '"></div>' +
+          '<div><label>Efectivo <span class="s">sin IVA</span></label>' +
+            '<input id="pagoEfectivo" type="number" step="0.01" min="0" placeholder="0.00" value="' +
+            esc(pagoPedido.efectivo) + '"></div>' +
+          '<div><label>Plataforma</label>' +
+            '<input id="pagoPlataforma" type="number" step="0.01" min="0" placeholder="0.00" value="' +
+            esc(pagoPedido.plataforma) + '"></div>' +
+        '</div>' +
+        '<div id="pagoResumen" class="li-pago-res"></div></div>';
+    }
     html += '<div class="li-total"><span id="orderTotalCount" class="li-total-sub"></span>' +
             '<span class="li-total-lbl">Total del pedido</span><span id="orderTotalVal" class="li-total-val">$0.00</span></div>';
     box.innerHTML = html;
+    var bpn = document.getElementById('btnProdNuevo');
+    if (bpn) bpn.addEventListener('click', abrirProductoNuevo);
+    ['pagoTransfer', 'pagoEfectivo', 'pagoPlataforma'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener('input', function () {
+        pagoPedido.transferencia = document.getElementById('pagoTransfer').value;
+        pagoPedido.efectivo = document.getElementById('pagoEfectivo').value;
+        pagoPedido.plataforma = document.getElementById('pagoPlataforma').value;
+        pintarResumenPago();
+      });
+    });
+    pintarResumenPago();
     var dpT = document.getElementById('descPedidoTipo');
     var dpM = document.getElementById('descPedido');
     if (dpT) dpT.addEventListener('change', function () {
@@ -7624,6 +7782,7 @@
     });
     avisoMargen();
     initCascade();
+    conectarTiempoDeEntrega();
     // El costo se recalcula al cambiar cualquiera de sus llaves
     var tl = tablaLU();
     if (tl) tl.campos.forEach(function (c) {
@@ -7643,6 +7802,111 @@
   // Agregar un producto a una cotización o venta que ya existe.
   // Se abre el alta normal con los datos del folio ya puestos.
   var folioDestino = null;
+  // Alta rápida de producto al catálogo, sin salir de la venta
+  function abrirProductoNuevo() {
+    var hoy = new Date().getFullYear();
+    document.getElementById('aventaTitulo').textContent = 'Producto nuevo al catálogo';
+    document.getElementById('aventaCuerpo').innerHTML =
+      '<div class="s" style="color:var(--muted);margin-bottom:12px">Queda en el catálogo ' +
+      hoy + ' y se puede elegir de inmediato. Para una mesa a la medida o un servicio de una ' +
+      'sola vez, mejor usa <b>Producto Especial</b> en la lista y escribe ahí la descripción.</div>' +
+      '<div class="form-grid">' +
+        '<div class="fld"><label>Nombre del producto *</label>' +
+          '<input id="pnNombre" placeholder="Mesa Nara 240 cm"></div>' +
+        '<div class="fld"><label>Material *</label>' +
+          '<input id="pnMaterial" list="pnMats" placeholder="Nogal"></div>' +
+        '<div class="fld"><label>Material extra</label>' +
+          '<input id="pnMatExtra" list="pnMats" placeholder="Acero"></div>' +
+        '<div class="fld"><label>Tipo de producto</label>' +
+          '<input id="pnTipo" list="pnTipos" placeholder="Comedor"></div>' +
+        '<div class="fld"><label>Costo *</label>' +
+          '<input id="pnCosto" type="number" step="0.01" min="0" placeholder="0.00"></div>' +
+        '<div class="fld"><label>Precio de venta *</label>' +
+          '<input id="pnPrecio" type="number" step="0.01" min="0" placeholder="0.00"></div>' +
+        '<div class="fld"><label>Proveedor</label>' +
+          '<input id="pnProv" list="pnProvs" placeholder="Quién lo fabrica"></div>' +
+        '<div class="fld"><label>Medidas</label>' +
+          '<input id="pnMedidas" placeholder="240 x 100 x 75 cm"></div>' +
+      '</div>' +
+      '<div class="fld"><label>Descripción</label>' +
+        '<input id="pnDesc" placeholder="Cómo se describe en la cotización"></div>' +
+      '<div id="pnMargen" class="li-pago-res" style="margin-top:12px"></div>' +
+      listasDeProducto();
+    document.getElementById('aventaOk').textContent = 'Guardar en el catálogo';
+    document.getElementById('aventaModal').classList.add('on');
+    ['pnCosto', 'pnPrecio'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.addEventListener('input', pintarMargenNuevo);
+    });
+    pintarMargenNuevo();
+  }
+  // Las opciones que ya existen, para no inventar variantes nuevas
+  function listasDeProducto() {
+    var mats = {}, tipos = {}, provs = {};
+    var c = cascadeLU();
+    if (c) (c.rows || []).forEach(function (r) {
+      var m = valorNivel(r, c.levels[1]);
+      if (m) mats[m] = 1;
+    });
+    if (c) (c.rows || []).forEach(function (r) {
+      var t = r['Tipo de Producto'] || r['Tipo de producto'];
+      if (t) tipos[t] = 1;
+      var p = r['Proveedor'];
+      if (p) provs[p] = 1;
+    });
+    var lista = function (id, o) {
+      return '<datalist id="' + id + '">' +
+        Object.keys(o).sort().map(function (v) { return '<option value="' + esc(v) + '">'; }).join('') +
+        '</datalist>';
+    };
+    return lista('pnMats', mats) + lista('pnTipos', tipos) + lista('pnProvs', provs);
+  }
+  function pintarMargenNuevo() {
+    var caja = document.getElementById('pnMargen');
+    if (!caja) return;
+    var costo = toNum(document.getElementById('pnCosto').value);
+    var precio = toNum(document.getElementById('pnPrecio').value);
+    if (!costo || !precio) { caja.innerHTML = ''; return; }
+    var m = Math.round(((precio - costo) / precio) * 1000) / 10;
+    caja.innerHTML = '<span class="k">Margen</span> <b style="color:' +
+      (m >= 40 ? 'var(--success)' : m >= 25 ? 'var(--amber)' : 'var(--danger)') + '">' +
+      m + '%</b> · deja ' + esc(formatMoney(precio - costo)) + ' por pieza' +
+      (m < 25 ? ' <span class="s" style="color:var(--danger)">— margen bajo</span>' : '');
+  }
+  function guardarProductoNuevo() {
+    var nombre = (document.getElementById('pnNombre').value || '').trim();
+    var material = (document.getElementById('pnMaterial').value || '').trim();
+    var costo = toNum(document.getElementById('pnCosto').value);
+    var precio = toNum(document.getElementById('pnPrecio').value);
+    if (!nombre) { toast('Falta el nombre del producto.', 'err'); return; }
+    if (!material) { toast('Falta el material.', 'err'); return; }
+    if (!precio) { toast('Falta el precio de venta.', 'err'); return; }
+    var rec = {
+      'Productos': nombre, 'Producto': nombre,
+      'Material': material,
+      'Material Extra': (document.getElementById('pnMatExtra').value || '').trim(),
+      'Tipo de Producto': (document.getElementById('pnTipo').value || '').trim(),
+      'Costos Total': costo, 'Costo': costo,
+      'Precio Unitario': precio, 'Precio': precio,
+      'Proveedor': (document.getElementById('pnProv').value || '').trim(),
+      'Medidas': (document.getElementById('pnMedidas').value || '').trim(),
+      'Descripción': (document.getElementById('pnDesc').value || '').trim(),
+      'Status': 'Activo'
+    };
+    var btn = document.getElementById('aventaOk');
+    btn.disabled = true; btn.textContent = 'Guardando...';
+    api('add', { token: state.token, key: 'inventario', record: rec }).then(function () {
+      toast(nombre + ' quedó en el catálogo.', 'ok');
+      cerrarMandarAVenta();
+      // Se recargan los menús para que aparezca de inmediato
+      return api('lookup', { token: state.token, key: state.key });
+    }).then(function (d) {
+      if (d && d.lookups) { state.lookups = d.lookups; renderForm(); }
+    }).catch(fail).then(function () {
+      btn.disabled = false; btn.textContent = 'Guardar en el catálogo';
+    });
+  }
+
   function agregarAFolio(folio) {
     var cRef = findHeaderByName('No. de Referencia') || findHeaderByName('Folio');
     if (!cRef) { toast('Esta área no maneja folios.', 'err'); return; }
@@ -7808,6 +8072,7 @@
       state.lineItems = []; envioValor = ''; descPedido = { tipo: '', monto: '' };
     editandoProducto = false; lineaEditando = -1;
     folioDestino = null;
+    pagoPedido = { transferencia: '', efectivo: '', plataforma: '' };
     var ay = document.getElementById('avisoYaTiene'); if (ay) ay.innerHTML = '';
     var af = document.getElementById('avisoFolio'); if (af) af.innerHTML = '';
       cerrarModalAlta();
@@ -9013,7 +9278,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-212';
+    var mia = '2026.08.11-216';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
@@ -9047,6 +9312,7 @@
   document.getElementById('aventaClose').addEventListener('click', cerrarMandarAVenta);
   document.getElementById('aventaCancel').addEventListener('click', cerrarMandarAVenta);
   document.getElementById('aventaOk').addEventListener('click', function () {
+    if (document.getElementById('pnNombre')) { guardarProductoNuevo(); return; }
     if (document.getElementById('ciMes')) {
       if (cierrePdf) { bajarPdf(cierrePdf.pdf, cierrePdf.nombre); return; }
       generarCierre();
