@@ -728,7 +728,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-211</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-212</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -3974,6 +3974,24 @@
     if (valores && valores.length) filters.push({ col: c, type: 'values', values: valores });
     renderFilterBar(); renderTable();
   }
+  // Las filas que caen dentro del filtro de fecha activo. Si no hay filtro, todas.
+  function filasEnRangoDeFecha() {
+    var todas = state.rows || [];
+    var cF = findHeaderByName('Fecha del Cierre') || findHeaderByName('Fecha');
+    if (!cF) return todas;
+    var fFecha = filters.filter(function (x) {
+      return x.col === cF && (x.desde || x.hasta);
+    })[0];
+    if (!fFecha) return todas;
+    return todas.filter(function (r) {
+      var d = parseDate(r[cF]);
+      if (d === null) return false;
+      if (fFecha.desde && d < fFecha.desde) return false;
+      if (fFecha.hasta && d > fFecha.hasta) return false;
+      return true;
+    });
+  }
+
   function chipsStatus() {
     var c = findHeaderByName('Status');
     if (!c) return '';
@@ -3985,13 +4003,26 @@
     var chip = function (k, txt) {
       return '<button type="button" class="mes-chip' + (activo === k ? ' on' : '') + '" data-st="' + k + '">' + txt + '</button>';
     };
-    // Cuántas hay de cada lado (sobre TODO el área, no solo lo filtrado)
+    // Se cuentan PEDIDOS distintos, no renglones: una venta de 20 muebles son
+    // 20 renglones pero un solo pedido. Y solo lo que está dentro del filtro de fecha.
+    var cRef = findHeaderByName('No. de Referencia') || findHeaderByName('Folio');
+    var pend = {}, ent = {};
     var nPend = 0, nEnt = 0;
-    (state.rows || []).forEach(function (r) {
+    var base = filasEnRangoDeFecha();
+    base.forEach(function (r) {
       var v = String(r[c] || '');
-      if (/entregado/i.test(v)) nEnt++;
-      else if (!/cancelad/i.test(v)) nPend++;
+      var cancelada = /cancelad/i.test(v);
+      if (cancelada) return;
+      var entregada = /entregado/i.test(v);
+      var folio = cRef ? String(r[cRef] || '').trim() : '';
+      if (folio) {
+        if (entregada) ent[folio] = 1; else pend[folio] = 1;
+      } else {
+        if (entregada) nEnt++; else nPend++;
+      }
     });
+    nPend += Object.keys(pend).length;
+    nEnt += Object.keys(ent).length;
     return '<div class="mes-chips">' + chip('', 'Todas') +
       chip('pendientes', 'Sin entregar (' + fmtNum(nPend) + ')') +
       chip('entregadas', 'Entregadas (' + fmtNum(nEnt) + ')') + '</div>';
@@ -8982,7 +9013,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-211';
+    var mia = '2026.08.11-212';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
