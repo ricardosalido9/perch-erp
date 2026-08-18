@@ -314,6 +314,54 @@
     font-size:13px; line-height:1.6; }
   .li-pago-res .k { font-size:11px; color:var(--muted); text-transform:uppercase;
     letter-spacing:.5px; }
+  /* Calendario de logística */
+  .cal-nav { display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
+  .cal-nav b { font-size:16px; color:var(--accent-ink); min-width:150px; }
+  .cal-pill { display:inline-block; padding:1px 8px; border-radius:20px; font-size:10.5px;
+    margin-left:4px; }
+  .cal-pill.entrega { background:var(--paper); color:var(--accent-ink); }
+  .cal-pill.recol { background:#EDE9F5; color:#4A3B7A; }
+  .cal-pill.vencida { background:var(--danger-bg); color:var(--danger); }
+  .cal-pill.listo { background:var(--success-bg); color:var(--success); }
+  .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; margin-bottom:18px; }
+  .cal-dow { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.6px;
+    text-align:center; padding-bottom:4px; }
+  .cal-dia { background:var(--surface); border:1px solid var(--line); border-radius:10px;
+    min-height:86px; padding:6px 7px; cursor:pointer; transition:border-color .15s; overflow:hidden; }
+  .cal-dia:hover { border-color:var(--accent-ink); }
+  .cal-dia.vacio { background:transparent; border-color:transparent; cursor:default; }
+  .cal-dia.hoy { border:2px solid var(--accent-ink); }
+  .cal-num { display:flex; align-items:center; justify-content:space-between;
+    font-size:13px; font-weight:600; color:var(--ink); margin-bottom:4px; }
+  .cal-cnt { background:var(--accent-ink); color:#fff; border-radius:20px; min-width:17px;
+    height:17px; font-size:10px; display:flex; align-items:center; justify-content:center; padding:0 4px; }
+  .cal-ev { font-size:10.5px; border-radius:5px; padding:2px 6px; margin-bottom:3px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; border-left:3px solid; }
+  .cal-ev.entrega { background:var(--paper); color:var(--accent-ink); border-color:var(--accent-ink); }
+  .cal-ev.recol { background:#EDE9F5; color:#4A3B7A; border-color:#4A3B7A; }
+  .cal-ev.vencida { background:var(--danger-bg); color:var(--danger); border-color:var(--danger); }
+  .cal-ev.listo { background:var(--success-bg); color:var(--success); border-color:var(--success); }
+  .cal-mas { font-size:10px; color:var(--muted); padding-left:4px; }
+  .cal-detalle { background:var(--surface); border:1px solid var(--line); border-radius:12px;
+    padding:16px 18px; margin-bottom:18px; }
+  .cal-tarj { border-left:3px solid var(--accent-ink); background:var(--paper);
+    border-radius:8px; padding:10px 14px; margin-bottom:10px; }
+  .cal-tarj.recol { border-color:#4A3B7A; }
+  .cal-tarj.vencida { border-color:var(--danger); background:var(--danger-bg); }
+  .cal-tarj.listo { border-color:var(--success); opacity:.75; }
+  .cal-tarj-t { font-size:14px; margin-bottom:3px; }
+  .cal-tarj .s { font-size:12.5px; }
+  .cal-tarj-btns { display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; }
+  .cal-rutas { background:var(--surface); border:1px solid var(--line); border-radius:12px;
+    padding:14px 18px; margin-bottom:16px; }
+  .cal-ruta { padding:7px 0; border-bottom:1px solid var(--line); font-size:13px; }
+  .cal-ruta:last-child { border-bottom:none; }
+  @media (max-width:720px) {
+    .cal-dia { min-height:62px; padding:4px 5px; }
+    .cal-ev { font-size:9px; padding:1px 4px; }
+    .cal-num { font-size:11px; }
+  }
+
   /* Buscar dentro de los comentarios */
   /* Barra de pagos seleccionados */
   .pagos-barra { display:flex; align-items:center; gap:14px; flex-wrap:wrap;
@@ -359,6 +407,54 @@
     font-size:13px; line-height:1.6; }
   .li-pago-res .k { font-size:11px; color:var(--muted); text-transform:uppercase;
     letter-spacing:.5px; }
+  /* Calendario de logística */
+  .cal-nav { display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
+  .cal-nav b { font-size:16px; color:var(--accent-ink); min-width:150px; }
+  .cal-pill { display:inline-block; padding:1px 8px; border-radius:20px; font-size:10.5px;
+    margin-left:4px; }
+  .cal-pill.entrega { background:var(--paper); color:var(--accent-ink); }
+  .cal-pill.recol { background:#EDE9F5; color:#4A3B7A; }
+  .cal-pill.vencida { background:var(--danger-bg); color:var(--danger); }
+  .cal-pill.listo { background:var(--success-bg); color:var(--success); }
+  .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; margin-bottom:18px; }
+  .cal-dow { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.6px;
+    text-align:center; padding-bottom:4px; }
+  .cal-dia { background:var(--surface); border:1px solid var(--line); border-radius:10px;
+    min-height:86px; padding:6px 7px; cursor:pointer; transition:border-color .15s; overflow:hidden; }
+  .cal-dia:hover { border-color:var(--accent-ink); }
+  .cal-dia.vacio { background:transparent; border-color:transparent; cursor:default; }
+  .cal-dia.hoy { border:2px solid var(--accent-ink); }
+  .cal-num { display:flex; align-items:center; justify-content:space-between;
+    font-size:13px; font-weight:600; color:var(--ink); margin-bottom:4px; }
+  .cal-cnt { background:var(--accent-ink); color:#fff; border-radius:20px; min-width:17px;
+    height:17px; font-size:10px; display:flex; align-items:center; justify-content:center; padding:0 4px; }
+  .cal-ev { font-size:10.5px; border-radius:5px; padding:2px 6px; margin-bottom:3px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; border-left:3px solid; }
+  .cal-ev.entrega { background:var(--paper); color:var(--accent-ink); border-color:var(--accent-ink); }
+  .cal-ev.recol { background:#EDE9F5; color:#4A3B7A; border-color:#4A3B7A; }
+  .cal-ev.vencida { background:var(--danger-bg); color:var(--danger); border-color:var(--danger); }
+  .cal-ev.listo { background:var(--success-bg); color:var(--success); border-color:var(--success); }
+  .cal-mas { font-size:10px; color:var(--muted); padding-left:4px; }
+  .cal-detalle { background:var(--surface); border:1px solid var(--line); border-radius:12px;
+    padding:16px 18px; margin-bottom:18px; }
+  .cal-tarj { border-left:3px solid var(--accent-ink); background:var(--paper);
+    border-radius:8px; padding:10px 14px; margin-bottom:10px; }
+  .cal-tarj.recol { border-color:#4A3B7A; }
+  .cal-tarj.vencida { border-color:var(--danger); background:var(--danger-bg); }
+  .cal-tarj.listo { border-color:var(--success); opacity:.75; }
+  .cal-tarj-t { font-size:14px; margin-bottom:3px; }
+  .cal-tarj .s { font-size:12.5px; }
+  .cal-tarj-btns { display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; }
+  .cal-rutas { background:var(--surface); border:1px solid var(--line); border-radius:12px;
+    padding:14px 18px; margin-bottom:16px; }
+  .cal-ruta { padding:7px 0; border-bottom:1px solid var(--line); font-size:13px; }
+  .cal-ruta:last-child { border-bottom:none; }
+  @media (max-width:720px) {
+    .cal-dia { min-height:62px; padding:4px 5px; }
+    .cal-ev { font-size:9px; padding:1px 4px; }
+    .cal-num { font-size:11px; }
+  }
+
   /* Buscar dentro de los comentarios */
   /* Barra de pagos seleccionados */
   .pagos-barra { display:flex; align-items:center; gap:14px; flex-wrap:wrap;
@@ -684,6 +780,54 @@
     font-size:13px; line-height:1.6; }
   .li-pago-res .k { font-size:11px; color:var(--muted); text-transform:uppercase;
     letter-spacing:.5px; }
+  /* Calendario de logística */
+  .cal-nav { display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
+  .cal-nav b { font-size:16px; color:var(--accent-ink); min-width:150px; }
+  .cal-pill { display:inline-block; padding:1px 8px; border-radius:20px; font-size:10.5px;
+    margin-left:4px; }
+  .cal-pill.entrega { background:var(--paper); color:var(--accent-ink); }
+  .cal-pill.recol { background:#EDE9F5; color:#4A3B7A; }
+  .cal-pill.vencida { background:var(--danger-bg); color:var(--danger); }
+  .cal-pill.listo { background:var(--success-bg); color:var(--success); }
+  .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; margin-bottom:18px; }
+  .cal-dow { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.6px;
+    text-align:center; padding-bottom:4px; }
+  .cal-dia { background:var(--surface); border:1px solid var(--line); border-radius:10px;
+    min-height:86px; padding:6px 7px; cursor:pointer; transition:border-color .15s; overflow:hidden; }
+  .cal-dia:hover { border-color:var(--accent-ink); }
+  .cal-dia.vacio { background:transparent; border-color:transparent; cursor:default; }
+  .cal-dia.hoy { border:2px solid var(--accent-ink); }
+  .cal-num { display:flex; align-items:center; justify-content:space-between;
+    font-size:13px; font-weight:600; color:var(--ink); margin-bottom:4px; }
+  .cal-cnt { background:var(--accent-ink); color:#fff; border-radius:20px; min-width:17px;
+    height:17px; font-size:10px; display:flex; align-items:center; justify-content:center; padding:0 4px; }
+  .cal-ev { font-size:10.5px; border-radius:5px; padding:2px 6px; margin-bottom:3px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; border-left:3px solid; }
+  .cal-ev.entrega { background:var(--paper); color:var(--accent-ink); border-color:var(--accent-ink); }
+  .cal-ev.recol { background:#EDE9F5; color:#4A3B7A; border-color:#4A3B7A; }
+  .cal-ev.vencida { background:var(--danger-bg); color:var(--danger); border-color:var(--danger); }
+  .cal-ev.listo { background:var(--success-bg); color:var(--success); border-color:var(--success); }
+  .cal-mas { font-size:10px; color:var(--muted); padding-left:4px; }
+  .cal-detalle { background:var(--surface); border:1px solid var(--line); border-radius:12px;
+    padding:16px 18px; margin-bottom:18px; }
+  .cal-tarj { border-left:3px solid var(--accent-ink); background:var(--paper);
+    border-radius:8px; padding:10px 14px; margin-bottom:10px; }
+  .cal-tarj.recol { border-color:#4A3B7A; }
+  .cal-tarj.vencida { border-color:var(--danger); background:var(--danger-bg); }
+  .cal-tarj.listo { border-color:var(--success); opacity:.75; }
+  .cal-tarj-t { font-size:14px; margin-bottom:3px; }
+  .cal-tarj .s { font-size:12.5px; }
+  .cal-tarj-btns { display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; }
+  .cal-rutas { background:var(--surface); border:1px solid var(--line); border-radius:12px;
+    padding:14px 18px; margin-bottom:16px; }
+  .cal-ruta { padding:7px 0; border-bottom:1px solid var(--line); font-size:13px; }
+  .cal-ruta:last-child { border-bottom:none; }
+  @media (max-width:720px) {
+    .cal-dia { min-height:62px; padding:4px 5px; }
+    .cal-ev { font-size:9px; padding:1px 4px; }
+    .cal-num { font-size:11px; }
+  }
+
   /* Buscar dentro de los comentarios */
   /* Barra de pagos seleccionados */
   .pagos-barra { display:flex; align-items:center; gap:14px; flex-wrap:wrap;
@@ -806,7 +950,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-219</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-221</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1014,6 +1158,7 @@
     grid:'<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>',
     cart:'<circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>',
     factory:'<path d="M2 20h20"/><path d="M4 20V10l5 3V10l5 3V7l5 3v10"/>',
+    truck:'<rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>',
     box:'<path d="M12 2l9 5v10l-9 5-9-5V7z"/><path d="M3.3 7L12 12l8.7-5"/><path d="M12 22V12"/>',
     tag:'<path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/>',
     dollar:'<line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>',
@@ -1085,7 +1230,7 @@
     fin_cxc:             'Saldos por cobrar de cada pedido.',
     fin_ingresos:        'Cobros recibidos, ligados al folio del pedido.'
   };
-  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'fac_control', 'cfdi_control', 'cfdi_prov', 'prov_razon', 'rh_resumen', 'fin_gastos_op', 'fin_efectivo', 'fac_impuestos', 'pagos_pedidos',
+  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'fac_control', 'cfdi_control', 'cfdi_prov', 'prov_razon', 'rh_resumen', 'fin_gastos_op', 'fin_efectivo', 'fac_impuestos', 'pagos_pedidos', 'log_calendario',
     // El stock sale de pedidos, entradas y salidas: se recalcula, no se edita
     'op_stock', 'op_revisar', 'prov_revision'];
   function esLector() {
@@ -3592,7 +3737,201 @@
       });
   }
 
+  // ===== Calendario de logística =====
+  var logMes = null, logAnio = null, logDiaAbierto = null;
+  function loadLogistica() {
+    var hoy = new Date();
+    if (logMes === null) { logMes = hoy.getMonth() + 1; logAnio = hoy.getFullYear(); }
+    document.getElementById('tableWrap').innerHTML =
+      '<div class="state" style="padding:50px 0">Armando el calendario…</div>';
+    document.getElementById('summary').innerHTML = '';
+    mostrarAlta(false);
+    api('logistica', { token: state.token, mes: logMes, anio: logAnio }).then(function (d) {
+      var t = d.totales || {};
+      var box = document.getElementById('summary');
+      box.style.display = 'flex';
+      box.innerHTML =
+        '<div class="sum-card"><div class="k">Entregas del mes</div><div class="v">' +
+          fmtNum(t.entregasDelMes) + '</div><div class="k" style="text-transform:none">' +
+          fmtNum(t.piezasDelMes) + ' piezas</div></div>' +
+        '<div class="sum-card"><div class="k">Recolecciones</div><div class="v">' +
+          fmtNum(t.recoleccionesDelMes) + '</div></div>' +
+        (t.vencidas ? '<div class="sum-card"><div class="k">Ya pasaron su fecha</div>' +
+          '<div class="v" style="color:var(--danger)">' + fmtNum(t.vencidas) + '</div></div>' : '');
+
+      var h = '';
+      // Navegación del mes
+      h += '<div class="cal-nav">' +
+        '<button type="button" class="row-btn" id="calPrev">◂</button>' +
+        '<b>' + esc(d.nombreMes.charAt(0).toUpperCase() + d.nombreMes.slice(1)) + ' ' + d.anio + '</b>' +
+        '<button type="button" class="row-btn" id="calNext">▸</button>' +
+        '<button type="button" class="row-btn" id="calHoy">Hoy</button>' +
+        '<span class="s" style="color:var(--muted);margin-left:auto">' +
+        '<span class="cal-pill entrega">entrega</span> ' +
+        '<span class="cal-pill recol">recoger en proveedor</span> ' +
+        '<span class="cal-pill vencida">se pasó la fecha</span></span></div>';
+
+      // Rutas que conviene juntar
+      if ((d.sugerencias || []).length) {
+        h += '<div class="cal-rutas">' +
+          '<div class="g-titulo" style="margin-bottom:8px">Se pueden juntar en una vuelta</div>' +
+          d.sugerencias.slice(0, 5).map(function (r) {
+            return '<div class="cal-ruta"><div><b>' + esc(r.zona) + '</b> · ' +
+              fmtNum(r.n) + ' entregas · ' + fmtNum(r.piezas) + ' piezas' +
+              '<div class="s" style="color:var(--muted);margin-top:2px">' +
+              esc(r.folios.map(function (f) {
+                return f.folio + ' (' + (f.dia % 100) + ')'; }).join(' · ')) + '</div></div></div>';
+          }).join('') + '</div>';
+      }
+
+      // La rejilla del mes
+      var primero = new Date(d.anio, d.mes - 1, 1);
+      var arranque = (primero.getDay() + 6) % 7;          // lunes = 0
+      var ultimo = new Date(d.anio, d.mes, 0).getDate();
+      h += '<div class="cal-grid">' +
+        ['LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB', 'DOM'].map(function (x) {
+          return '<div class="cal-dow">' + x + '</div>'; }).join('');
+      for (var i = 0; i < arranque; i++) h += '<div class="cal-dia vacio"></div>';
+      for (var dia = 1; dia <= ultimo; dia++) {
+        var evs = (d.dias || {})[dia] || [];
+        var esHoy = (d.anio * 10000 + d.mes * 100 + dia) === d.hoy;
+        h += '<div class="cal-dia' + (esHoy ? ' hoy' : '') + '" data-dia="' + dia + '">' +
+          '<div class="cal-num">' + dia +
+            (evs.length ? '<span class="cal-cnt">' + evs.length + '</span>' : '') + '</div>';
+        evs.slice(0, 3).forEach(function (e) {
+          var clase = e.tipo === 'recoleccion' ? 'recol' : (e.vencida ? 'vencida' : 'entrega');
+          if (e.entregado) clase = 'listo';
+          var etq = e.tipo === 'recoleccion'
+            ? (e.proveedor || e.pedido)
+            : (e.cliente || e.folio);
+          h += '<div class="cal-ev ' + clase + '" title="' + esc(etq) + '">' +
+            (e.entregado ? '✓ ' : '') + esc(etq) + '</div>';
+        });
+        if (evs.length > 3) h += '<div class="cal-mas">+' + (evs.length - 3) + ' más</div>';
+        h += '</div>';
+      }
+      h += '</div>';
+
+      // El detalle del día que se abra
+      if (logDiaAbierto && (d.dias || {})[logDiaAbierto]) {
+        h += detalleDelDia(logDiaAbierto, d.dias[logDiaAbierto], d);
+      }
+      // Lo que ya se pasó de fecha
+      if ((d.vencidas || []).length) {
+        h += '<h3 class="sec-t">Ya pasaron su fecha y siguen sin entregarse</h3>' +
+          '<table class="mini-table"><thead><tr><th>Folio</th><th>Cliente</th><th>Zona</th>' +
+          '<th>Era para</th><th style="text-align:right">Piezas</th><th></th></tr></thead><tbody>' +
+          d.vencidas.map(function (e) {
+            return '<tr style="background:var(--danger-bg)"><td><b>' + esc(e.folio) + '</b></td>' +
+              '<td>' + esc(e.cliente) + '</td><td class="s">' + esc(e.zona) + '</td>' +
+              '<td>' + esc(formatDateCell(e.fecha)) + '</td>' +
+              '<td class="num">' + fmtNum(e.piezas) + '</td>' +
+              '<td><button type="button" class="row-btn primary log-entregar" data-folio="' +
+                esc(e.folio).replace(/"/g, '&quot;') + '">Ya se entregó</button></td></tr>';
+          }).join('') + '</tbody></table>';
+      }
+      document.getElementById('tableWrap').innerHTML = h;
+      document.getElementById('count').textContent =
+        fmtNum(t.entregasDelMes + t.recoleccionesDelMes) + ' movimientos';
+      engancharCalendario(d);
+    }).catch(function (e) {
+      document.getElementById('tableWrap').innerHTML =
+        '<div class="state">' + esc((e && e.message) || 'No se pudo armar el calendario.') + '</div>';
+    });
+  }
+  function detalleDelDia(dia, evs, d) {
+    return '<div class="cal-detalle"><h3 class="sec-t" style="margin-top:0">' +
+      dia + ' de ' + esc(d.nombreMes) + '</h3>' +
+      evs.map(function (e) {
+        if (e.tipo === 'recoleccion') {
+          return '<div class="cal-tarj recol"><div class="cal-tarj-t">' +
+            '<b>Recoger en ' + esc(e.proveedor) + '</b>' +
+            '<span class="s" style="color:var(--muted)"> · ' + esc(e.pedido) + ' · ' +
+            fmtNum(e.piezas) + ' piezas</span></div>' +
+            '<div class="s">' + esc(e.muebles.map(function (m) {
+              return m.cantidad + ' ' + m.producto; }).join(' · ')) + '</div>' +
+            ((e.paraFolios || []).length
+              ? '<div class="s" style="color:var(--muted);margin-top:4px">Va para ' +
+                esc(e.paraFolios.join(', ')) + '</div>' : '') +
+            '</div>';
+        }
+        return '<div class="cal-tarj' + (e.entregado ? ' listo' : (e.vencida ? ' vencida' : '')) + '">' +
+          '<div class="cal-tarj-t"><b>' + esc(e.folio) + ' · ' + esc(e.cliente) + '</b>' +
+            (e.despacho ? '<span class="s" style="color:var(--muted)"> · ' + esc(e.despacho) + '</span>' : '') +
+            (e.entregado ? '<span class="cal-pill listo">entregado ' +
+              esc(formatDateCell(e.fechaReal)) + '</span>' : '') +
+            (e.revisado ? '<span class="cal-pill listo">revisado</span>' : '') +
+          '</div>' +
+          (e.direccion ? '<div class="s">' + esc(e.direccion) +
+            ' <span style="color:var(--muted)">· ' + esc(e.zona) + '</span></div>' : '') +
+          (e.telefono ? '<div class="s"><a href="tel:' + esc(e.telefono) + '">' +
+            esc(e.telefono) + '</a></div>' : '') +
+          '<div class="s" style="margin-top:4px">' + esc(e.muebles.map(function (m) {
+            return m.cantidad + ' ' + m.producto + (m.material ? ' (' + m.material + ')' : ''); })
+            .join(' · ')) + '</div>' +
+          (e.comentario ? '<div class="s" style="background:var(--paper);border-radius:6px;' +
+            'padding:6px 10px;margin-top:6px">' + esc(e.comentario) + '</div>' : '') +
+          '<div class="cal-tarj-btns">' +
+            (e.entregado ? '' :
+              '<button type="button" class="row-btn primary log-entregar" data-folio="' +
+                esc(e.folio).replace(/"/g, '&quot;') + '">Ya se entregó</button>' +
+              (e.revisado ? '' : '<button type="button" class="row-btn log-revisar" data-folio="' +
+                esc(e.folio).replace(/"/g, '&quot;') + '">Marcar revisado</button>')) +
+            '<button type="button" class="row-btn log-comentar" data-folio="' +
+              esc(e.folio).replace(/"/g, '&quot;') + '">Comentario</button>' +
+          '</div></div>';
+      }).join('') + '</div>';
+  }
+  function engancharCalendario(d) {
+    var ir = function (m, a) { logMes = m; logAnio = a; logDiaAbierto = null; loadLogistica(); };
+    var p = document.getElementById('calPrev');
+    if (p) p.addEventListener('click', function () {
+      var m = logMes - 1, a = logAnio;
+      if (m < 1) { m = 12; a--; }
+      ir(m, a);
+    });
+    var n = document.getElementById('calNext');
+    if (n) n.addEventListener('click', function () {
+      var m = logMes + 1, a = logAnio;
+      if (m > 12) { m = 1; a++; }
+      ir(m, a);
+    });
+    var hb = document.getElementById('calHoy');
+    if (hb) hb.addEventListener('click', function () {
+      var x = new Date(); ir(x.getMonth() + 1, x.getFullYear());
+    });
+    document.querySelectorAll('.cal-dia[data-dia]').forEach(function (c) {
+      c.addEventListener('click', function () {
+        var dia = parseInt(c.getAttribute('data-dia'), 10);
+        logDiaAbierto = (logDiaAbierto === dia) ? null : dia;
+        loadLogistica();
+      });
+    });
+    var marcar = function (clase, accion, pedirTexto) {
+      document.querySelectorAll('.' + clase).forEach(function (b) {
+        b.addEventListener('click', function (ev) {
+          ev.stopPropagation();
+          var folio = b.getAttribute('data-folio');
+          var extra = {};
+          if (pedirTexto) {
+            var t = prompt('Comentario para ' + folio + ':');
+            if (!t) return;
+            extra.comentario = t;
+          }
+          b.disabled = true;
+          api('logistica', Object.assign({ token: state.token, marcar: accion, folio: folio }, extra))
+            .then(function (o) { toast(o.mensaje || 'Listo.', 'ok'); loadLogistica(); })
+            .catch(function (e) { fail(e); b.disabled = false; });
+        });
+      });
+    };
+    marcar('log-entregar', 'entregado');
+    marcar('log-revisar', 'revisado');
+    marcar('log-comentar', 'comentario', true);
+  }
+
   function loadArea() {
+    if (state.key === 'log_calendario') return loadLogistica();
     if (state.key === 'pagos_pedidos') return loadPagos();
     if (state.key === 'fac_impuestos') return loadImpuestos();
     if (state.key === 'fin_efectivo') return loadEfectivo();
@@ -9605,7 +9944,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-219';
+    var mia = '2026.08.11-221';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {

@@ -55,6 +55,8 @@ const RUTAS = {
   cierre:         require('../lib/handlers/cierre'),
   config:         require('../lib/handlers/config'),
   pagos:          require('../lib/handlers/pagos'),
+  logistica:      require('../lib/handlers/logistica'),
+  logistica:      require('../lib/handlers/logistica'),
   'efe-traza':    require('../lib/handlers/efe-traza')
 };
 
