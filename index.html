@@ -315,6 +315,13 @@
   .li-pago-res .k { font-size:11px; color:var(--muted); text-transform:uppercase;
     letter-spacing:.5px; }
   /* Buscar dentro de los comentarios */
+  /* Barra de pagos seleccionados */
+  .pagos-barra { display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+    padding:10px 16px; border-radius:10px; background:var(--paper); margin-bottom:14px;
+    font-size:13px; }
+  .pagos-barra.on { background:var(--accent-ink); color:#fff; }
+  .pagos-barra.on b { color:#fff; }
+  .pagos-barra .row-btn { background:rgba(255,255,255,.15); color:#fff; border:0; }
   .busca-com { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
   .busca-com input { flex:1; min-width:230px; max-width:380px; padding:8px 12px;
     border:1px solid var(--line); border-radius:9px; font-size:14px; }
@@ -353,6 +360,13 @@
   .li-pago-res .k { font-size:11px; color:var(--muted); text-transform:uppercase;
     letter-spacing:.5px; }
   /* Buscar dentro de los comentarios */
+  /* Barra de pagos seleccionados */
+  .pagos-barra { display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+    padding:10px 16px; border-radius:10px; background:var(--paper); margin-bottom:14px;
+    font-size:13px; }
+  .pagos-barra.on { background:var(--accent-ink); color:#fff; }
+  .pagos-barra.on b { color:#fff; }
+  .pagos-barra .row-btn { background:rgba(255,255,255,.15); color:#fff; border:0; }
   .busca-com { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
   .busca-com input { flex:1; min-width:230px; max-width:380px; padding:8px 12px;
     border:1px solid var(--line); border-radius:9px; font-size:14px; }
@@ -671,6 +685,13 @@
   .li-pago-res .k { font-size:11px; color:var(--muted); text-transform:uppercase;
     letter-spacing:.5px; }
   /* Buscar dentro de los comentarios */
+  /* Barra de pagos seleccionados */
+  .pagos-barra { display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+    padding:10px 16px; border-radius:10px; background:var(--paper); margin-bottom:14px;
+    font-size:13px; }
+  .pagos-barra.on { background:var(--accent-ink); color:#fff; }
+  .pagos-barra.on b { color:#fff; }
+  .pagos-barra .row-btn { background:rgba(255,255,255,.15); color:#fff; border:0; }
   .busca-com { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
   .busca-com input { flex:1; min-width:230px; max-width:380px; padding:8px 12px;
     border:1px solid var(--line); border-radius:9px; font-size:14px; }
@@ -785,7 +806,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-217</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-219</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1064,7 +1085,9 @@
     fin_cxc:             'Saldos por cobrar de cada pedido.',
     fin_ingresos:        'Cobros recibidos, ligados al folio del pedido.'
   };
-  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'fac_control', 'cfdi_control', 'cfdi_prov', 'prov_razon', 'rh_resumen', 'fin_gastos_op', 'fin_efectivo', 'fac_impuestos'];
+  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'fac_control', 'cfdi_control', 'cfdi_prov', 'prov_razon', 'rh_resumen', 'fin_gastos_op', 'fin_efectivo', 'fac_impuestos', 'pagos_pedidos',
+    // El stock sale de pedidos, entradas y salidas: se recalcula, no se edita
+    'op_stock', 'op_revisar', 'prov_revision'];
   function esLector() {
     return state.rol === 'lector' || state.rol === 'viewer' || state.rol === 'lectura';
   }
@@ -3384,7 +3407,193 @@
     });
   }
 
+  // ===== Pagos por hacer: Nico solicita, se palomea al pagar =====
+  var pagosSel = {}, pagosVista = 'pendientes';
+  function loadPagos() {
+    document.getElementById('tableWrap').innerHTML =
+      '<div class="state" style="padding:50px 0">Leyendo los pagos solicitados…</div>';
+    document.getElementById('summary').innerHTML = '';
+    mostrarAlta(false);
+    api('pagos', { token: state.token }).then(function (d) {
+      var t = d.totales || {};
+      var box = document.getElementById('summary');
+      box.style.display = 'flex';
+      box.innerHTML =
+        '<div class="sum-card"><div class="k">Por pagar</div><div class="v">' +
+          esc(formatMoney(t.montoPendiente)) + '</div>' +
+          '<div class="k" style="text-transform:none;letter-spacing:0">' +
+          fmtNum(t.pendientes) + ' pagos a ' + fmtNum(t.proveedores) + ' proveedores</div></div>' +
+        (t.vencidos ? '<div class="sum-card"><div class="k">Vencidos</div>' +
+          '<div class="v" style="color:var(--danger)">' + fmtNum(t.vencidos) + '</div>' +
+          '<div class="k" style="text-transform:none;letter-spacing:0">ya pasó la fecha</div></div>' : '') +
+        (t.urgentes ? '<div class="sum-card"><div class="k">Urgentes</div>' +
+          '<div class="v" style="color:var(--amber)">' + fmtNum(t.urgentes) + '</div></div>' : '') +
+        '<div class="sum-card"><div class="k">Pagados este mes</div><div class="v">' +
+          fmtNum(t.pagadosEsteMes) + '</div></div>';
+
+      var h = '<div class="mes-chips">' +
+        '<button type="button" class="mes-chip' + (pagosVista === 'pendientes' ? ' on' : '') +
+          '" data-pagv="pendientes">Por pagar (' + fmtNum(t.pendientes) + ')</button>' +
+        '<button type="button" class="mes-chip' + (pagosVista === 'pagados' ? ' on' : '') +
+          '" data-pagv="pagados">Ya pagados</button>' +
+        '</div>';
+
+      if (pagosVista === 'pagados') {
+        var L = d.pagadosRecientes || [];
+        h += !L.length ? '<div class="state">Nada pagado todavía.</div>' :
+          '<table class="mini-table"><thead><tr><th>Pagado el</th><th>Proveedor</th>' +
+          '<th>Pedido</th><th>Concepto</th><th style="text-align:right">Monto</th>' +
+          '<th>Quién</th></tr></thead><tbody>' +
+          L.map(function (p) {
+            return '<tr><td>' + esc(formatDateCell(p.fechaPago || p.fecha)) + '</td>' +
+              '<td><b>' + esc(p.proveedor) + '</b></td>' +
+              '<td>' + esc(p.pedido) + '</td>' +
+              '<td class="s">' + esc((p.concepto || p.descripcion || '').slice(0, 40)) + '</td>' +
+              '<td class="num">' + esc(formatMoney(p.monto)) + '</td>' +
+              '<td class="s">' + esc(p.quienPago) + '</td></tr>';
+          }).join('') + '</tbody></table>';
+      } else if (!(d.grupos || []).length) {
+        h += '<div class="state" style="padding:40px 0">No hay pagos pendientes.</div>';
+      } else {
+        // Barra de acción: cuántos seleccionados y el botón de marcar
+        h += '<div id="pagosBarra" class="pagos-barra"></div>';
+        h += '<div class="cot-grid">';
+        d.grupos.forEach(function (g) {
+          h += '<div class="cot-card open">' +
+            '<div class="cot-head" style="cursor:default">' +
+              '<div class="cot-info"><div class="cot-folio">' + esc(g.proveedor) +
+                (g.vencidos ? ' <span style="background:var(--danger-bg);color:var(--danger);' +
+                  'padding:1px 8px;border-radius:20px;font-size:11px">' + fmtNum(g.vencidos) +
+                  ' vencido' + (g.vencidos === 1 ? '' : 's') + '</span>' : '') +
+              '</div>' +
+              '<div class="cot-sub">' + fmtNum(g.n) + ' pago' + (g.n === 1 ? '' : 's') +
+              ' solicitado' + (g.n === 1 ? '' : 's') + '</div></div>' +
+              '<div class="prov-cifras"><div><span class="k">Total a pagar</span><b>' +
+                esc(formatMoney(g.total)) + '</b></div></div>' +
+              '<button type="button" class="row-btn primary todo-prov" data-prov="' +
+                esc(g.proveedor).replace(/"/g, '&quot;') + '">Marcar todo</button>' +
+            '</div>' +
+            '<div class="cot-body"><table class="mini-table"><thead><tr>' +
+            '<th style="width:36px"></th><th>Solicitado</th><th>Pedido</th><th>Concepto</th>' +
+            '<th>Para cuándo</th><th style="text-align:right">Monto</th></tr></thead><tbody>' +
+            g.pagos.map(function (p) {
+              return '<tr' + (p.vencido ? ' style="background:var(--danger-bg)"' : '') + '>' +
+                '<td><input type="checkbox" class="pago-chk" data-fila="' + p.fila +
+                  '" data-monto="' + p.monto + '"' + (pagosSel[p.fila] ? ' checked' : '') + '></td>' +
+                '<td>' + esc(formatDateCell(p.fecha)) + '</td>' +
+                '<td>' + esc(p.pedido) + '</td>' +
+                '<td title="' + esc(p.descripcion || '') + '">' +
+                  esc((p.concepto || p.descripcion || '').slice(0, 44)) +
+                  (p.comentarios ? '<div class="s" style="color:var(--muted)">' +
+                    esc(p.comentarios.slice(0, 50)) + '</div>' : '') + '</td>' +
+                '<td' + (p.vencido ? ' style="color:var(--danger)"' : '') + '>' +
+                  esc(p.paraCuando ? formatDateCell(p.paraCuando) : '') +
+                  (p.urgencia ? ' <span class="s" style="color:var(--amber)">' +
+                    esc(p.urgencia) + '</span>' : '') + '</td>' +
+                '<td class="num"><b>' + esc(formatMoney(p.monto)) + '</b></td></tr>';
+            }).join('') + '</tbody></table></div></div>';
+        });
+        h += '</div>';
+      }
+      document.getElementById('tableWrap').innerHTML = h;
+      document.getElementById('count').textContent = fmtNum(t.pendientes) + ' por pagar';
+      pagosDatos = d;
+      document.querySelectorAll('#tableWrap [data-pagv]').forEach(function (b) {
+        b.addEventListener('click', function () { pagosVista = b.getAttribute('data-pagv'); loadPagos(); });
+      });
+      document.querySelectorAll('#tableWrap .pago-chk').forEach(function (c) {
+        c.addEventListener('change', function () {
+          var f = c.getAttribute('data-fila');
+          if (c.checked) pagosSel[f] = parseFloat(c.getAttribute('data-monto')) || 0;
+          else delete pagosSel[f];
+          pintarBarraPagos();
+        });
+      });
+      document.querySelectorAll('#tableWrap .todo-prov').forEach(function (b) {
+        b.addEventListener('click', function () {
+          var prov = b.getAttribute('data-prov');
+          var g = (pagosDatos.grupos || []).filter(function (x) { return x.proveedor === prov; })[0];
+          if (!g) return;
+          var todosPuestos = g.pagos.every(function (p) { return pagosSel[p.fila]; });
+          g.pagos.forEach(function (p) {
+            if (todosPuestos) delete pagosSel[p.fila]; else pagosSel[p.fila] = p.monto;
+          });
+          loadPagos();
+        });
+      });
+      pintarBarraPagos();
+    }).catch(function (e) {
+      document.getElementById('tableWrap').innerHTML =
+        '<div class="state">' + esc((e && e.message) || 'No se pudieron leer los pagos.') + '</div>';
+    });
+  }
+  var pagosDatos = null;
+  function pintarBarraPagos() {
+    var caja = document.getElementById('pagosBarra');
+    if (!caja) return;
+    var filas = Object.keys(pagosSel);
+    if (!filas.length) {
+      caja.innerHTML = '<span class="s" style="color:var(--muted)">' +
+        'Palomea los pagos que ya hiciste y márcalos. No pasan a EGRESOS: eso se sigue ' +
+        'haciendo al conciliar contra el banco.</span>';
+      caja.classList.remove('on');
+      return;
+    }
+    var total = filas.reduce(function (a, f) { return a + pagosSel[f]; }, 0);
+    caja.classList.add('on');
+    caja.innerHTML = '<b>' + fmtNum(filas.length) + ' pago' + (filas.length === 1 ? '' : 's') +
+      ' seleccionado' + (filas.length === 1 ? '' : 's') + '</b>' +
+      '<span>Total <b>' + esc(formatMoney(total)) + '</b></span>' +
+      '<button type="button" class="primary" id="marcarPagados">Marcar como pagados</button>' +
+      '<button type="button" class="row-btn" id="quitarSel">Quitar selección</button>';
+    document.getElementById('marcarPagados').addEventListener('click', marcarComoPagados);
+    document.getElementById('quitarSel').addEventListener('click', function () {
+      pagosSel = {}; loadPagos();
+    });
+  }
+  function marcarComoPagados() {
+    var filas = Object.keys(pagosSel).map(Number);
+    if (!filas.length) return;
+    var hoy = new Date();
+    var iso = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0') + '-' +
+              String(hoy.getDate()).padStart(2, '0');
+    document.getElementById('aventaTitulo').textContent =
+      'Marcar ' + filas.length + ' pago' + (filas.length === 1 ? '' : 's');
+    document.getElementById('aventaCuerpo').innerHTML =
+      '<div class="form-grid">' +
+        '<div class="fld"><label>¿Qué día se pagó?</label>' +
+          '<input type="date" id="pgFecha" value="' + iso + '"></div>' +
+        '<div class="fld"><label>Desde qué cuenta</label>' +
+          '<input id="pgCuenta" list="pgCuentas" placeholder="BBVA"></div>' +
+      '</div>' +
+      '<datalist id="pgCuentas"><option value="BBVA"><option value="Efectivo">' +
+      '<option value="Santander"></datalist>' +
+      '<div class="s" style="color:var(--muted);margin-top:10px">Se marca como pagado con su ' +
+      'fecha. <b>No pasa a EGRESOS</b>: eso se hace al conciliar contra el banco, como hoy.</div>';
+    document.getElementById('aventaOk').textContent = 'Confirmar';
+    document.getElementById('aventaModal').classList.add('on');
+  }
+  function confirmarPagados() {
+    var filas = Object.keys(pagosSel).map(Number);
+    var f = document.getElementById('pgFecha');
+    var btn = document.getElementById('aventaOk');
+    btn.disabled = true; btn.textContent = 'Marcando...';
+    api('pagos', { token: state.token, marcarPagado: 1, filas: filas,
+                   fecha: f && f.value ? isoToLargo(f.value) : '',
+                   cuenta: document.getElementById('pgCuenta').value,
+                   quien: state.nombre || '' })
+      .then(function (o) {
+        toast(o.mensaje || 'Listo.', 'ok');
+        pagosSel = {};
+        cerrarMandarAVenta();
+        loadPagos();
+      }).catch(fail).then(function () {
+        btn.disabled = false; btn.textContent = 'Confirmar';
+      });
+  }
+
   function loadArea() {
+    if (state.key === 'pagos_pedidos') return loadPagos();
     if (state.key === 'fac_impuestos') return loadImpuestos();
     if (state.key === 'fin_efectivo') return loadEfectivo();
     if (state.key === 'fin_gastos_op') return loadGastosOp();
@@ -4285,7 +4494,14 @@
     var box = document.getElementById('summary');
     if (!state.headers.length) { box.innerHTML = ''; return; }
     if (state.key === 'cotizaciones') { box.style.display = 'block'; box.innerHTML = resumenCotizaciones(rows); return; }
-    if (state.key === 'op_stock') { box.style.display = 'flex'; box.innerHTML = resumenStock(rows); return; }
+    if (state.key === 'op_stock') {
+      box.style.display = 'block';
+      box.innerHTML = resumenStock(rows) +
+        '<div class="s" style="color:var(--muted);margin-top:10px">' +
+        'El stock no se captura: sale de restar las salidas a las entradas de cada mueble. ' +
+        'Si algo no cuadra, se corrige en Entradas o en Salidas y se recalcula.</div>';
+      return;
+    }
     if (state.key === 'prov_revision') {
       box.style.display = 'block';
       box.innerHTML = resumenRevision(rows);
@@ -9389,7 +9605,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-217';
+    var mia = '2026.08.11-219';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
@@ -9423,6 +9639,7 @@
   document.getElementById('aventaClose').addEventListener('click', cerrarMandarAVenta);
   document.getElementById('aventaCancel').addEventListener('click', cerrarMandarAVenta);
   document.getElementById('aventaOk').addEventListener('click', function () {
+    if (document.getElementById('pgFecha')) { confirmarPagados(); return; }
     if (document.getElementById('pnNombre')) { guardarProductoNuevo(); return; }
     if (document.getElementById('ciMes')) {
       if (cierrePdf) { bajarPdf(cierrePdf.pdf, cierrePdf.nombre); return; }
