@@ -314,6 +314,11 @@
     font-size:13px; line-height:1.6; }
   .li-pago-res .k { font-size:11px; color:var(--muted); text-transform:uppercase;
     letter-spacing:.5px; }
+  /* Buscar dentro de los comentarios */
+  .busca-com { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+  .busca-com input { flex:1; min-width:230px; max-width:380px; padding:8px 12px;
+    border:1px solid var(--line); border-radius:9px; font-size:14px; }
+  .busca-com .pal-chip .s { color:var(--muted); font-size:11px; }
   .form-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:14px; }
   .form-grid .fld { display:flex; flex-direction:column; gap:5px; }
   .form-grid label { font-size:13px; color:var(--slate); font-weight:600; }
@@ -347,6 +352,11 @@
     font-size:13px; line-height:1.6; }
   .li-pago-res .k { font-size:11px; color:var(--muted); text-transform:uppercase;
     letter-spacing:.5px; }
+  /* Buscar dentro de los comentarios */
+  .busca-com { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+  .busca-com input { flex:1; min-width:230px; max-width:380px; padding:8px 12px;
+    border:1px solid var(--line); border-radius:9px; font-size:14px; }
+  .busca-com .pal-chip .s { color:var(--muted); font-size:11px; }
   .form-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
     gap:12px 16px; margin-bottom:6px; }
   .form-grid .fld { margin:0; }
@@ -660,6 +670,11 @@
     font-size:13px; line-height:1.6; }
   .li-pago-res .k { font-size:11px; color:var(--muted); text-transform:uppercase;
     letter-spacing:.5px; }
+  /* Buscar dentro de los comentarios */
+  .busca-com { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+  .busca-com input { flex:1; min-width:230px; max-width:380px; padding:8px 12px;
+    border:1px solid var(--line); border-radius:9px; font-size:14px; }
+  .busca-com .pal-chip .s { color:var(--muted); font-size:11px; }
   .form-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
     gap:12px 16px; margin-bottom:6px; }
   .form-grid .fld { margin:0; }
@@ -770,7 +785,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-216</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-217</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -3693,6 +3708,62 @@
       return true;
     });
   }
+  // Buscar dentro de los comentarios: "sillas", "descuento", lo que sea
+  var buscaComentario = '';
+  function barraDeComentarios() {
+    if (['leads', 'showroom'].indexOf(state.key) === -1) return '';
+    var c = findHeaderByName('Comentarios') || findHeaderByName('Notas') ||
+            findHeaderByName('Observaciones');
+    if (!c) return '';
+    // Las palabras que más se repiten, para ofrecerlas como atajo
+    var palabras = {};
+    var ignorar = ['para', 'pero', 'como', 'este', 'esta', 'esto', 'sobre', 'desde', 'hasta',
+                   'cliente', 'quiere', 'pidio', 'pidió', 'busca', 'nos', 'que', 'con', 'una',
+                   'por', 'los', 'las', 'del', 'sus', 'muy', 'mas', 'más', 'ver', 'dijo'];
+    (state.rows || []).forEach(function (r) {
+      var t = norm(r[c] || '');
+      if (!t) return;
+      t.split(/[^a-záéíóúñ0-9]+/i).forEach(function (p) {
+        if (p.length < 4 || ignorar.indexOf(p) !== -1) return;
+        palabras[p] = (palabras[p] || 0) + 1;
+      });
+    });
+    var top = Object.keys(palabras).filter(function (p) { return palabras[p] >= 2; })
+      .sort(function (a, b) { return palabras[b] - palabras[a]; }).slice(0, 8);
+    return '<div class="busca-com">' +
+      '<input id="buscaComentario" placeholder="Buscar en los comentarios: sillas, descuento…" value="' +
+        esc(buscaComentario) + '">' +
+      (buscaComentario ? '<button type="button" id="limpiaComentario" class="row-btn">Quitar</button>' : '') +
+      (top.length
+        ? '<span class="s" style="color:var(--muted);margin-left:6px">Frecuentes:</span>' +
+          top.map(function (p) {
+            return '<button type="button" class="mes-chip pal-chip' +
+              (norm(buscaComentario) === p ? ' on' : '') + '" data-pal="' + esc(p) + '">' +
+              esc(p) + ' <span class="s">' + palabras[p] + '</span></button>';
+          }).join('')
+        : '') +
+      '</div>';
+  }
+  function engancharBuscaComentario() {
+    var inp = document.getElementById('buscaComentario');
+    if (inp) {
+      var t = null;
+      inp.addEventListener('input', function () {
+        clearTimeout(t);
+        t = setTimeout(function () { buscaComentario = inp.value; renderTable(); }, 350);
+      });
+    }
+    var lim = document.getElementById('limpiaComentario');
+    if (lim) lim.addEventListener('click', function () { buscaComentario = ''; renderTable(); });
+    document.querySelectorAll('.pal-chip').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var p = b.getAttribute('data-pal');
+        buscaComentario = (norm(buscaComentario) === norm(p)) ? '' : p;
+        renderTable();
+      });
+    });
+  }
+
   function renderFilterBar() {
     var bar = document.getElementById('filterBar');
     var canFilter = filterableHeaders().length > 0;
@@ -5862,7 +5933,15 @@
     var rows = sortRows(filteredRows());
     renderSummary(rows);
     document.getElementById('count').textContent = rows.length + (rows.length === 1 ? ' registro' : ' registros');
-    if (!rows.length) { document.getElementById('tableWrap').innerHTML = '<div class="state">Sin registros.</div>'; return; }
+    var barraCom = barraDeComentarios();
+    if (!rows.length) {
+      document.getElementById('tableWrap').innerHTML = barraCom +
+        '<div class="state">' + (buscaComentario
+          ? 'Ningún comentario dice "' + esc(buscaComentario) + '".'
+          : 'Sin registros.') + '</div>';
+      engancharBuscaComentario();
+      return;
+    }
     if (state.key === 'inventario' && catalogoAgrupado) {
       var hc = renderCatalogo(rows);
       if (hc) { document.getElementById('tableWrap').innerHTML = hc; return; }
@@ -6027,7 +6106,9 @@
 
   // Si la hoja usa otro nombre para el mismo dato, aquí se reconoce igual
   var ALIAS_CAMPOS = {
-    'Cómo Llego':               ['Como llego', 'Cómo llegó', 'Forma de Contacto', 'Canal', 'Origen'],
+    'Cómo Llego':               ['Como llego', 'Cómo llegó', 'Cómo llego', 'Como llegó',
+                                 'Forma de Contacto', 'Canal', 'Origen'],
+    'Cómo llegó':               ['Cómo Llego', 'Como llego', 'Como llegó', 'Forma de Contacto'],
     'Línea de Negocio':         ['Linea de Negocio', 'Línea de negocio'],
     'Tipo de Línea de Negocio': ['Tipo de Linea de Negocio', 'Tipo de Línea', 'Tipo de Linea', 'TIPO CLIENTE'],
     'Tipo de Proyecto':         ['Proyecto', 'PROYECTO', 'Tipo de proyecto'],
@@ -6112,6 +6193,10 @@
     }
   };
   function optionsFor(h) {
+    // Si la pestaña Categorías tiene una columna para este campo, ESA manda.
+    // Así se cambian las opciones desde la hoja, sin tocar el código.
+    var deHoja = opcionesDeLaHoja(h);
+    if (deHoja && deHoja.length) return deHoja;
     var m = FIELD_OPTIONS[state.key]; if (!m) return null;
     var k = Object.keys(m).filter(function (x) { return norm(x) === norm(h); })[0];
     if (k) return m[k];
@@ -6123,6 +6208,20 @@
     }
     return null;
   }
+  // Busca el campo en la pestaña Categorías, aceptando alias
+  function opcionesDeLaHoja(h) {
+    var cats = state.categories || {};
+    var k = Object.keys(cats).filter(function (x) { return norm(x) === norm(h); })[0];
+    if (k) return cats[k];
+    // La hoja puede llamarlo distinto: "Cómo Llego" contra "Cómo llegó"
+    var alt = ALIAS_CAMPOS[h] || [];
+    for (var i = 0; i < alt.length; i++) {
+      var k2 = Object.keys(cats).filter(function (x) { return norm(x) === norm(alt[i]); })[0];
+      if (k2) return cats[k2];
+    }
+    return null;
+  }
+
   // Campos "combo": se eligen de una lista pero también se puede escribir uno nuevo.
   var COMBO_FIELDS = {
     // Catálogo: listas de lo que ya existe, pero se puede escribir uno nuevo
@@ -9216,6 +9315,18 @@
     ventas_clientes: 'Nombre/Razón Social'
   };
   function filteredRows() {
+    // Buscar dentro de los comentarios de leads y showroom
+    if (buscaComentario && ['leads', 'showroom'].indexOf(state.key) !== -1) {
+      var cCom = findHeaderByName('Comentarios') || findHeaderByName('Notas') ||
+                 findHeaderByName('Observaciones');
+      if (cCom) {
+        var q = norm(buscaComentario);
+        var base = (state.rows || []).filter(function (r) {
+          return norm(r[cCom] || '').indexOf(q) !== -1;
+        });
+        return base.filter(passesFilters);
+      }
+    }
     // El área de discrepancias filtra por su propia clasificación
     if (state.key === 'prov_revision' && revFiltro) {
       return (state.rows || []).filter(function (r) {
@@ -9278,7 +9389,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-216';
+    var mia = '2026.08.11-217';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
