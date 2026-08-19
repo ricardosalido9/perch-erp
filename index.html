@@ -950,7 +950,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.19-228</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.19-229</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -2004,6 +2004,22 @@
     document.body.appendChild(a);
     a.click();
     setTimeout(function () { URL.revokeObjectURL(url); a.remove(); }, 4000);
+  }
+
+  // Orden de compra de un pedido: se baja como PDF listo para mandarle al proveedor
+  function bajarOrdenDeCompra(btn) {
+    var pedido = btn.getAttribute('data-ped');
+    var antes = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Armando…';
+    api('orden-pdf', { token: state.token, pedido: pedido })
+      .then(function (d) {
+        bajarPdf(d.pdf, 'Orden de compra ' + pedido + '.pdf');
+        toast('Orden de compra lista: ' + fmtNum(d.piezas) +
+              (d.piezas === 1 ? ' pieza' : ' piezas') +
+              (d.proveedor ? ' para ' + d.proveedor : '') + '.', 'ok');
+      })
+      .catch(fail)
+      .then(function () { btn.disabled = false; btn.textContent = antes; });
   }
 
   function loadInvProv() {
@@ -5090,6 +5106,28 @@
     // Avisos
     h += '<div class="dash-section"><h3>Requiere atención</h3>';
     var av = d.avisos || [];
+    // Desglose de un aviso: qué folio necesita qué mueble, y quién lo puede hacer.
+    // Va plegado para no llenar el Inicio de texto.
+    function detalleAvisoHTML(det) {
+      return '<details style="margin-top:6px"><summary style="cursor:pointer;font-size:12.5px;' +
+        'color:var(--slate)">Ver cuáles</summary>' +
+        '<div style="margin-top:6px;font-size:12.5px">' +
+        det.map(function (v) {
+          return '<div style="margin-bottom:6px"><b>' + esc(v.folio) + '</b> · ' +
+            fmtNum(v.piezas) + (v.piezas === 1 ? ' pieza' : ' piezas') +
+            (v.muebles || []).map(function (m) {
+              return '<div style="color:var(--muted);margin-left:10px">· ' +
+                fmtNum(m.faltan) + ' ' + esc(m.producto) + (m.material ? ' · ' + esc(m.material) : '') +
+                (m.enStock > 0
+                  ? ' <span style="color:var(--success)">hay ' + fmtNum(m.enStock) + ' en stock</span>'
+                  : ((m.proveedores || []).length
+                      ? ' <span style="color:var(--muted)">lo hacen: ' +
+                        esc(m.proveedores.join(', ')) + '</span>'
+                      : ' <span style="color:var(--amber)">sin proveedor en la lista de costos</span>')) +
+                '</div>';
+            }).join('') + '</div>';
+        }).join('') + '</div></details>';
+    }
     if (!av.length) {
       h += '<div class="all-good">Todo en orden. No hay pendientes por ahora.</div>';
     } else {
@@ -5101,7 +5139,10 @@
         h += '<div class="alert ' + esc(a.tipo) + '">' +
           '<span class="an">' + fmtNum(a.n) + '</span>' +
           '<span class="ab"><span class="at">' + esc(a.titulo) + '</span>' +
-          '<span class="ad">' + esc(det) + '</span></span>' +
+          '<span class="ad">' + esc(det) + '</span>' +
+          // Algunos avisos traen el desglose folio por folio: se puede abrir aquí mismo
+          ((a.detalles || []).length ? detalleAvisoHTML(a.detalles) : '') +
+          '</span>' +
           '<button data-go="' + esc(a.area) + '"' +
             (a.filtro && a.filtro.col ? ' data-filtro="' + esc(JSON.stringify(a.filtro)).replace(/"/g, '&quot;') + '"' : '') +
           '>Ver</button></div>';
@@ -6487,6 +6528,8 @@
               esc(k).replace(/"/g, '&quot;') + '">Ya llegaron</button>' +
             '<button type="button" class="aventa-btn" data-ped="' +
             esc(k).replace(/"/g, '&quot;') + '">Mandar a venta</button>' +
+            '<button type="button" class="oc-btn" data-ped="' +
+            esc(k).replace(/"/g, '&quot;') + '">Orden de compra (PDF)</button>' +
             '<span class="s" style="color:var(--muted)">Asigna piezas de este pedido a folios de venta</span>' +
           '</div></div>';
       }
@@ -8923,8 +8966,17 @@
       '<div class="fld" style="margin:0"><label>¿Qué día llegaron?</label>' +
       '<input type="date" id="entFecha" value="' + iso + '"></div>' +
       '<div class="fld" style="margin:0"><label>¿Dónde quedaron?</label>' +
-      '<select id="entDonde"><option>Bodega Perch</option><option>Proveedor</option>' +
-      '<option>Showroom</option></select></div></div>' +
+      '<select id="entDonde"><option>Bodega Perch</option>' +
+      '<option>Sigue en el proveedor</option>' +
+      '<option>Showroom</option>' +
+      '<option value="cliente">Directo al cliente</option></select></div></div>' +
+      // Si se fue directo al cliente, la pieza entró y salió el mismo día: se registran
+      // las dos cosas. Aquí se elige a qué venta se fue cada renglón.
+      '<div id="entDestinoCliente" style="display:none;margin:-4px 0 14px;padding:10px 12px;' +
+      'background:var(--paper);border-radius:10px">' +
+      '<div class="s" style="color:var(--slate)">Se va a registrar la <b>entrada y la salida</b> ' +
+      'con esta misma fecha. Dime a qué venta se fue cada mueble.</div>' +
+      '<div id="entFolios" style="margin-top:8px"></div></div>' +
       '<table class="mini-table"><thead><tr><th>Mueble</th><th>Material</th>' +
       '<th style="text-align:right">Pedidas</th><th style="text-align:right">Ya llegaron</th>' +
       '<th style="text-align:right">Llegaron ahora</th><th>Ya tiene dueño</th></tr></thead><tbody>' +
@@ -8945,6 +8997,56 @@
     document.getElementById('aventaCancel').textContent = 'Cancelar';
     document.getElementById('aventaModal').classList.add('on');
     aventaPedido = null;
+    conectarDestinoEntrada();
+  }
+
+  // "Directo al cliente": se pregunta a qué venta se fue cada mueble. Se propone la
+  // que ya trae el pedido, y si no trae, las ventas pendientes que pidieron ese mueble.
+  var entradaPend = null;
+  function conectarDestinoEntrada() {
+    var sel = document.getElementById('entDonde');
+    var caja = document.getElementById('entDestinoCliente');
+    if (!sel || !caja) return;
+    sel.addEventListener('change', function () {
+      var esCliente = (sel.value === 'cliente');
+      caja.style.display = esCliente ? '' : 'none';
+      document.getElementById('aventaOk').textContent = esCliente
+        ? 'Registrar entrada y salida' : 'Registrar la entrada';
+      if (!esCliente) return;
+      if (entradaPend) { pintarFoliosEntrada(); return; }
+      document.getElementById('entFolios').innerHTML =
+        '<div class="s" style="color:var(--muted)">Buscando ventas…</div>';
+      api('pendientes', { token: state.token,
+          productos: entradaLineas.map(function (l) {
+            return { producto: l.producto, material: l.material }; }) })
+        .then(function (d) { entradaPend = d.pendientes || []; pintarFoliosEntrada(); })
+        .catch(function () { entradaPend = []; pintarFoliosEntrada(); });
+    });
+  }
+  function pintarFoliosEntrada() {
+    document.getElementById('entFolios').innerHTML = entradaLineas.map(function (l, i) {
+      var ops = (entradaPend || []).filter(function (p) {
+        if (norm(p.producto) !== norm(l.producto)) return false;
+        if (l.material && p.material) return norm(p.material) === norm(l.material);
+        return true;
+      });
+      // Si el pedido ya traía folio, ese va seleccionado y no hace falta buscarlo
+      var yaTiene = l.folio && !ops.some(function (p) { return p.folio === l.folio; });
+      return '<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap">' +
+        '<span style="min-width:210px">' + esc(l.producto) + ' · ' + esc(l.material || '—') + '</span>' +
+        '<select class="ent-folio" data-i="' + i + '" style="min-width:260px">' +
+          '<option value="">— ¿a qué venta se fue? —</option>' +
+          (yaTiene ? '<option value="' + esc(l.folio) + '" selected>' + esc(l.folio) +
+                     ' · el del pedido</option>' : '') +
+          ops.map(function (p) {
+            return '<option value="' + esc(p.folio) + '"' +
+              (l.folio === p.folio ? ' selected' : '') + '>' + esc(p.folio) + ' · ' +
+              esc(p.cliente || 'sin cliente') + ' · faltan ' + fmtNum(p.faltan) + '</option>';
+          }).join('') +
+        '</select></div>';
+    }).join('') +
+      '<div class="s" style="color:var(--muted);margin-top:4px">Lo que dejes sin venta se ' +
+      'registra solo como entrada, sin salida.</div>';
   }
 
   function registrarEntrada() {
@@ -8966,11 +9068,48 @@
       if (l.folio) conDueno.push(l);
     });
     if (!entradas.length) { toast('No pusiste cantidades.', 'err'); return; }
+
+    // Si se fue directo al cliente, la pieza entró y salió el mismo día: se escribe
+    // también la salida, con el folio elegido y la dirección de esa venta.
+    var salidas = [];
+    if (ubi === 'cliente') {
+      document.querySelectorAll('.ent-folio').forEach(function (sel) {
+        var i = +sel.getAttribute('data-i');
+        var folio = String(sel.value || '').trim();
+        if (!folio) return;
+        var inp = document.querySelector('.ent-cant[data-i="' + i + '"]');
+        var c = parseFloat((inp && inp.value) || '0');
+        if (!c) return;
+        var l = entradaLineas[i];
+        var pv = (entradaPend || []).filter(function (p) { return p.folio === folio; })[0] || {};
+        salidas.push({ 'Fecha': fecha, 'Folio cliente': folio, 'Folio': folio,
+          'Cliente': pv.cliente || '', 'Dirección de Entrega': pv.direccion || '',
+          'Pedido Proveedor': entradaPedido, 'Pedido': entradaPedido, 'Proveedor': l.proveedor,
+          'Item': l.producto, 'Productos': l.producto, 'Material': l.material,
+          'Cantidad': c, 'Costo Unitario': l.costo, 'Costo': l.costo * c,
+          'Destino': 'Cliente',
+          'Comentarios': 'Entrega directa del proveedor al cliente' });
+      });
+      if (!salidas.length) {
+        toast('Marcaste "directo al cliente" pero no elegiste ninguna venta.', 'err');
+        return;
+      }
+    }
+    // En la entrada se guarda dónde quedó, con el texto que el equipo ya usa
+    var ubiTexto = (ubi === 'cliente') ? 'Directo al cliente' : ubi;
+    entradas.forEach(function (e) { e['Ubicación'] = ubiTexto; e['Ubicacion'] = ubiTexto; });
     var btn = document.getElementById('aventaOk');
     btn.disabled = true; btn.textContent = 'Registrando...';
     Promise.all(entradas.map(function (e) {
       return api('add', { token: state.token, key: 'prov_entradas', record: e });
     })).then(function () {
+      // Las salidas del "directo al cliente" van después de la entrada, para que el
+      // movimiento quede en orden: primero llegó, luego salió.
+      if (!salidas.length) return null;
+      return Promise.all(salidas.map(function (s) {
+        return api('add', { token: state.token, key: 'prov_salidas', record: s });
+      }));
+    }).then(function () {
       // La columna Entradas del pedido se actualiza fila por fila
       return Promise.all(fills.map(function (x) {
         var orig = (state.rows || []).filter(function (r) { return r._row === x.fila; })[0] || {};
@@ -8988,7 +9127,9 @@
       }));
     }).then(function () {
       toast('Entrada registrada: ' + fmtNum(entradas.length) +
-            (entradas.length === 1 ? ' mueble.' : ' muebles.'), 'ok');
+            (entradas.length === 1 ? ' mueble.' : ' muebles.') +
+            (salidas.length ? ' Y ' + fmtNum(salidas.length) +
+              (salidas.length === 1 ? ' salida directa al cliente.' : ' salidas directas al cliente.') : ''), 'ok');
       var ped = entradaPedido;
       cerrarMandarAVenta();
       loadArea();
@@ -9210,7 +9351,7 @@
     terminarPaso();
     aventaPedido = null; aventaLineas = []; aventaPend = []; aventaDest = {};
     aventaYaSalio = {};
-    entradaPedido = null; entradaLineas = [];
+    entradaPedido = null; entradaLineas = []; entradaPend = null;
     var bOk = document.getElementById('aventaOk');
     bOk.textContent = 'Registrar salidas';
     bOk.disabled = false; bOk.title = ''; bOk.style.opacity = ''; bOk.style.cursor = '';
@@ -10142,7 +10283,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.19-228';
+    var mia = '2026.08.19-229';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
@@ -10327,8 +10468,10 @@
     }
     var av = e.target.closest('.aventa-btn');
     if (av) { abrirMandarAVenta(av.getAttribute('data-ped')); return; }
+    var oc = e.target.closest('.oc-btn');
+    if (oc) { bajarOrdenDeCompra(oc); return; }
     var ph2 = e.target.closest('[data-ped]');
-    if (ph2 && !av) {
+    if (ph2 && !av && !oc) {
       var kp2 = ph2.getAttribute('data-ped');
       pedAbierto[kp2] = !pedAbierto[kp2];
       renderTable();
