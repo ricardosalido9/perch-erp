@@ -950,7 +950,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.19-229</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.19-230</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1312,6 +1312,7 @@
         state.token = res.token;
         state.rol = String(res.rol || '').trim().toLowerCase();
         var _nom = res.nombre || u;
+        state.usuario = _nom;                 // sale en los PDFs: "Realizado por"
         document.getElementById('hello').textContent = _nom;
         document.getElementById('avatar').textContent = String(_nom).trim().charAt(0) || '·';
         document.getElementById('loginView').style.display = 'none';
@@ -2022,6 +2023,72 @@
       .then(function () { btn.disabled = false; btn.textContent = antes; });
   }
 
+  // Guía y remisión del envío: se suben a Drive, a la carpeta de esa venta, y la liga
+  // se escribe en la fila para que Ventas la pueda compartir con el cliente.
+  function subirDocEnvio(btn) {
+    var fila = +btn.getAttribute('data-row');
+    var tipo = btn.getAttribute('data-tipo');
+    var col = (tipo === 'guia')
+      ? (findHeaderByName('Guía') || findHeaderByName('Guia'))
+      : (findHeaderByName('Ticket de Remisión') || findHeaderByName('Ticket de Remision'));
+    if (!col) {
+      toast('La hoja no tiene la columna de ' + (tipo === 'guia' ? 'Guía' : 'Ticket de Remisión') + '.', 'err');
+      return;
+    }
+    var orig = (state.rows || []).filter(function (r) { return r._row === fila; })[0] || {};
+    var cFol = findHeaderByName('Pedido') || findHeaderByName('Folio');
+    var cCli = findHeaderByName('Cliente');
+    var folio = cFol ? String(orig[cFol] || '').trim() : '';
+    var cliente = cCli ? String(orig[cCli] || '').trim() : '';
+
+    var inp = document.createElement('input');
+    inp.type = 'file';
+    inp.accept = 'image/*,application/pdf';
+    inp.addEventListener('change', function () {
+      var f = inp.files && inp.files[0];
+      if (!f) return;
+      if (f.size > 4 * 1024 * 1024) { toast('El archivo pesa más de 4 MB.', 'err'); return; }
+      var lector = new FileReader();
+      lector.onload = function () {
+        var b64 = String(lector.result || '').split(',')[1] || '';
+        btn.disabled = true; btn.textContent = 'Subiendo…';
+        var nombre = (tipo === 'guia' ? 'Guia ' : 'Remision ') + (folio || 'sin folio') +
+                     '.' + (f.name.split('.').pop() || 'pdf');
+        api('upload', { token: state.token, nombre: nombre, mime: f.type,
+                        data: b64, folio: folio, cliente: cliente })
+          .then(function (d) {
+            var rec = {};
+            state.headers.forEach(function (h2) { rec[h2] = (orig[h2] != null) ? orig[h2] : ''; });
+            rec[col] = d.archivo || d.carpeta || '';
+            return api('update', { token: state.token, key: state.key, row: fila, record: rec });
+          })
+          .then(function () {
+            toast((tipo === 'guia' ? 'Guía' : 'Remisión') + ' subida y ligada al envío.', 'ok');
+            loadArea();
+          })
+          .catch(function (err) {
+            // Si Drive todavía no está listo, se ofrece pegar la liga a mano
+            fail(err);
+            var url = window.prompt('No se pudo subir a Drive. Si ya tienes la liga del archivo, ' +
+                                    'pégala aquí y se guarda igual:');
+            if (!url || !url.trim()) return;
+            var rec2 = {};
+            state.headers.forEach(function (h2) { rec2[h2] = (orig[h2] != null) ? orig[h2] : ''; });
+            rec2[col] = url.trim();
+            api('update', { token: state.token, key: state.key, row: fila, record: rec2 })
+              .then(function () { toast('Liga guardada.', 'ok'); loadArea(); })
+              .catch(fail);
+          })
+          .then(function () {
+            btn.disabled = false;
+            btn.textContent = (tipo === 'guia') ? 'Subir guía' : 'Subir remisión';
+          });
+      };
+      lector.readAsDataURL(f);
+    });
+    inp.click();
+  }
+
   function loadInvProv() {
     document.getElementById('tableWrap').innerHTML =
       '<div class="state" style="padding:50px 0">Revisando lo que tiene cada proveedor…</div>';
@@ -2094,6 +2161,8 @@
             }).join('') + '</tbody></table>' +
             '<div class="cot-acciones"><button type="button" class="primary pdf-prov" data-prov="' +
               esc(p.proveedor).replace(/"/g, '&quot;') + '">Estado de cuenta en PDF</button>' +
+              '<button type="button" class="pdf-relacion" data-prov="' +
+              esc(p.proveedor).replace(/"/g, '&quot;') + '">Relación de pedidos</button>' +
               '<span class="s" style="color:var(--muted)">Para mandárselo al proveedor</span></div>' +
             '</div>';
         }
@@ -2129,6 +2198,26 @@
           }).then(function () {
             b.disabled = false; b.textContent = 'Estado de cuenta en PDF';
           });
+        });
+      });
+      document.querySelectorAll('#tableWrap .pdf-relacion').forEach(function (b) {
+        b.addEventListener('click', function (e) {
+          e.stopPropagation();
+          var prov = b.getAttribute('data-prov');
+          b.disabled = true; b.textContent = 'Armando...';
+          api('relacion-pdf', { token: state.token, proveedor: prov,
+                                hechoPor: (state.usuario || '') })
+            .then(function (o) {
+              if (!o.pdf) throw new Error('El servidor no devolvió el PDF.');
+              bajarPdf(o.pdf, 'Relacion de pedidos - ' + prov + '.pdf');
+              toast('Relación lista: ' + fmtNum(o.renglones) + ' renglones en ' +
+                    fmtNum(o.pedidos) + (o.pedidos === 1 ? ' pedido.' : ' pedidos.'), 'ok');
+            })
+            .catch(function (err) {
+              avisoFijo('<b>No se pudo armar la relación.</b><div style="margin-top:6px">' +
+                esc((err && err.message) || '') + '</div>');
+            })
+            .then(function () { b.disabled = false; b.textContent = 'Relación de pedidos'; });
         });
       });
     }).catch(function (e) {
@@ -4040,7 +4129,7 @@
       document.getElementById('driveStockBtn').style.display = (state.key === 'op_stock') ? '' : 'none';
       document.getElementById('driveProvBtn').style.display = (state.key === 'proveedores') ? '' : 'none';
       var cvb = document.getElementById('catViewBtn');
-      cvb.style.display = ['inventario','cotizaciones','ventas_registro','prov_pedidos','fin_cxc'].indexOf(state.key) !== -1 ? '' : 'none';
+      cvb.style.display = ['inventario','cotizaciones','ventas_registro','prov_pedidos','fin_cxc','op_envios'].indexOf(state.key) !== -1 ? '' : 'none';
       cvb.textContent = catalogoAgrupado ? 'Ver como tabla' : 'Ver por tarjetas';
       if (!data.connected) {
         document.getElementById('tableWrap').innerHTML =
@@ -6538,6 +6627,114 @@
     return h + '</div>';
   }
 
+  // Envíos en tarjetas: una por folio, con lo que importa a la vista y el detalle
+  // adentro. En filas largas no se alcanzaba a leer nada.
+  var envAbierto = {};
+  function renderEnvios(rows) {
+    var cFol = findHeaderByName('Pedido') || findHeaderByName('Folio');
+    if (!cFol) return null;
+    var cCli = findHeaderByName('Cliente'), cSt = findHeaderByName('Status');
+    var cPaq = findHeaderByName('Paqueteria') || findHeaderByName('Paquetería');
+    var cFec = findHeaderByName('Fecha');
+    var cEst = findHeaderByName('Fecha Estimada de Entrega');
+    var cReal = findHeaderByName('Fecha de Entrega Real');
+    var cOri = findHeaderByName('Origen'), cDes = findHeaderByName('Destino');
+    var cCiu = findHeaderByName('Ciudad'), cZona = findHeaderByName('Zona');
+    var cPz = findHeaderByName('Piezas');
+    var cCost = findHeaderByName('Costo del Envío c / IVA') || findHeaderByName('Costo del Envío');
+    var cCob = findHeaderByName('Cobrado al Cliente');
+    var cUti = findHeaderByName('Utilidad del Envío');
+    var cMar = findHeaderByName('% Margen del Envío');
+    var cGuia = findHeaderByName('Guía') || findHeaderByName('Guia');
+    var cTick = findHeaderByName('Ticket de Remisión') || findHeaderByName('Ticket de Remision');
+    var cQuien = findHeaderByName('Quién lo paga') || findHeaderByName('Quien lo paga');
+    var cCom = findHeaderByName('Comentarios');
+
+    var g = {}, orden = [];
+    rows.forEach(function (r) {
+      var k = String(r[cFol] || '').trim() || '(sin folio)';
+      if (!g[k]) { g[k] = []; orden.push(k); }
+      g[k].push(r);
+    });
+
+    var dato = function (etiqueta, valor, color) {
+      if (!valor && valor !== 0) return '';
+      return '<div style="min-width:130px"><div class="k">' + esc(etiqueta) + '</div>' +
+        '<div style="font-size:13px' + (color ? ';color:' + color : '') + '">' + valor + '</div></div>';
+    };
+    var liga = function (etiqueta, url) {
+      var u = String(url || '').trim();
+      if (!u) return '';
+      var esUrl = /^https?:\/\//i.test(u);
+      return '<div style="min-width:130px"><div class="k">' + esc(etiqueta) + '</div>' +
+        '<div style="font-size:13px">' + (esUrl
+          ? '<a href="' + esc(u) + '" target="_blank" rel="noopener">Abrir</a>'
+          : esc(u)) + '</div></div>';
+    };
+
+    var h = '<div class="cot-grid">';
+    orden.forEach(function (k) {
+      var it = g[k], r0 = it[0];
+      var piezas = 0, costo = 0, cobrado = 0;
+      it.forEach(function (r) {
+        piezas += parseNumber(cPz ? r[cPz] : null) || 0;
+        costo += parseNumber(cCost ? r[cCost] : null) || 0;
+        cobrado += parseNumber(cCob ? r[cCob] : null) || 0;
+      });
+      var utilidad = cobrado - costo;
+      var st = cSt ? String(r0[cSt] || '').trim() : '';
+      var entregado = /entregad/i.test(st);
+      var ab = !!envAbierto[k];
+      h += '<div class="cot-card' + (ab ? ' open' : '') + '">' +
+        '<button type="button" class="cot-head" data-env="' + esc(k).replace(/"/g, '&quot;') + '">' +
+          '<span class="cot-folio">' + esc(k) + '</span>' +
+          '<span class="cot-cli">' + esc(cCli ? (r0[cCli] || '') : '') + '</span>' +
+          '<span class="cot-meta">' +
+            (cPaq && r0[cPaq] ? esc(r0[cPaq]) + ' · ' : '') +
+            fmtNum(piezas) + (piezas === 1 ? ' pieza' : ' piezas') +
+            (cZona && r0[cZona] ? ' · ' + esc(r0[cZona]) : '') +
+          '</span>' +
+          (st ? '<span class="cot-st-pill" style="color:' +
+                (entregado ? 'var(--success)' : 'var(--slate)') + '">' + esc(st) + '</span>' : '') +
+        '</button>' +
+        '<div class="cot-body">' +
+          '<div style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:14px">' +
+            dato('Salió', cFec ? formatDateCell(r0[cFec]) : '') +
+            dato('Entrega estimada', cEst ? formatDateCell(r0[cEst]) : '') +
+            dato('Entregado', cReal ? formatDateCell(r0[cReal]) : '') +
+            dato('De', cOri ? esc(r0[cOri] || '') : '') +
+            dato('A', (cDes ? esc(r0[cDes] || '') : '') +
+                      (cCiu && r0[cCiu] ? ' · ' + esc(r0[cCiu]) : '')) +
+            dato('Quién paga', cQuien ? esc(r0[cQuien] || '') : '') +
+          '</div>' +
+          '<div style="display:flex;gap:18px;flex-wrap:wrap;padding-top:12px;' +
+            'border-top:1px solid var(--line)">' +
+            dato('Costó', costo ? formatMoney(costo) : '') +
+            dato('Se cobró', cobrado ? formatMoney(cobrado) : '') +
+            dato('Utilidad', (costo || cobrado) ? formatMoney(utilidad) : '',
+                 utilidad < 0 ? 'var(--danger)' : 'var(--success)') +
+            dato('Margen', cobrado ? (utilidad / cobrado * 100).toFixed(1) + '%' : '',
+                 utilidad < 0 ? 'var(--danger)' : '') +
+            liga('Guía', cGuia ? r0[cGuia] : '') +
+            liga('Remisión', cTick ? r0[cTick] : '') +
+          '</div>' +
+          (cCom && r0[cCom]
+            ? '<div class="s" style="color:var(--muted);margin-top:12px">' + esc(r0[cCom]) + '</div>'
+            : '') +
+          (esSoloLectura(state.key) ? '' :
+            '<div class="cot-acciones" style="margin-top:14px">' +
+              '<button type="button" class="row-btn env-doc" data-row="' + r0._row +
+                '" data-tipo="guia">Subir guía</button>' +
+              '<button type="button" class="row-btn env-doc" data-row="' + r0._row +
+                '" data-tipo="ticket">Subir remisión</button>' +
+              '<span class="s" style="color:var(--muted)">Se guardan en Drive y quedan ' +
+              'visibles para Ventas</span>' +
+            '</div>') +
+        '</div></div>';
+    });
+    return h + '</div>';
+  }
+
   function renderTable() {
     var rows = sortRows(filteredRows());
     renderSummary(rows);
@@ -6566,6 +6763,10 @@
     if ((state.key === 'cotizaciones' || state.key === 'ventas_registro') && catalogoAgrupado) {
       var hq = renderCotizaciones(rows);
       if (hq) { document.getElementById('tableWrap').innerHTML = hq; return; }
+    }
+    if (state.key === 'op_envios' && catalogoAgrupado) {
+      var he = renderEnvios(rows);
+      if (he) { document.getElementById('tableWrap').innerHTML = he; return; }
     }
     var cols = visibleHeaders();
     var pillCols = columnasConPill(rows, cols);
@@ -10283,7 +10484,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.19-229';
+    var mia = '2026.08.19-230';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
@@ -10470,6 +10671,15 @@
     if (av) { abrirMandarAVenta(av.getAttribute('data-ped')); return; }
     var oc = e.target.closest('.oc-btn');
     if (oc) { bajarOrdenDeCompra(oc); return; }
+    var ed = e.target.closest('.env-doc');
+    if (ed) { subirDocEnvio(ed); return; }
+    var he = e.target.closest('[data-env]');
+    if (he) {
+      var ke = he.getAttribute('data-env');
+      envAbierto[ke] = !envAbierto[ke];
+      renderTable();
+      return;
+    }
     var ph2 = e.target.closest('[data-ped]');
     if (ph2 && !av && !oc) {
       var kp2 = ph2.getAttribute('data-ped');
