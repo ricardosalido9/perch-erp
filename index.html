@@ -950,7 +950,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.11-222</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.19-223</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1879,9 +1879,14 @@
         return '<button type="button" class="mes-chip' + (conciVista === k ? ' on' : '') +
           '" data-conci="' + k + '">' + txt2 + '</button>';
       };
+      // "Salieron del banco y no están capturados" son movimientos administrativos, no
+      // de operación: se ven en Finanzas, no aquí. El dato se sigue calculando y sale
+      // en la tarjeta de arriba, pero deja de ser un filtro de esta pantalla.
+      var esAdmin = puedeVer('fin_egresos');
+      if (conciVista === 'soloBanco' && !esAdmin) conciVista = 'sinPar';
       var h = '<div class="mes-chips">' +
         chip('sinPar', 'Capturados y no salieron del banco (' + fmtNum(t.sinPar) + ')') +
-        chip('soloBanco', 'Salieron del banco y no están capturados (' + fmtNum(t.soloBanco) + ')') +
+        (esAdmin ? chip('soloBanco', 'Salieron del banco y no están capturados (' + fmtNum(t.soloBanco) + ')') : '') +
         chip('conciliados', 'Conciliados (' + fmtNum(t.conciliados) + ')') +
         chip('noPagados', 'Todavía sin pagar (' + fmtNum(t.noPagados || 0) + ')') +
         chip('ajustes', 'Ajustes de Gastos Manuales (' + fmtNum(t.ajustes || 0) + ')') +
@@ -5031,6 +5036,12 @@
     { key:'dashboard',           label:'Dashboard',   icon:'grid',   sub:'Métricas' }
   ];
   var LABELS = {};
+  // El menú que devuelve el servidor ya viene recortado por rol, así que si un área
+  // no está en LABELS es porque este usuario no la tiene. Sirve para esconder pedazos
+  // de una pantalla sin pedirle nada más al servidor.
+  function puedeVer(areaKey) {
+    return Object.prototype.hasOwnProperty.call(LABELS, areaKey);
+  }
   function saludo() {
     var hh = new Date().getHours();
     if (hh < 12) return 'Buenos días';
@@ -6885,8 +6896,11 @@
       'Cobrado al Cliente', 'Utilidad del Envío', '% Margen del Envío',
       'Guía', 'Ticket de Remisión', 'Quién lo paga', 'Comentarios'
     ],
+    // El folio del cliente NO se pregunta aquí: el pedido al proveedor es general y a
+    // quién le toca cada pieza se decide al darle salida ("Mandar a venta"), que es
+    // quien llena esa columna. Preguntarlo antes obligaba a adivinar.
     prov_pedidos: [
-      'Fecha', 'Fecha Estimada de Entrega', 'Folio cliente', 'Pedido Proveedor', 'Proveedor',
+      'Fecha', 'Fecha Estimada de Entrega', 'Pedido Proveedor', 'Proveedor',
       'Producto', 'Material', 'Tela', 'Especificaciones', 'Cantidad', 'Costo Unitario',
       'Costo Total', 'Costo Total + IVA', 'Destino'
     ],
@@ -7014,6 +7028,19 @@
         if (cM) rec[cM] = Math.floor(d / 100) % 100;
         if (cA) rec[cA] = Math.floor(d / 10000);
       }
+      // Utilidad y margen del envío: antes había que teclearlos y casi siempre
+      // quedaban vacíos. Se calculan de lo cobrado contra lo que costó con IVA.
+      var cCob = findHeaderByName('Cobrado al Cliente');
+      var cIva = findHeaderByName('Costo del Envío c / IVA');
+      var cSin = findHeaderByName('Costo del Envío');
+      var cUti = findHeaderByName('Utilidad del Envío');
+      var cMar = findHeaderByName('% Margen del Envío');
+      var cobrado = parseNumber(cCob ? rec[cCob] : 0) || 0;
+      var costo = parseNumber(cIva ? rec[cIva] : 0) || 0;
+      // Si solo capturaron el costo sin IVA, se le agrega para comparar peras con peras
+      if (!costo && cSin) costo = Math.round((parseNumber(rec[cSin]) || 0) * 1.16 * 100) / 100;
+      if (cUti) rec[cUti] = Math.round((cobrado - costo) * 100) / 100;
+      if (cMar) rec[cMar] = cobrado ? Math.round((cobrado - costo) / cobrado * 10000) / 100 : 0;
     },
     prov_pedidos: function (rec) {
       var f = rec[findHeaderByName('Fecha')] || '';
@@ -7060,9 +7087,11 @@
     op_envios: {
       // Se captura el total con IVA (lo que dice el ticket) y se saca el costo base
       'Costo del Envío':         { op: 'div', a: 'Costo del Envío c / IVA', b: 1.16 },
-      // Lo que se le cobró al cliente menos lo que costó mandarlo
-      'Utilidad del Envío':      { op: 'resta', a: 'Cobrado al Cliente', b: 'Costo del Envío c / IVA' },
-      '% Margen del Envío':      { op: 'pct',   a: 'Utilidad del Envío', b: 'Cobrado al Cliente' }
+      // Lo que se le cobró al cliente menos lo que costó mandarlo.
+      // Ojo: las operaciones se llaman 'sub' y 'pct2'. Antes decían 'resta' y 'pct',
+      // que no existen, así que estos dos campos NUNCA se calcularon: quedaban vacíos.
+      'Utilidad del Envío':      { op: 'sub',  a: 'Cobrado al Cliente', b: 'Costo del Envío c / IVA' },
+      '% Margen del Envío':      { op: 'pct2', a: 'Utilidad del Envío', b: 'Cobrado al Cliente' }
     },
     prov_pedidos: {
       'Costo Total':       { op: 'mul', a: 'Costo Unitario', b: 'Cantidad' },
@@ -7188,12 +7217,37 @@
     if (!lk) return;
     var rec = lk.map[value] || {};
     (lk.fills || []).forEach(function (f) {
+      if (f.charAt(0) === '_') return;            // campos internos: se usan aparte
       var real = findHeaderByName(f);
       if (!real) return;
       var el = document.querySelector('#formFields [data-col="' + real + '"]');
       if (el) el.value = rec[f] || '';
     });
+    proponerFechaEstimada(rec['_DiasEntrega']);
     recalcComputed();
+  }
+
+  // El proveedor trae cuántos días tarda: se propone la fecha estimada de entrega.
+  // Es una propuesta, no un candado: si ya había fecha escrita a mano, no se toca,
+  // y el campo queda abierto para moverla cuando la pieza es urgente.
+  function proponerFechaEstimada(dias) {
+    var n = parseFloat(String(dias == null ? '' : dias).replace(/[^0-9.\-]/g, ''));
+    if (!n || isNaN(n) || n <= 0) return;
+    var real = findHeaderByName('Fecha Estimada de Entrega');
+    if (!real) return;
+    var el = document.querySelector('#formFields [data-col="' + real + '"]');
+    if (!el || (el.value && el.dataset.propuesta !== '1')) return;
+    var d = new Date();
+    d.setDate(d.getDate() + Math.round(n));
+    el.value = (el.type === 'date')
+      ? d.toISOString().slice(0, 10)
+      : (d.getDate() + ' ' + MESES_ES[d.getMonth()].toLowerCase() + ' ' + d.getFullYear());
+    el.dataset.propuesta = '1';
+    var nota = document.getElementById('avisoFechaProv');
+    if (nota) {
+      nota.textContent = 'Estimada a ' + fmtNum(Math.round(n)) +
+        ' días, que es lo que suele tardar. Cámbiala si esta va urgente.';
+    }
   }
 
   // ===== Cascada de producto (Producto -> Material -> Material 2 -> autocompleta) =====
@@ -7434,10 +7488,15 @@
         if (el) { el.value = ''; }
       });
       if (aviso) {
-        aviso.innerHTML = '<b>' + esc(claves[2] ? (fieldEl(t.campos[2]) || {}).value || '' : '') +
-          '</b> no tiene precio registrado para ' +
-          esc(((fieldEl(t.campos[0]) || {}).value || '') + ' · ' + ((fieldEl(t.campos[1]) || {}).value || '')) +
-          '. Captura el costo a mano.';
+        // El aviso dice qué combinación no se encontró, con o sin proveedor en la llave
+        var quien = t.campos.length > 2 ? ((fieldEl(t.campos[2]) || {}).value || '') : '';
+        var combo = ((fieldEl(t.campos[0]) || {}).value || '') +
+                    ' · ' + ((fieldEl(t.campos[1]) || {}).value || '');
+        aviso.innerHTML = quien
+          ? '<b>' + esc(quien) + '</b> no tiene costo registrado para ' + esc(combo) +
+            '. Captura el costo a mano.'
+          : 'No hay costo en la lista de precios para <b>' + esc(combo) +
+            '</b>. Captura el costo a mano.';
       }
       recalcComputed();
       return;
@@ -7455,6 +7514,18 @@
     t.fills.forEach(function (campo) {
       var el = fieldEl(campo);
       if (!el || fila[campo] == null) return;
+      // Hay renglones que en vez de un número dicen "Manual" (telas y pieles, que se
+      // cotizan por metro). Ahí se deja el campo vacío y se avisa, en lugar de meter
+      // la palabra en un campo de dinero.
+      var crudo = String(fila[campo]).trim();
+      var n = parseFloat(crudo.replace(/[^0-9.\-]/g, ''));
+      if (!crudo || isNaN(n)) {
+        el.value = '';
+        if (aviso && /manual/i.test(crudo)) {
+          aviso.innerHTML = 'Este se cotiza a mano (' + esc(crudo) + '). Captura el costo.';
+        }
+        return;
+      }
       el.value = fila[campo];
       el.dataset.deTabla = '1';
     });
@@ -8146,6 +8217,12 @@
         var bnum = toNum(bv);
         if (String(av).trim() === '' || bnum === 0) { el.value = ''; return; }
         res = toNum(av) / bnum;
+      } else if (d.op === 'pct2') {
+        // a entre b, mostrado como porcentaje (utilidad / cobrado)
+        var bpc = toNum(bv);
+        if (String(av).trim() === '' || !bpc) { el.value = ''; return; }
+        el.value = (Math.round(toNum(av) / bpc * 1000) / 10).toFixed(1) + '%';
+        return;
       }
       if (res === null) { el.value = ''; return; }
       if (d.format === 'percent') el.value = (Math.round(res * 10000) / 100).toFixed(2) + '%';
@@ -8388,7 +8465,17 @@
         if (state.key === 'funnel' && norm(h) === 'valor venta') inp.placeholder = 'Monto, o NA si no dio respuesta';
         if (state.key === 'funnel' && norm(h) === 'valor cotizacion') inp.placeholder = 'Monto cotizado (o NA)';
         if (!inp.readOnly) inp.addEventListener('input', recalcComputed);
+        // Si la escriben a mano, deja de ser una propuesta y ya no se pisa
+        if (norm(h) === norm('Fecha Estimada de Entrega')) {
+          inp.addEventListener('input', function () { inp.dataset.propuesta = ''; });
+        }
         wrap.appendChild(inp);
+        if (state.key === 'prov_pedidos' && norm(h) === norm('Fecha Estimada de Entrega')) {
+          var nf = document.createElement('div');
+          nf.id = 'avisoFechaProv'; nf.className = 's';
+          nf.style.cssText = 'color:var(--muted);margin-top:4px;font-size:12px';
+          wrap.appendChild(nf);
+        }
       }
       box.appendChild(wrap);
       } catch (err) {
@@ -8911,9 +8998,31 @@
     document.getElementById('aventaCuerpo').innerHTML =
       '<div class="state" style="padding:30px 0">Buscando ventas que pidieron estos productos…</div>';
     document.getElementById('aventaModal').classList.add('on');
-    api('pendientes', { token: state.token,
-        productos: aventaLineas.map(function (l) { return { producto: l.producto, material: l.material }; }) })
-      .then(function (d) { aventaPend = d.pendientes || []; pintarMandarAVenta(); })
+    // Junto con las ventas pendientes se trae lo que ESE pedido ya sacó antes.
+    // Sin esto, al abrir el reparto por segunda vez la cuenta empezaba de cero y
+    // se podían sacar más piezas de las que se pidieron.
+    aventaYaSalio = {};
+    Promise.all([
+      api('pendientes', { token: state.token,
+          productos: aventaLineas.map(function (l) { return { producto: l.producto, material: l.material }; }) }),
+      api('inv-prov', { token: state.token }).catch(function () { return null; })
+    ])
+      .then(function (r) {
+        var d = r[0] || {}, inv = r[1];
+        aventaPend = d.pendientes || [];
+        if (inv && inv.proveedores) {
+          (inv.proveedores || []).forEach(function (p) {
+            (p.lineas || []).forEach(function (l) {
+              (l.pedidos || []).forEach(function (q) {
+                if (String(q.pedido || '').trim() !== pedido) return;
+                var k = claveLinea(l.producto, l.material);
+                aventaYaSalio[k] = (aventaYaSalio[k] || 0) + (q.salidas || 0);
+              });
+            });
+          });
+        }
+        pintarMandarAVenta();
+      })
       .catch(function (e) {
         document.getElementById('aventaCuerpo').innerHTML =
           '<div class="state">' + esc((e && e.message) || 'No se pudieron leer las ventas.') + '</div>';
@@ -8922,12 +9031,44 @@
   // Una línea del pedido se puede repartir entre VARIAS ventas.
   // Cada destino es un renglón: cantidad + folio (o Stock) + dirección.
   var aventaDest = {};      // índice de línea -> [{ cant, folio, dir }]
+  var aventaYaSalio = {};   // producto|material -> piezas que ese pedido YA sacó antes
+  function claveLinea(producto, material) {
+    return norm(producto) + '||' + norm(material);
+  }
   function destinosDe(i) {
     if (!aventaDest[i]) aventaDest[i] = [{ cant: '', folio: '', dir: '' }];
     return aventaDest[i];
   }
   function repartidas(i) {
     return destinosDe(i).reduce(function (t, d) { return t + (parseFloat(d.cant) || 0); }, 0);
+  }
+  // El cupo se cuenta por producto + material, no por renglón: un mismo mueble puede
+  // venir en dos renglones del pedido, y lo que ya salió no distingue entre ellos.
+  function cupoDe(clave) {
+    var pedidas = 0, repartiendo = 0;
+    aventaLineas.forEach(function (l, i) {
+      if (claveLinea(l.producto, l.material) !== clave) return;
+      pedidas += l.cantidad;
+      repartiendo += repartidas(i);
+    });
+    var yaSalio = aventaYaSalio[clave] || 0;
+    return { pedidas: pedidas, yaSalio: yaSalio, repartiendo: repartiendo,
+             libre: pedidas - yaSalio - repartiendo };
+  }
+  // Todos los productos que se pasarían del pedido. Si hay alguno, no se puede guardar.
+  function excedidos() {
+    var vistas = {}, fuera = [];
+    aventaLineas.forEach(function (l) {
+      var k = claveLinea(l.producto, l.material);
+      if (vistas[k]) return;
+      vistas[k] = 1;
+      var c = cupoDe(k);
+      if (c.libre < -0.001) {
+        fuera.push({ producto: l.producto, material: l.material, sobran: -c.libre,
+                     pedidas: c.pedidas, yaSalio: c.yaSalio });
+      }
+    });
+    return fuera;
   }
   function pintarMandarAVenta() {
     var h = '';
@@ -8938,16 +9079,25 @@
         if (l.material && p.material) return norm(p.material) === norm(l.material);
         return true;
       });
-      var falta = l.cantidad - repartidas(i);
-      h += '<div style="border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:12px">' +
+      // El cupo real es lo pedido menos lo que ya salió en repartos anteriores
+      var cupo = cupoDe(claveLinea(l.producto, l.material));
+      var falta = cupo.libre;
+      h += '<div style="border:1px solid ' + (falta < 0 ? 'var(--danger)' : 'var(--line)') +
+        ';border-radius:12px;padding:14px 16px;margin-bottom:12px">' +
         '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:10px">' +
           '<div><b>' + esc(l.producto) + '</b> · ' + esc(l.material || '—') +
             (l.proveedor ? ' <span class="s" style="color:var(--muted)">' + esc(l.proveedor) + '</span>' : '') + '</div>' +
-          '<div class="s">' + fmtNum(l.cantidad) + ' piezas · ' +
+          '<div class="s">' + fmtNum(cupo.pedidas) + ' pedidas' +
+            (cupo.yaSalio ? ' · ' + fmtNum(cupo.yaSalio) + ' ya salieron' : '') + ' · ' +
             '<b style="color:' + (falta < 0 ? 'var(--danger)' : (falta === 0 ? 'var(--success)' : 'var(--slate)')) + '">' +
             (falta < 0 ? 'te pasaste por ' + fmtNum(-falta) : (falta === 0 ? 'repartidas' : fmtNum(falta) + ' sin repartir')) +
             '</b></div>' +
-        '</div>';
+        '</div>' +
+        (falta < 0
+          ? '<div class="s" style="color:var(--danger);margin-bottom:8px">De este pedido solo quedan ' +
+            fmtNum(Math.max(0, cupo.pedidas - cupo.yaSalio)) + ' piezas por sacar. Baja las cantidades ' +
+            'para poder guardar, o captura primero un pedido nuevo al proveedor.</div>'
+          : '');
       destinosDe(i).forEach(function (d2, j) {
         h += '<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap">' +
           '<input class="row-input av-cant" data-i="' + i + '" data-j="' + j + '" type="number" min="0" ' +
@@ -8978,6 +9128,21 @@
     h += '<div class="s" style="color:var(--muted)">Solo aparecen las ventas que pidieron ese producto y ' +
       'todavía no tienen salida. Lo que no repartas se queda en stock del proveedor.</div>';
     document.getElementById('aventaCuerpo').innerHTML = h;
+
+    // El candado: mientras haya algún producto repartido de más, no se puede guardar.
+    // Antes solo salía el aviso y el botón seguía vivo.
+    var fuera = excedidos();
+    var btnOk = document.getElementById('aventaOk');
+    if (btnOk) {
+      btnOk.disabled = fuera.length > 0;
+      btnOk.title = fuera.length
+        ? 'No se puede guardar: ' + fuera.map(function (x) {
+            return x.producto + ' se pasa por ' + fmtNum(x.sobran);
+          }).join(' · ')
+        : '';
+      btnOk.style.opacity = fuera.length ? '0.5' : '';
+      btnOk.style.cursor = fuera.length ? 'not-allowed' : '';
+    }
 
     // Guardar lo que se escribe, sin perderlo al repintar
     document.querySelectorAll('#aventaCuerpo .av-cant, #aventaCuerpo .av-dir').forEach(function (el) {
@@ -9022,18 +9187,19 @@
     document.getElementById('aventaCancel').textContent = 'Cerrar';
     terminarPaso();
     aventaPedido = null; aventaLineas = []; aventaPend = []; aventaDest = {};
+    aventaYaSalio = {};
     entradaPedido = null; entradaLineas = [];
-    document.getElementById('aventaOk').textContent = 'Registrar salidas';
+    var bOk = document.getElementById('aventaOk');
+    bOk.textContent = 'Registrar salidas';
+    bOk.disabled = false; bOk.title = ''; bOk.style.opacity = ''; bOk.style.cursor = '';
   }
   function registrarSalidas() {
     var envs = [];
     var error = '';
     aventaLineas.forEach(function (l, i) {
-      var total = 0;
       destinosDe(i).forEach(function (d2) {
         var c = parseFloat(d2.cant || '0');
         if (!c) return;
-        total += c;
         envs.push({ 'Fecha': '', 'Folio cliente': d2.folio, 'Folio': d2.folio, 'Cliente': '',
           'Pedido Proveedor': aventaPedido, 'Pedido': aventaPedido, 'Proveedor': l.proveedor,
           'Item': l.producto, 'Productos': l.producto, 'Material': l.material,
@@ -9041,10 +9207,17 @@
           'Destino': d2.folio ? 'Cliente' : 'Stock',
           'Comentarios': d2.dir ? 'Envío: ' + d2.dir : '' });
       });
-      if (total > l.cantidad + 0.001) {
-        error = 'En ' + l.producto + ' repartiste ' + total + ' de ' + l.cantidad + ' piezas.';
-      }
     });
+    // Última revisión antes de escribir: cuenta lo pedido, lo que ya salió y lo que se
+    // está repartiendo ahora. Aunque el botón ya esté bloqueado, esto cierra la puerta.
+    var fuera = excedidos();
+    if (fuera.length) {
+      var x = fuera[0];
+      error = 'De ' + x.producto + (x.material ? ' · ' + x.material : '') + ' solo quedan ' +
+        fmtNum(Math.max(0, x.pedidas - x.yaSalio)) + ' piezas por sacar de este pedido' +
+        (x.yaSalio ? ' (' + fmtNum(x.yaSalio) + ' ya salieron antes)' : '') +
+        '. Te pasas por ' + fmtNum(x.sobran) + '.';
+    }
     if (error) { toast(error, 'err'); return; }
     if (!envs.length) { toast('No pusiste cantidades.', 'err'); return; }
     var btn = document.getElementById('aventaOk');
@@ -9944,7 +10117,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.11-222';
+    var mia = '2026.08.19-223';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
