@@ -950,7 +950,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.19-227</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.19-228</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -7514,22 +7514,44 @@
     t.fills.forEach(function (campo) {
       var el = fieldEl(campo);
       if (!el || fila[campo] == null) return;
-      // Hay renglones que en vez de un número dicen "Manual" (telas y pieles, que se
-      // cotizan por metro). Ahí se deja el campo vacío y se avisa, en lugar de meter
-      // la palabra en un campo de dinero.
+      // Google devuelve la celda YA FORMATEADA: "$ 450.00", "$ 13,026.00" o con formato
+      // contable "-$ 13,026.00-". Un campo <input type="number"> rechaza cualquiera de
+      // esos textos y se queda VACÍO sin decir nada. Por eso se guarda el número limpio.
       var crudo = String(fila[campo]).trim();
-      var n = parseFloat(crudo.replace(/[^0-9.\-]/g, ''));
-      if (!crudo || isNaN(n)) {
+      var n = numeroDeCelda(crudo);
+      if (n === null) {
+        // Hay renglones que en vez de un número dicen "Manual" (telas y pieles, que se
+        // cotizan por metro). Ahí se deja vacío y se avisa, en lugar de meter la palabra.
         el.value = '';
-        if (aviso && /manual/i.test(crudo)) {
-          aviso.innerHTML = 'Este se cotiza a mano (' + esc(crudo) + '). Captura el costo.';
+        if (aviso && crudo) {
+          aviso.innerHTML = /manual/i.test(crudo)
+            ? 'Este se cotiza a mano (' + esc(crudo) + '). Captura el costo.'
+            : 'El costo registrado dice "' + esc(crudo) + '", que no es un número. Captúralo a mano.';
         }
         return;
       }
-      el.value = fila[campo];
+      el.value = n;
       el.dataset.deTabla = '1';
     });
     recalcComputed();
+  }
+
+  // Saca el número de una celda venga como venga: "450", "$ 450.00", "$ 13,026.00",
+  // "-$ 13,026.00-" (formato contable) o "(1,200.00)" para negativos.
+  // Devuelve null si de plano no hay ningún número, como en "Manual".
+  function numeroDeCelda(v) {
+    var t = String(v == null ? '' : v).trim();
+    if (!t) return null;
+    var m = t.match(/\d[\d,]*(?:\.\d+)?/);
+    if (!m) return null;
+    var n = parseFloat(m[0].replace(/,/g, ''));
+    if (isNaN(n)) return null;
+    // Negativo solo si viene entre paréntesis o el signo va pegado al número.
+    // En el formato contable el guion queda suelto al inicio Y al final ("-$ 100.00-"),
+    // y ahí NO significa negativo: es el relleno de alineación de la moneda.
+    var contable = /-\s*$/.test(t) && /^\s*-/.test(t);
+    if (!contable && (/^\(.*\)$/.test(t) || /-\s*\$?\s*$/.test(t.slice(0, t.indexOf(m[0]))))) n = -n;
+    return n;
   }
 
   // Al elegir el tiempo de entrega se calcula la fecha, contando desde el cierre
@@ -10120,7 +10142,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.19-227';
+    var mia = '2026.08.19-228';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
