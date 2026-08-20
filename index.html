@@ -950,7 +950,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.19-230</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.19-231</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -4040,6 +4040,33 @@
     marcar('log-comentar', 'comentario', true);
   }
 
+  // Envíos por folio de venta: llegan del endpoint 'envios-folio', que solo trae los
+  // documentos y el status, nunca los costos. Se pintan dentro de la tarjeta de la
+  // venta para que Comercial se los comparta al cliente sin entrar a Envíos.
+  var enviosPorFolio = {};
+  function enviosDeFolioHTML(folio) {
+    var lista = enviosPorFolio[String(folio || '').trim()];
+    if (!lista || !lista.length) return '';
+    var doc = function (etiqueta, url) {
+      var u = String(url || '').trim();
+      if (!u) return '';
+      return /^https?:\/\//i.test(u)
+        ? '<a href="' + esc(u) + '" target="_blank" rel="noopener" class="row-btn">' +
+          esc(etiqueta) + '</a> '
+        : '<span class="s" style="color:var(--muted)">' + esc(etiqueta) + ': ' + esc(u) + '</span> ';
+    };
+    return '<div style="margin-top:12px;padding:10px 12px;background:var(--paper);border-radius:10px">' +
+      '<div class="k" style="margin-bottom:6px">Envío</div>' +
+      lista.map(function (e) {
+        return '<div style="margin-bottom:6px;font-size:13px">' +
+          (e.paqueteria ? esc(e.paqueteria) + ' · ' : '') +
+          (e.entregado ? 'entregado el ' + esc(formatDateCell(e.entregado)) : esc(e.status)) +
+          '<div style="margin-top:4px">' + doc('Ver guía', e.guia) + doc('Ver remisión', e.remision) +
+          '</div></div>';
+      }).join('') +
+      '<div class="s" style="color:var(--muted)">Se las puedes compartir al cliente.</div></div>';
+  }
+
   function loadArea() {
     if (state.key === 'log_calendario') return loadLogistica();
     if (state.key === 'pagos_pedidos') return loadPagos();
@@ -4063,8 +4090,15 @@
     Promise.all([
       api('data', { token: state.token, key: state.key }),
       api('categories', { token: state.token, key: state.key }).catch(function () { return {}; }),
-      api('lookup', { token: state.token, key: state.key }).catch(function () { return null; })
+      api('lookup', { token: state.token, key: state.key }).catch(function () { return null; }),
+      // En Ventas se traen los documentos del envío (guía y remisión) para mostrarlos
+      // dentro de cada folio. Es un endpoint aparte que NO trae costos, así que también
+      // funciona para Comercial, que no tiene acceso al área de Envíos.
+      (state.key === 'ventas_registro'
+        ? api('envios-folio', { token: state.token }).catch(function () { return null; })
+        : Promise.resolve(null))
     ]).then(function (r) {
+      enviosPorFolio = (r[3] && r[3].envios) ? r[3].envios : {};
       var data = r[0]; state.categories = r[1] || {};
       var lk = r[2]; state.lookups = (lk && lk.lookups) ? lk.lookups : [];
       state.headers = data.headers || []; state.rows = data.rows || [];
@@ -6529,6 +6563,9 @@
                '<td class="num">' + esc(formatMoney(envio)) + '</td><td></td></tr>';
         }
         h += '</tbody></table>' +
+          // La guía y la remisión del envío de ese folio, para que Comercial las
+          // comparta con el cliente sin entrar al área de Envíos.
+          (state.key === 'ventas_registro' ? enviosDeFolioHTML(k) : '') +
           '<div class="cot-acciones">' +
             (esSoloLectura(state.key) ? '' :
               '<button type="button" class="row-btn primary add-a-folio" data-folio="' +
@@ -10484,7 +10521,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.19-230';
+    var mia = '2026.08.19-231';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
