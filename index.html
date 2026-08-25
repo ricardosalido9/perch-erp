@@ -950,7 +950,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.25-262</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.25-263</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -2394,8 +2394,11 @@
             ? 'background:#E6F2EA;color:#1B6B3A">＋ ENTRA'
             : 'background:#FBEAE7;color:#A13A2C">－ SALE') + '</span></td>' +
         '<td><b style="color:' + color + '">' + esc(p.concepto || '—') + '</b>' +
-          (p.descripcion ? '<div class="s" style="color:var(--muted);white-space:normal">' +
-            esc(String(p.descripcion).slice(0, 110)) + '</div>' : '') +
+          (p.yaCapturado
+            ? (p.descripcion ? '<div class="s" style="color:var(--muted);white-space:normal">' +
+                esc(String(p.descripcion).slice(0, 110)) + '</div>' : '')
+            : '<input class="bk-des" data-i="' + i + '" value="' + esc(p.descripcion || '') +
+              '" style="width:100%;margin-top:4px;font-size:12px" placeholder="descripción">') +
           (p.yaCapturado
             ? '<div class="s" style="color:var(--muted)">Ya está en la fila ' +
               (p.capturadoEn ? p.capturadoEn.fila : '?') + '</div>'
@@ -2415,6 +2418,7 @@
           '<div class="s" id="bkCat' + i + '" style="color:var(--muted);margin-top:3px"></div>') +
         '</td>' +
         '<td>' + (p.yaCapturado ? '<span class="s">—</span>' :
+          p.sinContraparte ? '<span class="s" style="color:var(--muted)">No aplica</span>' :
           '<input class="bk-par" data-i="' + i + '" list="bkLista' +
             (p.tipo === 'INGRESO' ? 'Cli' : 'Prov') + '" value="' + esc(p.contraparte || '') +
             '" placeholder="' + (p.tipo === 'INGRESO' ? 'cliente' : 'proveedor') + '">' +
@@ -2434,6 +2438,7 @@
         // El pedido es lo que hace que el cobro se descuente de Cuentas por Cobrar
         // y que el pago se ligue al pedido del proveedor. Por eso va a la vista.
         '<td>' + (p.yaCapturado ? '<span class="s">—</span>' :
+          p.sinContraparte ? '<span class="s" style="color:var(--muted)">No aplica</span>' :
           '<input class="bk-ped" data-i="' + i + '" list="bkLista' +
             (p.tipo === 'INGRESO' ? 'Fol' : 'Ped') + '" value="' + esc(p.pedido || '') +
             '" placeholder="' + (p.tipo === 'INGRESO' ? 'folio de venta' : 'pedido') + '">' +
@@ -2555,7 +2560,9 @@
       aprobados.push({
         tipo: p.tipo, fechaTexto: p.fechaTexto, mes: p.mes, total: p.total,
         cuenta: p.cuentaLarga || p.cuenta, metodo: p.metodo,
-        concepto: concepto, descripcion: p.descripcion,
+        concepto: concepto,
+        descripcion: (document.querySelector('.bk-des[data-i="' + k + '"]') || {}).value ||
+                     p.descripcion || '',
         conceptoEstadoDeCuenta: p.conceptoEstadoDeCuenta,
         contraparte: par ? par.value : '',
         pedido: (document.querySelector('.bk-ped[data-i="' + k + '"]') || {}).value || '',
@@ -11324,7 +11331,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.25-262';
+    var mia = '2026.08.25-263';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
