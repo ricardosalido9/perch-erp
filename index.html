@@ -950,7 +950,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.25-261</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.25-262</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1382,7 +1382,14 @@
   function selectArea(key, label, keepClosed) {
     if (state.key !== key) filtroYaPuesto = false;
     state.key = key; state.label = label;
-    sortState = { col: null, dir: 1 }; editingRow = -1;
+    // Las áreas de dinero y de movimientos arrancan ordenadas de lo más nuevo a lo
+    // más viejo: lo que se acaba de capturar es lo que se quiere ver primero.
+    var DE_LO_NUEVO = ['fin_ingresos', 'fin_egresos', 'fin_efectivo', 'fin_gastos_op',
+                       'prov_entradas', 'prov_salidas', 'op_envios', 'pagos_pedidos',
+                       'cfdi_vigentes', 'cfdi_recibidos'];
+    sortState = (DE_LO_NUEVO.indexOf(key) !== -1)
+      ? { col: '__fecha__', dir: -1 } : { col: null, dir: 1 };
+    editingRow = -1;
     filters = []; pendingAutoFilter = true; closeFilterPopup(); renderFilterBar();
     document.getElementById('areaTitle').textContent = label;
     document.getElementById('pageTitle').textContent = label;
@@ -2298,6 +2305,8 @@
           cuenta: document.getElementById('bkCuenta').value,
           anio: +document.getElementById('bkAnio').value })
         .then(function (d) {
+          // De lo más nuevo a lo más viejo, igual que las demás pantallas
+          (d.propuestas || []).sort(function (a, b) { return (b.fecha || 0) - (a.fecha || 0); });
           bancoDatos = d; bancoSel = {};
           // Lo que ya está capturado no se preselecciona; lo demás sí
           (d.propuestas || []).forEach(function (p, i) {
@@ -2369,6 +2378,7 @@
       '<th style="width:104px;text-align:right">Monto</th>' +
       '<th style="width:210px">Concepto</th>' +
       '<th style="width:200px">Cliente <span style="color:var(--muted)">/</span> Proveedor</th>' +
+      '<th style="width:150px">Pedido</th>' +
       '</tr></thead><tbody>';
 
     (d.propuestas || []).forEach(function (p, i) {
@@ -2421,6 +2431,17 @@
               (p.contraparte ? (p.tipo === 'INGRESO' ? 'Cliente' : 'Proveedor')
                 : (p.tipo === 'INGRESO' ? 'Falta el cliente' : 'Falta el proveedor')) +
               '</div>')) + '</td>' +
+        // El pedido es lo que hace que el cobro se descuente de Cuentas por Cobrar
+        // y que el pago se ligue al pedido del proveedor. Por eso va a la vista.
+        '<td>' + (p.yaCapturado ? '<span class="s">—</span>' :
+          '<input class="bk-ped" data-i="' + i + '" list="bkLista' +
+            (p.tipo === 'INGRESO' ? 'Fol' : 'Ped') + '" value="' + esc(p.pedido || '') +
+            '" placeholder="' + (p.tipo === 'INGRESO' ? 'folio de venta' : 'pedido') + '">' +
+          '<div class="s" style="margin-top:3px;color:' +
+            (p.pedido ? 'var(--success)' : 'var(--muted)') + '">' +
+            (p.pedido ? (p.tipo === 'INGRESO' ? 'Se descuenta de CxC' : 'Se liga al pedido')
+                      : (p.tipo === 'INGRESO' ? 'Sin folio no baja de CxC' : 'Opcional')) +
+          '</div>') + '</td>' +
         '</tr>';
     });
     h += '</tbody></table>';
@@ -2429,7 +2450,13 @@
     h += '<datalist id="bkListaCli">' + (cc.clientes || []).map(function (x) {
         return '<option value="' + esc(x) + '">'; }).join('') + '</datalist>' +
       '<datalist id="bkListaProv">' + (cc.proveedores || []).map(function (x) {
-        return '<option value="' + esc(x) + '">'; }).join('') + '</datalist>';
+        return '<option value="' + esc(x) + '">'; }).join('') + '</datalist>' +
+      '<datalist id="bkListaFol">' + (d.folios || []).map(function (x) {
+        return '<option value="' + esc(x.folio) + '">' + esc(x.cliente) + ' · ' +
+          esc(formatMoney(x.saldo)) + '</option>'; }).join('') + '</datalist>' +
+      '<datalist id="bkListaPed">' + (d.pedidosProveedor || []).map(function (x) {
+        return '<option value="' + esc(x.pedido) + '">' + esc(x.proveedor) + '</option>';
+      }).join('') + '</datalist>';
 
     if ((cu.detalleCapturadoSinBanco || []).length) {
       h += '<h3 class="sec-t" style="margin-top:22px">Capturado en tu hoja, sin respaldo en el banco</h3>' +
@@ -2469,6 +2496,8 @@
         var partes = String(sc.value || '').split('|');
         var inp = document.querySelector('.bk-par[data-i="' + i + '"]');
         if (inp && partes[1]) inp.value = partes[1];
+        var ped = document.querySelector('.bk-ped[data-i="' + i + '"]');
+        if (ped) ped.value = partes[0] || '';
         bancoDatos.propuestas[i].pedido = partes[0] || '';
       });
     });
@@ -2529,7 +2558,7 @@
         concepto: concepto, descripcion: p.descripcion,
         conceptoEstadoDeCuenta: p.conceptoEstadoDeCuenta,
         contraparte: par ? par.value : '',
-        pedido: p.pedido || '',
+        pedido: (document.querySelector('.bk-ped[data-i="' + k + '"]') || {}).value || '',
         categoria: o.categoria || '', subcategoria: o.subcategoria || ''
       });
     });
@@ -4998,6 +5027,18 @@
   }
   function sortRows(rows) {
     if (sortState.col === null) return rows;
+    // '__fecha__' es el orden por omisión: se resuelve a la columna de fecha que
+    // tenga la hoja, sin obligar a que se llame igual en todas.
+    if (sortState.col === '__fecha__') {
+      var cf = findHeaderByName('Fecha') || findHeaderByName('Fecha de pago') ||
+               findHeaderByName('Fecha Emision') || findHeaderByName('Fecha Emisión') ||
+               findHeaderByName('Fecha de cierre de venta');
+      if (!cf) return rows;
+      var dirF = sortState.dir;
+      return rows.slice().sort(function (a, b) {
+        return ((parseDate(a[cf]) || 0) - (parseDate(b[cf]) || 0)) * dirF;
+      });
+    }
     var h = sortState.col, dir = sortState.dir, type = columnType(h);
     return rows.slice().sort(function (a, b) {
       var va = a[h], vb = b[h];
@@ -11283,7 +11324,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.25-261';
+    var mia = '2026.08.25-262';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
