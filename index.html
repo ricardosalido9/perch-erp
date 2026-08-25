@@ -950,7 +950,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.19-235</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.19-237</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -3664,6 +3664,48 @@
         esc(formatMoney(Math.abs(t.ivaAPagar))) + '</td></tr>' +
         '</tbody></table></div>';
 
+      // Si se descartaron renglones, se dice cuántos y por qué. Un mes en cero
+      // porque no hubo ventas y un mes en cero porque no se pudo leer la fecha
+      // se ven idénticos, y son problemas muy distintos.
+      [['emitidas', 'CFDIs emitidos'], ['recibidas', 'CFDIs recibidos']].forEach(function (par) {
+        var L = d.lectura && d.lectura[par[0]];
+        if (!L || !L.descartes) return;
+        var x = L.descartes;
+        var perdidos = (x.sinFecha || 0) + (x.deOtroAnio || 0);
+        var mudos = [];
+        if (x.sinFecha) mudos.push(fmtNum(x.sinFecha) + ' con fecha que no se pudo leer');
+        if (x.contadas && x.sinSubtotal === x.contadas) mudos.push('ninguno trae Subtotal');
+        else if (x.sinSubtotal) mudos.push(fmtNum(x.sinSubtotal) + ' sin Subtotal');
+        if (x.contadas && x.sinIva === x.contadas) mudos.push('ninguno trae IVA');
+        else if (x.sinIva) mudos.push(fmtNum(x.sinIva) + ' sin IVA');
+        if (!mudos.length && !perdidos) return;
+        h += '<div style="background:var(--amber-bg);border:1px solid var(--amber);' +
+          'border-radius:10px;padding:12px 16px;font-size:13px;color:var(--amber);margin-top:12px">' +
+          '<b>' + esc(par[1]) + ':</b> de ' + fmtNum(x.total) + ' renglones se contaron ' +
+          fmtNum(x.contadas) + '. ' +
+          (mudos.length ? mudos.join(' · ') + '. ' : '') +
+          (x.deOtroAnio ? fmtNum(x.deOtroAnio) + ' son de otro año. ' : '') +
+          (x.esPago ? fmtNum(x.esPago) + ' son complementos de pago. ' : '') +
+          (x.esNomina ? fmtNum(x.esNomina) + ' son de nómina. ' : '') +
+          '<div style="margin-top:6px;color:var(--slate)">Columnas usadas: fecha <b>' +
+          esc(L.columnas.fecha) + '</b>, subtotal <b>' + esc(L.columnas.subtotal) +
+          '</b>, IVA <b>' + esc(L.columnas.iva) + '</b>.' +
+          ((x.ejemplosSinFecha || []).length
+            ? ' Fechas que no se entendieron: ' +
+              esc(x.ejemplosSinFecha.slice(0, 3).join(' · '))
+            : '') + '</div></div>';
+      });
+
+      h += '<div class="cot-acciones" style="margin-top:16px">' +
+        '<button type="button" class="primary" id="cfdiReporteBtn">Reporte del mes en PDF</button>' +
+        '<select id="cfdiReporteMes" style="max-width:150px">' +
+        MESES_ES.map(function (m, i) {
+          return '<option value="' + (i + 1) + '"' +
+            (d.mesDeclarar === i + 1 ? ' selected' : '') + '>' + esc(m) + '</option>';
+        }).join('') + '</select>' +
+        '<span class="s" style="color:var(--muted)">Emitidos, recibidos y nómina, ' +
+        'para mandarle al contador o al cliente</span></div>';
+
       h += '<div class="s" style="color:var(--muted);margin-top:14px">' +
         'Sale de los CFDIs del SAT: ' + fmtNum(d.fuentes.emitidas) + ' emitidos y ' +
         fmtNum(d.fuentes.recibidas) + ' recibidos. Las canceladas no cuentan (' +
@@ -3674,6 +3716,23 @@
       document.getElementById('tableWrap').innerHTML = h;
       document.getElementById('summary').style.display = 'none';
       document.getElementById('count').textContent = (d.meses || []).length + ' meses';
+      var brep = document.getElementById('cfdiReporteBtn');
+      if (brep) brep.addEventListener('click', function () {
+        var mesSel = +document.getElementById('cfdiReporteMes').value || d.mesDeclarar;
+        brep.disabled = true; brep.textContent = 'Armando...';
+        api('cfdi-reporte', { token: state.token, mes: mesSel, anio: d.anio })
+          .then(function (o) {
+            bajarPdf(o.pdf, o.nombre || 'Reporte de CFDIs.pdf');
+            toast('Reporte listo: ' + fmtNum(o.resumen.emitidos) + ' emitidos y ' +
+                  fmtNum(o.resumen.recibidos) + ' recibidos.', 'ok');
+            if ((o.advertencias || []).length) {
+              avisoFijo('<b>El reporte salió con avisos.</b><div style="margin-top:6px">' +
+                o.advertencias.map(function (a) { return esc(a); }).join('<br>') + '</div>');
+            }
+          })
+          .catch(fail)
+          .then(function () { brep.disabled = false; brep.textContent = 'Reporte del mes en PDF'; });
+      });
     }).catch(function (e) {
       document.getElementById('tableWrap').innerHTML =
         '<div class="state">' + esc((e && e.message) || 'No se pudo calcular.') + '</div>';
@@ -10651,7 +10710,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.19-235';
+    var mia = '2026.08.19-237';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
