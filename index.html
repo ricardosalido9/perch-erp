@@ -950,7 +950,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.25-240</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.25-251</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -997,6 +997,7 @@
         <button id="driveCostosBtn" type="button" style="display:none">Actualizar en Drive</button>
         <button id="driveStockBtn" type="button" style="display:none">Recalcular stock</button>
         <button id="driveProvBtn" type="button" style="display:none">Exportar a Drive</button>
+        <button id="reporteMesBtn" type="button" style="display:none">Reporte mensual</button>
         <button id="downloadBtn" type="button">Descargar</button>
         <span class="count" id="count"></span>
       </div>
@@ -1230,7 +1231,7 @@
     fin_cxc:             'Saldos por cobrar de cada pedido.',
     fin_ingresos:        'Cobros recibidos, ligados al folio del pedido.'
   };
-  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'fac_control', 'cfdi_control', 'cfdi_prov', 'prov_razon', 'rh_resumen', 'fin_gastos_op', 'fin_efectivo', 'fac_impuestos', 'pagos_pedidos', 'log_calendario',
+  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'fac_control', 'cfdi_control', 'cfdi_prov', 'prov_razon', 'rh_resumen', 'fin_gastos_op', 'fin_efectivo', 'fac_impuestos', 'log_calendario',
     // El stock sale de pedidos, entradas y salidas: se recalcula, no se edita
     'op_stock', 'op_revisar', 'prov_revision'];
   function esLector() {
@@ -1807,6 +1808,16 @@
                 fte = '<b style="color:var(--accent-ink)">Del pedido asignado a este folio</b>' +
                       '<div class="s">La salida no traía número de pedido; se encontró por el folio ' +
                       'del cliente.</div>';
+              else if (p.fuente === 'costo del proveedor (aprox)')
+                fte = '<b style="color:var(--amber)">Precio de ese proveedor</b>' +
+                      '<div class="s">Este renglón no trae número de pedido. Se tomó el precio ' +
+                      'que ese proveedor cobra por el mismo mueble, y solo porque cobra lo mismo ' +
+                      'en todos sus pedidos.</div>';
+              else if (p.fuente === 'sin costo a propósito')
+                fte = '<b style="color:var(--success)">Sin costo</b>' +
+                      '<div class="s">La hoja tiene un cero escrito. Es la tela que pone ' +
+                      'el cliente o una pieza incluida en otro renglón, así que cuenta como $0 ' +
+                      'y no se busca precio en ningún lado.</div>';
               else if (p.fuente === 'pendiente de costear')
                 fte = '<b style="color:var(--amber)">Pendiente de costear</b>' +
                       '<div class="s">' + esc(p.motivo ||
@@ -2104,6 +2115,81 @@
       lector.readAsDataURL(f);
     });
     inp.click();
+  }
+
+  // Versión nueva de una cotización: la anterior ya se mandó, así que no se toca.
+  // Se copia como base, se ajustan cantidades o descuentos, y nace con folio propio.
+  var versionDe = null, versionFilas = [];
+  function abrirVersionNueva(folio) {
+    var cRef = findHeaderByName('No. de Referencia') || findHeaderByName('Folio');
+    var cProd = findHeaderByName('Producto') || findHeaderByName('Productos');
+    var cMat = findHeaderByName('Material');
+    var cCant = findHeaderByName('Cantidad');
+    var cDesc = findHeaderByName('% descuento') || findHeaderByName('Descuentos');
+    versionDe = folio;
+    versionFilas = (state.rows || []).filter(function (r) {
+      return cRef && String(r[cRef] || '').trim() === folio;
+    });
+    if (!versionFilas.length) { toast('No encontré los renglones de ' + folio + '.', 'err'); return; }
+
+    var h = '<div class="s" style="color:var(--slate);margin-bottom:12px">' +
+      '<b>' + esc(folio) + ' se queda como está.</b> Esto crea una cotización nueva con su ' +
+      'propio folio, usando esta como base. Ajusta lo que cambie y quita lo que ya no vaya.</div>' +
+      '<table class="mini-table"><thead><tr><th style="width:34px"></th><th>Producto</th>' +
+      '<th>Material</th><th style="text-align:right;width:90px">Cantidad</th>' +
+      (cDesc ? '<th style="text-align:right;width:90px">Descuento</th>' : '') +
+      '</tr></thead><tbody>' +
+      versionFilas.map(function (r, i) {
+        return '<tr>' +
+          '<td><input type="checkbox" class="ver-inc" data-i="' + i + '" checked></td>' +
+          '<td>' + esc(cProd ? (r[cProd] || '') : '') + '</td>' +
+          '<td>' + esc(cMat ? (r[cMat] || '—') : '—') + '</td>' +
+          '<td><input class="ver-cant" data-i="' + i + '" type="number" step="1" min="0" ' +
+            'style="text-align:right" value="' + esc(cCant ? (r[cCant] || '') : '') + '"></td>' +
+          (cDesc ? '<td><input class="ver-desc" data-i="' + i + '" ' +
+            'style="text-align:right" value="' + esc(r[cDesc] || '') + '"></td>' : '') +
+          '</tr>';
+      }).join('') + '</tbody></table>' +
+      '<div class="s" style="color:var(--muted);margin-top:10px">Si el cliente se queda con la ' +
+      'nueva, cambia el status de ' + esc(folio) + ' a "Rechazada" para que no cuente dos veces ' +
+      'en la tasa de conversión.</div>';
+
+    document.getElementById('aventaTitulo').textContent = 'Versión nueva de ' + folio;
+    document.getElementById('aventaCuerpo').innerHTML = h;
+    document.getElementById('aventaOk').textContent = 'Crear la versión nueva';
+    document.getElementById('aventaCancel').textContent = 'Cancelar';
+    document.getElementById('aventaModal').classList.add('on');
+    aventaPedido = null; entradaPedido = null;
+  }
+  function guardarVersionNueva() {
+    var cCant = findHeaderByName('Cantidad');
+    var cDesc = findHeaderByName('% descuento') || findHeaderByName('Descuentos');
+    var quitar = [], cambios = {};
+    document.querySelectorAll('.ver-inc').forEach(function (chk) {
+      var i = chk.getAttribute('data-i');
+      if (!chk.checked) { quitar.push(i); return; }
+      var cam = {};
+      var ec = document.querySelector('.ver-cant[data-i="' + i + '"]');
+      if (ec && cCant) cam[cCant] = ec.value;
+      var ed = document.querySelector('.ver-desc[data-i="' + i + '"]');
+      if (ed && cDesc) cam[cDesc] = ed.value;
+      if (Object.keys(cam).length) cambios[i] = cam;
+    });
+    if (quitar.length === versionFilas.length) {
+      toast('No puedes quitar todos los productos.', 'err'); return;
+    }
+    var btn = document.getElementById('aventaOk');
+    btn.disabled = true; btn.textContent = 'Creando…';
+    api('dup-cot', { token: state.token, folio: versionDe, quitar: quitar, cambios: cambios })
+      .then(function (d) {
+        toast(d.mensaje || 'Versión nueva creada.', 'ok');
+        avisoFijo('<b>' + esc(d.mensaje || '') + '</b><div style="margin-top:6px">' +
+                  esc(d.nota || '') + '</div>');
+        cerrarMandarAVenta();
+        loadArea();
+      })
+      .catch(fail)
+      .then(function () { btn.disabled = false; btn.textContent = 'Crear la versión nueva'; });
   }
 
   function loadInvProv() {
@@ -3756,7 +3842,16 @@
     document.getElementById('tableWrap').innerHTML =
       '<div class="state" style="padding:50px 0">Leyendo los pagos solicitados…</div>';
     document.getElementById('summary').innerHTML = '';
-    mostrarAlta(false);
+    // Se piden también las columnas de la hoja para que el botón "+ Agregar" del
+    // encabezado funcione igual que en las demás áreas, con el mismo formulario.
+    api('data', { token: state.token, key: 'pagos_pedidos' })
+      .then(function (d0) {
+        state.headers = d0.headers || [];
+        state.rows = d0.rows || [];
+        state.label = d0.label || 'Pagos por hacer';
+        mostrarAlta(!esSoloLectura('pagos_pedidos'));
+      })
+      .catch(function () { mostrarAlta(false); });
     api('pagos', { token: state.token }).then(function (d) {
       var t = d.totales || {};
       var box = document.getElementById('summary');
@@ -3812,7 +3907,8 @@
         h += '<div id="pagosBarra" class="pagos-barra"></div>';
         h += '<div class="cot-acciones" style="margin-bottom:12px">' +
           '<button type="button" class="primary" id="pedirPagoBtn">+ Pedir un pago</button>' +
-          '<span class="s" style="color:var(--muted)">Se agrega a la cola sin pagar</span></div>';
+          '<span class="s" style="color:var(--muted)">Abre el mismo formulario de siempre. ' +
+          'Se guarda sin pagar, así que aparece en la cola.</span></div>';
         h += '<div class="cot-grid">';
         d.grupos.forEach(function (g) {
           h += '<div class="cot-card open">' +
@@ -3878,7 +3974,14 @@
         });
       });
       var pedirBtn = document.getElementById('pedirPagoBtn');
-      if (pedirBtn) pedirBtn.addEventListener('click', abrirPedirPago);
+      if (pedirBtn) pedirBtn.addEventListener('click', function () {
+        // El mismo formulario que todas las demás áreas, con las columnas de la hoja
+        renderForm();
+        abrirModalAlta();
+        // Nace sin pagar: es lo que lo pone en la cola de Pau
+        var elPag = document.querySelector('#formFields [data-col="Pagado"]');
+        if (elPag) elPag.value = 'FALSE';
+      });
       document.querySelectorAll('#tableWrap .subir-comp').forEach(function (b) {
         b.addEventListener('click', function () { subirComprobante(b); });
       });
@@ -4392,6 +4495,9 @@
       document.getElementById('driveCostosBtn').style.display = (state.key === 'costos') ? '' : 'none';
       // El recálculo reescribe Stock Y Revisar, así que el botón sale en las dos
       // pantallas: si estás viendo las diferencias, ahí mismo puedes rehacerlas.
+      // El reporte mensual se arma desde Ventas, que es donde se busca
+      var brm = document.getElementById('reporteMesBtn');
+      if (brm) brm.style.display = (state.key === 'ventas_registro') ? '' : 'none';
       var bs = document.getElementById('driveStockBtn');
       bs.style.display = (state.key === 'op_stock' || state.key === 'op_revisar') ? '' : 'none';
       bs.textContent = (state.key === 'op_revisar') ? 'Volver a revisar' : 'Recalcular stock';
@@ -5892,7 +5998,7 @@
     for (var a = hoy.getFullYear(); a >= hoy.getFullYear() - 2; a--) {
       anios += '<option value="' + a + '"' + (a === anioPrev ? ' selected' : '') + '>' + a + '</option>';
     }
-    document.getElementById('aventaTitulo').textContent = 'Reporte de cierre';
+    document.getElementById('aventaTitulo').textContent = 'Reporte mensual';
     document.getElementById('aventaCuerpo').innerHTML =
       '<div class="form-grid">' +
         '<div class="fld"><label>Mes</label><select id="ciMes">' + opts + '</select></div>' +
@@ -6399,9 +6505,10 @@
     h += bloqueFlujo(d.flujo);
     h += '<div style="margin:26px 0 10px;padding-top:18px;border-top:1px solid var(--line);' +
       'display:flex;align-items:center;gap:14px;flex-wrap:wrap">' +
-      '<button type="button" class="primary" id="btnCierre">Reporte de cierre del mes</button>' +
-      '<span class="s" style="color:var(--muted)">Un PDF con lo vendido, el margen, los productos, ' +
-      'los clientes y de dónde llegaron. Listo para entregar.</span></div>';
+      '<button type="button" class="primary" id="btnCierre">Reporte mensual en PDF</button>' +
+      '<span class="s" style="color:var(--muted)">Ventas contra el año pasado y contra la meta, ' +
+      'por tipo de mueble con gráficas, costos, utilidad, marketing, cotizaciones, leads y ' +
+      'la operación del mes. Listo para presentar.</span></div>';
     document.getElementById('dashView').innerHTML = h;
     var bc = document.getElementById('btnCierre');
     if (bc) bc.addEventListener('click', abrirCierre);
@@ -6805,6 +6912,9 @@
               '<button type="button" class="row-btn primary add-a-folio" data-folio="' +
               esc(k).replace(/"/g, '&quot;') + '">+ Agregar producto</button>') +
             '<button type="button" class="pdf-btn" data-folio="' + esc(k).replace(/"/g, '&quot;') + '">Ver PDF</button>' +
+            (state.key === 'cotizaciones' && !esSoloLectura(state.key)
+              ? '<button type="button" class="dup-cot" data-folio="' + esc(k).replace(/"/g, '&quot;') +
+                '">Hacer una versión nueva</button>' : '') +
             (state.key === 'ventas_registro'
               ? (cSt ? '<span class="cot-st"><label>Status</label>' + selectStatusCot(k, st) + '</span>' : '')
               : ((vendida ? '<span class="s" style="color:var(--success)">Ya se convirtió en venta</span>'
@@ -6828,7 +6938,7 @@
     var cIt = findHeaderByName('Producto');
     var cMat = findHeaderByName('Material'), cCant = findHeaderByName('Cantidad');
     var cCU = findHeaderByName('Costo Unitario'), cIVA = findHeaderByName('Costo Total + IVA');
-    var cFol = findHeaderByName('Folio cliente');
+    var cFol = findHeaderByName('Folio cliente') || findHeaderByName('Folio');
     var g = {}, orden = [];
     rows.forEach(function (r) {
       var k = String(r[cPed] || '').trim() || '(sin pedido)';
@@ -8077,8 +8187,11 @@
     var calcular = function () {
       var dias = DIAS_DE_TIEMPO[String(elT.value || '').trim()];
       if (!dias) return;
-      // Se cuenta desde la fecha del cierre; si no hay, desde hoy
-      var elC = fieldEl('Fecha del Cierre') || fieldEl('Fecha');
+      // Se cuenta desde la fecha de la cotización o del cierre; si no hay, desde hoy.
+      // Antes solo se recalculaba al cambiar el tiempo, así que si movías la fecha
+      // el estimado se quedaba contando desde el día que abriste el formulario.
+      var elC = fieldEl('Fecha del Cierre') || fieldEl('Fecha de la Cotización') ||
+                fieldEl('Fecha de la cotización') || fieldEl('Fecha');
       var base = null;
       if (elC && elC.value) {
         var d = parseDate(elC.value);
@@ -8102,6 +8215,13 @@
       }
     };
     elT.addEventListener('change', calcular);
+    // Si mueves la fecha, el estimado se recorre con ella
+    var elFecha = fieldEl('Fecha del Cierre') || fieldEl('Fecha de la Cotización') ||
+                  fieldEl('Fecha de la cotización') || fieldEl('Fecha');
+    if (elFecha) {
+      elFecha.addEventListener('change', calcular);
+      elFecha.addEventListener('input', calcular);
+    }
   }
   function initCascade() {
     var c = cascadeLU(); if (!c) return;
@@ -9416,7 +9536,8 @@
     var cIt = findHeaderByName('Producto');
     var cMat = findHeaderByName('Material'), cCant = findHeaderByName('Cantidad');
     var cEnt = findHeaderByName('Entradas'), cProv = findHeaderByName('Proveedor');
-    var cFol = findHeaderByName('Folio cliente'), cCU = findHeaderByName('Costo Unitario');
+    var cFol = findHeaderByName('Folio cliente') || findHeaderByName('Folio');
+    var cCU = findHeaderByName('Costo Unitario');
     entradaPedido = pedido;
     entradaLineas = (state.rows || []).filter(function (r) {
       return String(r[cPed] || '').trim() === pedido;
@@ -9839,9 +9960,12 @@
         envs.push({ 'Fecha': '', 'Folio cliente': d2.folio, 'Folio': d2.folio,
           'Cliente': pv.cliente || '',
           'Dirección de Entrega': d2.dir || pv.direccion || '',
-          'Pedido Proveedor': aventaPedido, 'Pedido': aventaPedido, 'Proveedor': l.proveedor,
-          'Item': l.producto, 'Productos': l.producto, 'Material': l.material,
-          'Cantidad': c, 'Costo Unitario': l.costo, 'Costo': l.costo * c,
+          'Pedido Proveedor': aventaPedido, 'Numero de pedido': aventaPedido,
+          'Pedido': aventaPedido, 'Proveedor': l.proveedor,
+          'Item': l.producto, 'Productos': l.producto, 'Producto': l.producto,
+          'Material': l.material,
+          'Cantidad': c, 'Costo Unitario': l.costo,
+          'Costo': l.costo * c, 'Costo Total': l.costo * c,
           'Destino': d2.folio ? 'Cliente' : 'Stock',
           'Comentarios': d2.dir ? 'Envío: ' + d2.dir : '' });
       });
@@ -10198,8 +10322,31 @@
       : '';
     document.getElementById('ventaResumen').innerHTML =
       '<b>' + esc(folio) + '</b>' + (cliente ? ' · ' + esc(cliente) : '');
-    document.getElementById('ventaSabeFecha').value = 'no';
-    document.getElementById('ventaFecha').value = masSemanas(8);
+    // Si la cotización ya traía fecha de entrega acordada, se respeta esa en vez de
+    // volver a proponer 8 semanas. Preguntarlo otra vez borraba lo ya acordado.
+    var cFe = findHeaderByName('Fecha de entrega acordada');
+    var cTi = findHeaderByName('Tiempo de entrega') || findHeaderByName('Tiempo de fabricación');
+    var yaFecha = (fila && cFe) ? String(fila[cFe] || '').trim() : '';
+    var yaTiempo = (fila && cTi) ? String(fila[cTi] || '').trim() : '';
+    if (yaFecha) {
+      document.getElementById('ventaSabeFecha').value = 'si';
+      document.getElementById('ventaFecha').value = yaFecha;
+    } else if (yaTiempo && DIAS_DE_TIEMPO[yaTiempo]) {
+      // Sin fecha pero con tiempo pactado: se calcula desde la fecha de la cotización
+      var cFc = findHeaderByName('Fecha de la Cotización') || findHeaderByName('Fecha');
+      var baseCot = null;
+      if (cFc && fila && fila[cFc]) {
+        var dc = parseDate(fila[cFc]);
+        if (dc !== null) {
+          baseCot = new Date(Math.floor(dc / 10000), Math.floor(dc / 100) % 100 - 1, dc % 100);
+        }
+      }
+      document.getElementById('ventaSabeFecha').value = 'si';
+      document.getElementById('ventaFecha').value = sumarDias(baseCot, DIAS_DE_TIEMPO[yaTiempo]);
+    } else {
+      document.getElementById('ventaSabeFecha').value = 'no';
+      document.getElementById('ventaFecha').value = masSemanas(8);
+    }
     document.getElementById('ventaModal').classList.add('on');
   }
   function cerrarConvertirVenta() {
@@ -10753,17 +10900,39 @@
   });
   document.getElementById('logoutBtn').addEventListener('click', doLogout);
   document.getElementById('logoutSide').addEventListener('click', doLogout);
-  // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
-  fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.25-240';
-    if (v && v.version && v.version !== mia) {
-      var el = document.querySelector('.nav-foot div');
-      if (el) {
-        el.innerHTML = 'VERSIÓN ' + esc(mia) + '<div style="color:var(--danger);margin-top:4px;' +
-          'text-transform:none;letter-spacing:0">El servidor tiene la ' + esc(v.version) +
-          '. Recargá con Cmd+Shift+R.</div>';
-      }
+  // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché.
+  // Antes esto solo cambiaba un texto chiquito abajo del menú, donde nadie lo veía.
+  // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
+  fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
+    .then(function (r) { return r.json(); }).then(function (v) {
+    var mia = '2026.08.25-251';
+    var el = document.querySelector('.nav-foot div');
+    if (!v || !v.version) return;
+    if (v.version === mia) {
+      if (el) el.textContent = 'VERSIÓN ' + mia;
+      return;
     }
+    if (el) {
+      el.innerHTML = 'VERSIÓN ' + esc(mia) +
+        '<div style="color:var(--danger);margin-top:4px;text-transform:none;letter-spacing:0">' +
+        'El servidor tiene la ' + esc(v.version) + '</div>';
+    }
+    var b = document.createElement('div');
+    b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:var(--danger);' +
+      'color:#fff;padding:10px 16px;font-size:13px;display:flex;gap:12px;align-items:center;' +
+      'justify-content:center;flex-wrap:wrap';
+    b.innerHTML = '<span>Estás viendo una versión vieja del sistema (' + esc(mia) +
+      '). El servidor ya tiene la <b>' + esc(v.version) + '</b>.</span>';
+    var btn = document.createElement('button');
+    btn.textContent = 'Recargar ahora';
+    btn.style.cssText = 'background:#fff;color:var(--danger);border:0;border-radius:8px;' +
+      'padding:6px 14px;font-weight:600;cursor:pointer';
+    btn.addEventListener('click', function () {
+      // Se recarga saltándose la caché: sin esto vuelve a servir el archivo viejo
+      location.replace(location.pathname + '?v=' + Date.now());
+    });
+    b.appendChild(btn);
+    document.body.appendChild(b);
   }).catch(function () {});
   document.getElementById('avisoCerrar').addEventListener('click', function () {
     document.getElementById('avisoFijo').classList.remove('on');
@@ -10789,6 +10958,7 @@
   document.getElementById('aventaClose').addEventListener('click', cerrarMandarAVenta);
   document.getElementById('aventaCancel').addEventListener('click', cerrarMandarAVenta);
   document.getElementById('aventaOk').addEventListener('click', function () {
+    if (document.querySelector('.ver-inc')) { guardarVersionNueva(); return; }
     if (document.getElementById('pp_prov')) { guardarPedirPago(); return; }
     if (document.getElementById('pgFecha')) { confirmarPagados(); return; }
     if (document.getElementById('pnNombre')) { guardarProductoNuevo(); return; }
@@ -10844,6 +11014,7 @@
       if (o.archivo) window.open(o.archivo, '_blank');
     }).catch(fail).then(function () { b.disabled = false; b.textContent = t; });
   });
+  document.getElementById('reporteMesBtn').addEventListener('click', abrirCierre);
   document.getElementById('driveStockBtn').addEventListener('click', function () {
     var b = this, t = b.textContent;
     b.disabled = true; b.textContent = 'Recalculando...';
@@ -10942,6 +11113,8 @@
     }
     var av = e.target.closest('.aventa-btn');
     if (av) { abrirMandarAVenta(av.getAttribute('data-ped')); return; }
+    var dc = e.target.closest('.dup-cot');
+    if (dc) { abrirVersionNueva(dc.getAttribute('data-folio')); return; }
     var oc = e.target.closest('.oc-btn');
     if (oc) { bajarOrdenDeCompra(oc); return; }
     var ed = e.target.closest('.env-doc');
