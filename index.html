@@ -950,7 +950,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.25-263</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.25-264</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1207,6 +1207,7 @@
     fac_impuestos:       'Impuestos por mes: base, tasa, a cargo, a favor y si ya se pagó.',
     fin_efectivo:        'Movimientos en efectivo, para pasarlos después a ingresos y egresos.',
     fin_banco:           'Sube el estado de cuenta del banco y captura lo que falta, sin duplicar.',
+    fac_emitidos:        'Facturas en parcialidades sin complemento, y qué entró al banco sin papel.',
     fin_gastos_op:       'Gastos de operación por categoría: renta, servicios, sueldos, marketing.',
     fin_estados:         'Estado de resultados por mes.',
     rh_resumen:          'La plantilla de un vistazo: costo, altas, bajas y rotación.',
@@ -1233,7 +1234,7 @@
     fin_cxc:             'Saldos por cobrar de cada pedido.',
     fin_ingresos:        'Cobros recibidos, ligados al folio del pedido.'
   };
-  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'fac_control', 'cfdi_control', 'cfdi_prov', 'prov_razon', 'rh_resumen', 'fin_gastos_op', 'fin_efectivo', 'fac_impuestos', 'log_calendario',
+  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'fac_control', 'cfdi_control', 'cfdi_prov', 'prov_razon', 'rh_resumen', 'fin_gastos_op', 'fin_efectivo', 'fac_impuestos', 'fac_emitidos', 'log_calendario',
     // El stock sale de pedidos, entradas y salidas: se recalcula, no se edita
     'op_stock', 'op_revisar', 'prov_revision'];
   function esLector() {
@@ -2591,6 +2592,133 @@
       })
       .catch(fail)
       .then(function () { btn.disabled = false; btn.textContent = 'Aprobar y capturar'; });
+  }
+
+  // ===== Emitidos vs ingresos: complementos pendientes y qué no cuadra =====
+  var emiVista = 'clientes';
+  function loadEmitidos() {
+    document.getElementById('summary').innerHTML = '';
+    mostrarAlta(false);
+    document.getElementById('tableWrap').innerHTML =
+      '<div class="state" style="padding:50px 0">Cruzando facturas, complementos e ingresos…</div>';
+    api('emitidos', { token: state.token, anio: new Date().getFullYear() })
+      .then(function (d) {
+        var r = d.resumen || {}, L = d.lectura || {};
+        var box = document.getElementById('summary');
+        box.style.display = 'block';
+        var chip = function (k, t, n) {
+          return '<button type="button" class="mes-chip' + (emiVista === k ? ' on' : '') +
+            '" data-emi="' + k + '">' + t + ' (' + fmtNum(n) + ')</button>';
+        };
+        box.innerHTML =
+          '<div class="kpis">' +
+          '<div class="kpi"><div class="k">Sin ningún complemento</div><div class="v" ' +
+            'style="color:var(--danger)">' + fmtNum(r.sinComplemento) + '</div>' +
+            '<div class="s">facturas PPD</div></div>' +
+          '<div class="kpi"><div class="k">A medias</div><div class="v" style="color:var(--amber)">' +
+            fmtNum(r.aMedias) + '</div><div class="s">con complemento parcial</div></div>' +
+          '<div class="kpi"><div class="k">Falta complementar</div><div class="v">' +
+            esc(formatMoney(r.porCobrarConComplemento)) + '</div>' +
+            '<div class="s">de las PPD abiertas</div></div>' +
+          '<div class="kpi"><div class="k">Entró sin papel</div><div class="v" ' +
+            'style="color:var(--amber)">' + esc(formatMoney(r.montoSinPapel)) + '</div>' +
+            '<div class="s">' + fmtNum(r.ingresosSinPapel) + ' ingresos</div></div>' +
+          '</div>' +
+          '<div class="mes-chips" style="margin-top:12px">' +
+            chip('clientes', 'Complementos por cliente', (d.porCliente || []).length) +
+            chip('sinPapel', 'Entró dinero sin factura ni complemento', r.ingresosSinPapel) +
+            chip('sinIngreso', 'Facturado o complementado sin que entrara el dinero', r.papelSinIngreso) +
+          '</div>' +
+          (L.columnaRelacion === '(NO ESTÁ)'
+            ? '<div style="background:var(--amber-bg);border:1px solid var(--amber);border-radius:10px;' +
+              'padding:10px 14px;color:var(--amber);font-size:13px;margin-top:10px">' +
+              'La pestaña de complementos no tiene la columna <b>UUIDRel</b>, así que no se puede ' +
+              'ligar ningún complemento con su factura.</div>' : '');
+        pintarEmitidos(d);
+        document.querySelectorAll('[data-emi]').forEach(function (b) {
+          b.addEventListener('click', function () {
+            emiVista = b.getAttribute('data-emi');
+            document.querySelectorAll('[data-emi]').forEach(function (x) {
+              x.classList.toggle('on', x.getAttribute('data-emi') === emiVista);
+            });
+            pintarEmitidos(d);
+          });
+        });
+      })
+      .catch(function (e) {
+        document.getElementById('tableWrap').innerHTML =
+          '<div class="state">' + esc((e && e.message) || 'No se pudo calcular.') + '</div>';
+      });
+  }
+
+  function pintarEmitidos(d) {
+    var h = '';
+    if (emiVista === 'clientes') {
+      if (!(d.porCliente || []).length) {
+        h = '<div class="state" style="padding:40px 0">Ninguna factura en parcialidades ' +
+            'tiene complementos pendientes.</div>';
+      } else {
+        h = '<div class="s" style="color:var(--muted);margin-bottom:10px">Facturas en ' +
+          'parcialidades sin complemento o con complemento a medias. Ordenadas por lo que ' +
+          'más falta complementar.</div><div class="cot-grid">';
+        d.porCliente.forEach(function (c) {
+          h += '<div class="cot-card open"><div class="cot-head" style="cursor:default">' +
+            '<span class="cot-folio">' + esc(c.cliente) + '</span>' +
+            '<span class="cot-meta">' + fmtNum(c.facturas.length) +
+              (c.facturas.length === 1 ? ' factura' : ' facturas') +
+              (c.sinComplemento ? ' · ' + fmtNum(c.sinComplemento) + ' sin complemento' : '') +
+              (c.aMedias ? ' · ' + fmtNum(c.aMedias) + ' a medias' : '') + '</span>' +
+            '<span class="cot-st-pill" style="color:var(--danger)">' +
+              esc(formatMoney(c.falta)) + ' por complementar</span></div>' +
+            '<div class="cot-body"><table class="mini-table"><thead><tr>' +
+            '<th>Factura</th><th>Fecha</th><th style="text-align:right">Total</th>' +
+            '<th style="text-align:right">Ya complementado</th>' +
+            '<th style="text-align:right">Falta</th><th>Estado</th></tr></thead><tbody>' +
+            c.facturas.filter(function (f) { return f.estado !== 'saldada'; }).map(function (f) {
+              var col = f.estado === 'sin complemento' ? 'var(--danger)' : 'var(--amber)';
+              return '<tr><td><b>' + esc(f.folio || f.uuid.slice(0, 8)) + '</b></td>' +
+                '<td class="s">' + esc(f.fechaTexto) + '</td>' +
+                '<td class="num">' + esc(formatMoney(f.total)) + '</td>' +
+                '<td class="num">' + (f.cobrado ? esc(formatMoney(f.cobrado)) : '—') + '</td>' +
+                '<td class="num" style="color:' + col + '">' + esc(formatMoney(f.falta)) + '</td>' +
+                '<td class="s" style="color:' + col + '">' + esc(f.estado) +
+                  (f.diasDesde ? ' · ' + fmtNum(f.diasDesde) + ' días' : '') + '</td></tr>';
+            }).join('') + '</tbody></table></div></div>';
+        });
+        h += '</div>';
+      }
+    } else if (emiVista === 'sinPapel') {
+      h = '<div class="s" style="color:var(--muted);margin-bottom:10px">Dinero que entró al ' +
+        'banco y no tiene factura PUE ni complemento del mismo monto. O falta emitir el papel, ' +
+        'o el papel está por otro importe.</div>' +
+        '<table class="mini-table"><thead><tr><th>Fila</th><th>Fecha</th><th>Cliente</th>' +
+        '<th>Concepto</th><th>Descripción</th><th style="text-align:right">Monto</th>' +
+        '</tr></thead><tbody>' +
+        (d.ingresosSinPapel || []).map(function (x) {
+          return '<tr><td class="s">' + x.fila + '</td>' +
+            '<td class="s">' + esc(x.fechaTexto) + '</td>' +
+            '<td>' + esc(x.cliente || '—') + '</td>' +
+            '<td class="s">' + esc(x.concepto || '') + '</td>' +
+            '<td class="s" style="color:var(--muted)">' +
+              esc(String(x.descripcion || '').slice(0, 60)) + '</td>' +
+            '<td class="num">' + esc(formatMoney(x.monto)) + '</td></tr>';
+        }).join('') + '</tbody></table>';
+    } else {
+      h = '<div class="s" style="color:var(--muted);margin-bottom:10px">Facturas PUE y ' +
+        'complementos que no encontraron un ingreso del mismo monto. O el cobro no se ha ' +
+        'capturado, o entró por otra vía.</div>' +
+        '<table class="mini-table"><thead><tr><th>Tipo</th><th>Fecha</th><th>Cliente</th>' +
+        '<th>Factura</th><th style="text-align:right">Monto</th></tr></thead><tbody>' +
+        (d.papelSinIngreso || []).map(function (x) {
+          return '<tr><td class="s">' + esc(x.tipo) + '</td>' +
+            '<td class="s">' + esc(x.fechaTexto) + '</td>' +
+            '<td>' + esc(x.cliente || '—') + '</td>' +
+            '<td class="s">' + esc(x.factura || x.uuid.slice(0, 8)) + '</td>' +
+            '<td class="num">' + esc(formatMoney(x.monto)) + '</td></tr>';
+        }).join('') + '</tbody></table>';
+    }
+    document.getElementById('tableWrap').innerHTML = h;
+    document.getElementById('count').textContent = '';
   }
 
   function loadInvProv() {
@@ -4804,6 +4932,7 @@
   function loadArea() {
     if (state.key === 'log_calendario') return loadLogistica();
     if (state.key === 'fin_banco') return loadSubirBanco();
+    if (state.key === 'fac_emitidos') return loadEmitidos();
     if (state.key === 'pagos_pedidos') return loadPagos();
     if (state.key === 'fac_impuestos') return loadImpuestos();
     if (state.key === 'fin_efectivo') return loadEfectivo();
@@ -11331,7 +11460,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.25-263';
+    var mia = '2026.08.25-264';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
