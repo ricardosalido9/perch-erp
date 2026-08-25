@@ -950,7 +950,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.25-265</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.25-266</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -2663,24 +2663,31 @@
           return '<button type="button" class="mes-chip' + (emiVista === k ? ' on' : '') +
             '" data-emi="' + k + '">' + t + ' (' + fmtNum(n) + ')</button>';
         };
+        // Tarjetas compactas: son cuatro números de referencia, no el centro de
+        // la pantalla. Lo que importa está en las listas de abajo.
+        var mini = function (etiqueta, valor, nota, color) {
+          return '<div style="flex:1;min-width:150px;background:var(--paper);' +
+            'border:1px solid var(--line);border-radius:10px;padding:9px 12px">' +
+            '<div style="font-size:10.5px;letter-spacing:.5px;text-transform:uppercase;' +
+              'color:var(--muted)">' + etiqueta + '</div>' +
+            '<div style="font-size:17px;font-weight:700;margin-top:2px' +
+              (color ? ';color:' + color : '') + '">' + valor + '</div>' +
+            '<div style="font-size:11px;color:var(--muted)">' + nota + '</div></div>';
+        };
         box.innerHTML =
-          '<div class="kpis">' +
-          '<div class="kpi"><div class="k">Sin ningún complemento</div><div class="v" ' +
-            'style="color:var(--danger)">' + fmtNum(r.sinComplemento) + '</div>' +
-            '<div class="s">facturas PPD</div></div>' +
-          '<div class="kpi"><div class="k">A medias</div><div class="v" style="color:var(--amber)">' +
-            fmtNum(r.aMedias) + '</div><div class="s">con complemento parcial</div></div>' +
-          '<div class="kpi"><div class="k">Falta complementar</div><div class="v">' +
-            esc(formatMoney(r.porCobrarConComplemento)) + '</div>' +
-            '<div class="s">de las PPD abiertas</div></div>' +
-          '<div class="kpi"><div class="k">Entró sin papel</div><div class="v" ' +
-            'style="color:var(--amber)">' + esc(formatMoney(r.montoSinPapel)) + '</div>' +
-            '<div class="s">' + fmtNum(r.ingresosSinPapel) + ' ingresos</div></div>' +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+          mini('Sin complemento', fmtNum(r.sinComplemento), 'facturas PPD', 'var(--danger)') +
+          mini('A medias', fmtNum(r.aMedias), 'complemento parcial', 'var(--amber)') +
+          mini('Falta complementar', esc(formatMoney(r.porCobrarConComplemento)), 'de las PPD abiertas') +
+          mini('Entró sin papel', esc(formatMoney(r.montoSinPapel)),
+               fmtNum(r.ingresosSinPapel) + ' ingresos', 'var(--amber)') +
+          mini('Ya cuadrados', fmtNum(r.ligados), esc(formatMoney(r.montoLigado)), 'var(--success)') +
           '</div>' +
           '<div class="mes-chips" style="margin-top:12px">' +
             chip('clientes', 'Complementos por cliente', (d.porCliente || []).length) +
             chip('sinPapel', 'Entró dinero sin factura ni complemento', r.ingresosSinPapel) +
             chip('sinIngreso', 'Facturado o complementado sin que entrara el dinero', r.papelSinIngreso) +
+            chip('ligados', 'Ingresos que sí cuadran con su papel', r.ligados) +
           '</div>' +
           (L.columnaRelacion === '(NO ESTÁ)'
             ? '<div style="background:var(--amber-bg);border:1px solid var(--amber);border-radius:10px;' +
@@ -2734,16 +2741,22 @@
                 '<td class="num">' + esc(formatMoney(f.total)) + '</td>' +
                 '<td class="num">' + (f.cobrado ? esc(formatMoney(f.cobrado)) : '—') + '</td>' +
                 '<td class="num" style="color:' + col + '">' + esc(formatMoney(f.falta)) + '</td>' +
-                '<td class="s" style="color:' + col + '">' + esc(f.estado) +
-                  (f.diasDesde ? ' · ' + fmtNum(f.diasDesde) + ' días' : '') + '</td></tr>';
+                '<td style="white-space:normal"><span class="s" style="color:' + col + '">' +
+                  esc(f.estado) + '</span>' +
+                  '<div class="s" style="color:var(--muted)">' +
+                    fmtNum(f.complementos) +
+                    (f.complementos === 1 ? ' complemento' : ' complementos') +
+                    (f.diasDesde ? ' · ' + fmtNum(f.diasDesde) + ' días' : '') +
+                  '</div></td></tr>';
             }).join('') + '</tbody></table></div></div>';
         });
         h += '</div>';
       }
     } else if (emiVista === 'sinPapel') {
-      h = '<div class="s" style="color:var(--muted);margin-bottom:10px">Dinero que entró al ' +
-        'banco y no tiene factura PUE ni complemento del mismo monto. O falta emitir el papel, ' +
-        'o el papel está por otro importe.</div>' +
+      h = '<div class="s" style="color:var(--muted);margin-bottom:10px">Cobros a clientes que ' +
+        'entraron al banco y no tienen factura PUE ni complemento del mismo monto. ' +
+        '<b>No se cuentan</b> traspasos, reembolsos, aportaciones, inversiones, pagos de tarjeta ' +
+        'ni deuda, porque ninguno lleva factura; tampoco lo cobrado en efectivo.</div>' +
         '<table class="mini-table"><thead><tr><th>Fila</th><th>Fecha</th><th>Cliente</th>' +
         '<th>Concepto</th><th>Descripción</th><th style="text-align:right">Monto</th>' +
         '</tr></thead><tbody>' +
@@ -2754,6 +2767,26 @@
             '<td class="s">' + esc(x.concepto || '') + '</td>' +
             '<td class="s" style="color:var(--muted)">' +
               esc(String(x.descripcion || '').slice(0, 60)) + '</td>' +
+            '<td class="num">' + esc(formatMoney(x.monto)) + '</td></tr>';
+        }).join('') + '</tbody></table>';
+    } else if (emiVista === 'ligados') {
+      h = '<div class="s" style="color:var(--muted);margin-bottom:10px">Ingresos que sí ' +
+        'encontraron su factura o su complemento del mismo monto. Los que salen en ámbar ' +
+        'cuadraron por monto pero con otro cliente: vale la pena revisarlos.</div>' +
+        '<table class="mini-table"><thead><tr><th>Fila</th><th>Fecha</th>' +
+        '<th>Cliente del ingreso</th><th>Papel</th><th>Factura</th>' +
+        '<th>Cliente del papel</th><th style="text-align:right">Monto</th>' +
+        '</tr></thead><tbody>' +
+        (d.ligados || []).map(function (x) {
+          var ok = x.mismoCliente || !x.clientePapel;
+          return '<tr' + (ok ? '' : ' style="background:var(--amber-bg)"') + '>' +
+            '<td class="s">' + x.fila + '</td>' +
+            '<td class="s">' + esc(x.fechaTexto) + '</td>' +
+            '<td>' + esc(x.clienteIngreso || '—') + '</td>' +
+            '<td class="s">' + esc(x.tipoPapel) + '</td>' +
+            '<td class="s">' + esc(x.factura || '') + '</td>' +
+            '<td' + (ok ? '' : ' style="color:var(--amber)"') + '>' +
+              esc(x.clientePapel || '—') + '</td>' +
             '<td class="num">' + esc(formatMoney(x.monto)) + '</td></tr>';
         }).join('') + '</tbody></table>';
     } else {
@@ -11513,7 +11546,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.25-265';
+    var mia = '2026.08.25-266';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
