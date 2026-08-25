@@ -950,7 +950,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.25-252</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.25-254</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -997,6 +997,7 @@
         <button id="driveCostosBtn" type="button" style="display:none">Actualizar en Drive</button>
         <button id="driveStockBtn" type="button" style="display:none">Recalcular stock</button>
         <button id="driveProvBtn" type="button" style="display:none">Exportar a Drive</button>
+        <button id="reporteNominaBtn" type="button" style="display:none">Reporte de nómina</button>
         <button id="reporteMesBtn" type="button" style="display:none">Reporte mensual</button>
         <button id="downloadBtn" type="button">Descargar</button>
         <span class="count" id="count"></span>
@@ -2190,6 +2191,62 @@
       })
       .catch(fail)
       .then(function () { btn.disabled = false; btn.textContent = 'Crear la versión nueva'; });
+  }
+
+  // Reporte mensual de nómina: mismo modal del cierre, pero con su propio endpoint
+  var nominaPdf = null;
+  function abrirReporteNomina() {
+    var hoy = new Date();
+    var mesDef = hoy.getMonth() === 0 ? 12 : hoy.getMonth();
+    var anioDef = hoy.getMonth() === 0 ? hoy.getFullYear() - 1 : hoy.getFullYear();
+    var opts = MESES_ES.map(function (m, i) {
+      return '<option value="' + (i + 1) + '"' + (mesDef === i + 1 ? ' selected' : '') +
+        '>' + esc(m) + '</option>';
+    }).join('');
+    document.getElementById('aventaTitulo').textContent = 'Reporte de nómina';
+    document.getElementById('aventaCuerpo').innerHTML =
+      '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">' +
+      '<div class="fld" style="width:170px"><label>Mes</label>' +
+        '<select id="noMes">' + opts + '</select></div>' +
+      '<div class="fld" style="width:120px"><label>Año</label>' +
+        '<input id="noAnio" type="number" value="' + anioDef + '"></div></div>' +
+      '<div class="s" style="color:var(--muted)">Trae el neto del mes contra el mes anterior y ' +
+      'contra el mismo mes del año pasado, altas y bajas con rotación, el desglose por área y ' +
+      'puesto, por tipo de pago, y el detalle recibo por recibo.</div>' +
+      '<div id="noVista" style="margin-top:12px"></div>';
+    document.getElementById('aventaOk').textContent = 'Armar el reporte';
+    document.getElementById('aventaCancel').textContent = 'Cerrar';
+    document.getElementById('aventaModal').classList.add('on');
+    nominaPdf = null;
+  }
+  function generarReporteNomina() {
+    var btn = document.getElementById('aventaOk');
+    if (nominaPdf) { bajarPdf(nominaPdf.pdf, nominaPdf.nombre); return; }
+    btn.disabled = true; btn.textContent = 'Armando…';
+    document.getElementById('noVista').innerHTML =
+      '<div class="state" style="padding:24px 0">Juntando los recibos del mes…</div>';
+    api('nomina-pdf', { token: state.token,
+        mes: +document.getElementById('noMes').value,
+        anio: +document.getElementById('noAnio').value })
+      .then(function (o) {
+        if (!o.pdf) throw new Error('No se pudo armar el reporte.');
+        nominaPdf = o;
+        var r = o.resumen || {};
+        document.getElementById('noVista').innerHTML =
+          '<div class="s" style="color:var(--muted);margin-bottom:8px">' +
+            fmtNum(r.colaboradores) + ' colaboradores · ' + fmtNum(r.recibos) + ' recibos · ' +
+            esc(formatMoney(r.neto)) + ' neto</div>' +
+          '<iframe src="data:application/pdf;base64,' + o.pdf +
+          '" style="width:100%;height:420px;border:1px solid var(--line);border-radius:10px">' +
+          '</iframe>';
+        btn.textContent = 'Descargar el PDF';
+      })
+      .catch(function (e) {
+        document.getElementById('noVista').innerHTML =
+          '<div class="state">' + esc((e && e.message) || 'No se pudo armar.') + '</div>';
+        btn.textContent = 'Armar el reporte';
+      })
+      .then(function () { btn.disabled = false; });
   }
 
   function loadInvProv() {
@@ -4496,6 +4553,9 @@
       // El recálculo reescribe Stock Y Revisar, así que el botón sale en las dos
       // pantallas: si estás viendo las diferencias, ahí mismo puedes rehacerlas.
       // El reporte mensual se arma desde Ventas, que es donde se busca
+      var brn = document.getElementById('reporteNominaBtn');
+      if (brn) brn.style.display =
+        (state.key === 'rh_nomina' || state.key === 'rh_resumen') ? '' : 'none';
       var brm = document.getElementById('reporteMesBtn');
       if (brm) {
         brm.style.display = (state.key === 'ventas_registro') ? '' : 'none';
@@ -10914,7 +10974,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.25-252';
+    var mia = '2026.08.25-254';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
@@ -10967,6 +11027,7 @@
   document.getElementById('aventaClose').addEventListener('click', cerrarMandarAVenta);
   document.getElementById('aventaCancel').addEventListener('click', cerrarMandarAVenta);
   document.getElementById('aventaOk').addEventListener('click', function () {
+    if (document.getElementById('noMes')) { generarReporteNomina(); return; }
     if (document.querySelector('.ver-inc')) { guardarVersionNueva(); return; }
     if (document.getElementById('pp_prov')) { guardarPedirPago(); return; }
     if (document.getElementById('pgFecha')) { confirmarPagados(); return; }
@@ -11025,6 +11086,8 @@
   });
   document.getElementById('reporteMesBtn')
     .addEventListener('click', function () { abrirCierre('ventas'); });
+  document.getElementById('reporteNominaBtn')
+    .addEventListener('click', abrirReporteNomina);
   document.getElementById('driveStockBtn').addEventListener('click', function () {
     var b = this, t = b.textContent;
     b.disabled = true; b.textContent = 'Recalculando...';

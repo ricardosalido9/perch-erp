@@ -42,6 +42,7 @@ const RUTAS = {
   'prov-pdf':     require('../lib/handlers/prov-pdf'),
   'orden-pdf':    require('../lib/handlers/orden-pdf'),
   'dup-cot':      require('../lib/handlers/dup-cot'),
+  'nomina-pdf':   require('../lib/handlers/nomina-pdf'),
   'relacion-pdf': require('../lib/handlers/relacion-pdf'),
   'envios-folio': require('../lib/handlers/envios-folio'),
   'cfdi-reporte': require('../lib/handlers/cfdi-reporte'),
