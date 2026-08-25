@@ -950,7 +950,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.25-251</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.25-252</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -4497,7 +4497,11 @@
       // pantallas: si estás viendo las diferencias, ahí mismo puedes rehacerlas.
       // El reporte mensual se arma desde Ventas, que es donde se busca
       var brm = document.getElementById('reporteMesBtn');
-      if (brm) brm.style.display = (state.key === 'ventas_registro') ? '' : 'none';
+      if (brm) {
+        brm.style.display = (state.key === 'ventas_registro') ? '' : 'none';
+        brm.title = 'Solo la parte comercial: ventas, tipo de mueble, marketing, ' +
+                    'cotizaciones y leads. Sin producción.';
+      }
       var bs = document.getElementById('driveStockBtn');
       bs.style.display = (state.key === 'op_stock' || state.key === 'op_revisar') ? '' : 'none';
       bs.textContent = (state.key === 'op_revisar') ? 'Volver a revisar' : 'Recalcular stock';
@@ -5984,7 +5988,11 @@
 
   // ===== Reporte de cierre del mes =====
   var cierrePdf = null;
-  function abrirCierre() {
+  // alcance: 'ventas' = solo lo comercial (lo revisa y firma el área de Ventas).
+  //          'todo'   = el reporte completo, con la operación del mes.
+  var cierreAlcance = 'todo';
+  function abrirCierre(alcance) {
+    cierreAlcance = (alcance === 'ventas') ? 'ventas' : 'todo';
     var hoy = new Date();
     var mesPrev = hoy.getMonth();            // el mes pasado, en base 1
     if (mesPrev === 0) mesPrev = 12;
@@ -5998,7 +6006,8 @@
     for (var a = hoy.getFullYear(); a >= hoy.getFullYear() - 2; a--) {
       anios += '<option value="' + a + '"' + (a === anioPrev ? ' selected' : '') + '>' + a + '</option>';
     }
-    document.getElementById('aventaTitulo').textContent = 'Reporte mensual';
+    document.getElementById('aventaTitulo').textContent =
+      cierreAlcance === 'ventas' ? 'Reporte de ventas del mes' : 'Reporte mensual completo';
     document.getElementById('aventaCuerpo').innerHTML =
       '<div class="form-grid">' +
         '<div class="fld"><label>Mes</label><select id="ciMes">' + opts + '</select></div>' +
@@ -6019,7 +6028,7 @@
     btn.disabled = true; btn.textContent = 'Armando…';
     document.getElementById('ciVista').innerHTML =
       '<div class="state" style="padding:30px 0">Juntando los datos del mes…</div>';
-    api('cierre', { token: state.token, mes: mes, anio: anio,
+    api('cierre', { token: state.token, mes: mes, anio: anio, alcance: cierreAlcance,
                     notas: document.getElementById('ciNotas').value })
       .then(function (o) {
         if (!o.pdf) throw new Error('No se pudo armar el reporte.');
@@ -6511,7 +6520,7 @@
       'la operación del mes. Listo para presentar.</span></div>';
     document.getElementById('dashView').innerHTML = h;
     var bc = document.getElementById('btnCierre');
-    if (bc) bc.addEventListener('click', abrirCierre);
+    if (bc) bc.addEventListener('click', function () { abrirCierre('todo'); });
 
     document.getElementById('dApply').addEventListener('click', function () {
       dashRange.from = document.getElementById('dFrom').value;
@@ -10905,7 +10914,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.25-251';
+    var mia = '2026.08.25-252';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
@@ -11014,7 +11023,8 @@
       if (o.archivo) window.open(o.archivo, '_blank');
     }).catch(fail).then(function () { b.disabled = false; b.textContent = t; });
   });
-  document.getElementById('reporteMesBtn').addEventListener('click', abrirCierre);
+  document.getElementById('reporteMesBtn')
+    .addEventListener('click', function () { abrirCierre('ventas'); });
   document.getElementById('driveStockBtn').addEventListener('click', function () {
     var b = this, t = b.textContent;
     b.disabled = true; b.textContent = 'Recalculando...';
