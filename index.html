@@ -950,7 +950,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.25-259</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.25-260</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -2387,8 +2387,16 @@
           '<input class="bk-par" data-i="' + i + '" list="bkLista' +
             (p.tipo === 'INGRESO' ? 'Cli' : 'Prov') + '" value="' + esc(p.contraparte || '') +
             '" placeholder="' + (p.tipo === 'INGRESO' ? 'cliente' : 'proveedor') + '">' +
-          '<div class="s" style="color:var(--muted);margin-top:3px">' +
-            (p.tipo === 'INGRESO' ? 'Cliente' : 'Proveedor') + '</div>') + '</td>' +
+          ((p.candidatos || []).length
+            ? '<select class="bk-cand" data-i="' + i + '" style="margin-top:4px">' +
+                '<option value="">— ¿de cuál folio es? —</option>' +
+                p.candidatos.map(function (c) {
+                  return '<option value="' + esc(c.folio) + '|' + esc(c.cliente) + '">' +
+                    esc(c.folio) + ' · ' + esc(c.cliente) + ' · ' + esc(formatMoney(c.saldo)) +
+                    '</option>';
+                }).join('') + '</select>'
+            : '<div class="s" style="color:var(--muted);margin-top:3px">' +
+              (p.tipo === 'INGRESO' ? 'Cliente' : 'Proveedor') + '</div>')) + '</td>' +
         '</tr>';
     });
     h += '</tbody></table>';
@@ -2414,9 +2422,15 @@
         }).join('') + '</tbody></table>';
     }
 
-    h += '<div class="cot-acciones" style="margin-top:18px">' +
-      '<button type="button" class="primary" id="bkGuardar">Capturar los seleccionados</button>' +
-      '<span class="s" style="color:var(--muted)" id="bkCuenta2"></span></div>';
+    // La barra de aprobación se queda pegada abajo: es el paso que faltaba dejar
+    // claro. Nada de lo de arriba está guardado hasta que se aprieta este botón.
+    h += '<div style="position:sticky;bottom:0;background:var(--bg);border-top:2px solid var(--line);' +
+      'padding:14px 0;margin-top:18px;display:flex;gap:14px;align-items:center;flex-wrap:wrap">' +
+      '<button type="button" class="primary" id="bkGuardar">Aprobar y capturar</button>' +
+      '<span class="s" id="bkCuenta2" style="font-weight:600"></span>' +
+      '<span class="s" style="color:var(--muted)">Hasta que aprietes este botón no se ha ' +
+      'guardado nada. Al aprobar se escriben en INGRESOS y EGRESOS con tu nombre y la fecha.' +
+      '</span></div>';
 
     document.getElementById('bkResultado').innerHTML = h;
     document.querySelectorAll('.bk-sel').forEach(function (c) {
@@ -2425,8 +2439,17 @@
         contarBanco();
       });
     });
+    document.querySelectorAll('.bk-cand').forEach(function (sc) {
+      sc.addEventListener('change', function () {
+        var i = sc.getAttribute('data-i');
+        var partes = String(sc.value || '').split('|');
+        var inp = document.querySelector('.bk-par[data-i="' + i + '"]');
+        if (inp && partes[1]) inp.value = partes[1];
+        bancoDatos.propuestas[i].pedido = partes[0] || '';
+      });
+    });
     document.querySelectorAll('.bk-con').forEach(function (s) {
-      s.addEventListener('change', function () { mostrarCatDe(s); });
+      s.addEventListener('change', function () { mostrarCatDe(s); contarBanco(); });
       mostrarCatDe(s);
     });
     document.getElementById('bkGuardar').addEventListener('click', guardarBanco);
@@ -2448,8 +2471,21 @@
   function contarBanco() {
     var n = Object.keys(bancoSel).filter(function (k) { return bancoSel[k]; }).length;
     var el = document.getElementById('bkCuenta2');
-    if (el) el.textContent = n ? (n + (n === 1 ? ' movimiento seleccionado' : ' movimientos seleccionados'))
-                               : 'No has seleccionado nada';
+    var sinConcepto = 0;
+    Object.keys(bancoSel).forEach(function (k) {
+      if (!bancoSel[k]) return;
+      var sel = document.querySelector('.bk-con[data-i="' + k + '"]');
+      if (sel && !sel.value) sinConcepto++;
+    });
+    if (!el) return;
+    if (!n) { el.textContent = 'No has palomeado nada todavía'; el.style.color = 'var(--muted)'; }
+    else if (sinConcepto) {
+      el.textContent = n + ' palomeados, pero ' + sinConcepto + ' sin concepto';
+      el.style.color = 'var(--amber)';
+    } else {
+      el.textContent = n + (n === 1 ? ' movimiento listo' : ' movimientos listos');
+      el.style.color = 'var(--success)';
+    }
   }
 
   function guardarBanco() {
@@ -2479,7 +2515,7 @@
     }
     if (!aprobados.length) { toast('No seleccionaste nada.', 'err'); return; }
     var btn = document.getElementById('bkGuardar');
-    btn.disabled = true; btn.textContent = 'Capturando…';
+    btn.disabled = true; btn.textContent = 'Aprobando…';
     api('banco-aprobar', { token: state.token, aprobados: aprobados })
       .then(function (d) {
         toast(d.mensaje || 'Listo.', 'ok');
@@ -2494,7 +2530,7 @@
         loadSubirBanco();
       })
       .catch(fail)
-      .then(function () { btn.disabled = false; btn.textContent = 'Capturar los seleccionados'; });
+      .then(function () { btn.disabled = false; btn.textContent = 'Aprobar y capturar'; });
   }
 
   function loadInvProv() {
@@ -11223,7 +11259,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.25-259';
+    var mia = '2026.08.25-260';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
