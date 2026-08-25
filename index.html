@@ -950,7 +950,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.25-267</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.25-268</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -3438,6 +3438,7 @@
         '<div class="mes-chips">' +
           chip('complemento', 'Me deben complemento', t.faltaComplemento) +
           chip('factura', 'Me deben factura', t.sinFactura) +
+          chip('mes', 'Resumen por mes', (d.resumenMensual || []).length) +
           chip('ok', 'Ya complementadas', t.conComplemento) +
         '</div><div class="summary-cards">' +
         card('Me deben complemento', fmtNum(t.faltaComplemento),
@@ -3502,7 +3503,52 @@
           'qué complementos ya llegaron. Dime cómo se llama y la conecto.</div>';
       }
       var h = '';
-      if (cfdiPVista === 'factura') {
+      if (cfdiPVista === 'mes') {
+        var rm = d.resumenMensual || [];
+        if (!rm.length) {
+          h = '<div class="state" style="padding:40px 0">No hay meses con facturas ' +
+              'pendientes.</div>';
+        } else {
+          h = '<div class="s" style="color:var(--muted);margin-bottom:10px">Un mes a la vez, ' +
+            'con todos los proveedores a los que les falta facturar lo que ya se les pagó. ' +
+            'El botón copia el texto para pedírsela.</div>';
+          rm.slice(0, 14).forEach(function (m) {
+            var nom = MESES_ES[(m.mes % 100) - 1] + ' ' + Math.floor(m.mes / 100);
+            h += '<div class="cot-card open" style="margin-bottom:12px">' +
+              '<div class="cot-head" style="cursor:default">' +
+                '<span class="cot-folio">' + esc(nom) + '</span>' +
+                '<span class="cot-meta">' + fmtNum(m.proveedores.length) +
+                  (m.proveedores.length === 1 ? ' proveedor' : ' proveedores') +
+                  ' · se pagó ' + esc(formatMoney(m.pagado)) +
+                  ' · facturaron ' + esc(formatMoney(m.facturado)) + '</span>' +
+                '<span class="cot-st-pill" style="color:var(--danger)">' +
+                  esc(formatMoney(m.falta)) + ' sin factura</span></div>' +
+              '<div class="cot-body"><table class="mini-table"><thead><tr>' +
+              '<th>Proveedor</th><th>Cómo factura</th>' +
+              '<th style="text-align:right">Le pagué</th>' +
+              '<th style="text-align:right">Me facturó</th>' +
+              '<th style="text-align:right">Falta</th><th>Situación</th><th></th>' +
+              '</tr></thead><tbody>' +
+              m.proveedores.map(function (p) {
+                return '<tr><td><b>' + esc(p.proveedor) + '</b>' +
+                    ((p.razonesSociales || []).length > 1
+                      ? '<div class="s" style="color:var(--muted)">factura como ' +
+                        esc(p.razonesSociales.slice(0, 2).join(', ')) + '</div>' : '') +
+                  '</td>' +
+                  '<td class="s">' + esc(p.formaDeFacturar) + '</td>' +
+                  '<td class="num">' + esc(formatMoney(p.pagado)) + '</td>' +
+                  '<td class="num">' + esc(formatMoney(p.facturado)) + '</td>' +
+                  '<td class="num" style="color:var(--danger)">' +
+                    esc(formatMoney(p.falta)) + '</td>' +
+                  '<td class="s">' + esc(p.motivo) + '</td>' +
+                  '<td><button type="button" class="row-btn pedir-fac" ' +
+                    'data-prov="' + esc(p.proveedor).replace(/"/g, '&quot;') + '" ' +
+                    'data-mes="' + esc(nom) + '" ' +
+                    'data-falta="' + p.falta + '">Copiar texto</button></td></tr>';
+              }).join('') + '</tbody></table></div></div>';
+          });
+        }
+      } else if (cfdiPVista === 'factura') {
         var L = d.sinFactura || [];
         h = '<div class="s" style="margin:8px 0;color:var(--muted)">Lo pagado del año contra lo que ' +
           'facturaron <b>en ' + fmtNum(t.anio || 2026) + '</b>. Cada pago se casa con una factura ' +
@@ -3645,6 +3691,20 @@
         document.getElementById('count').textContent = L2.length + ' facturas';
       }
       document.getElementById('tableWrap').innerHTML = h;
+      // Copiar el texto para pedir la factura: es lo que se manda por WhatsApp
+      document.querySelectorAll('.pedir-fac').forEach(function (b) {
+        b.addEventListener('click', function () {
+          var t = 'Hola, ' + b.getAttribute('data-prov') + '. Nos falta tu factura de ' +
+            b.getAttribute('data-mes') + ' por ' +
+            formatMoney(parseFloat(b.getAttribute('data-falta')) || 0) +
+            ', que ya te pagamos. ¿Nos la puedes enviar? Gracias.';
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(t).then(function () {
+              toast('Texto copiado.', 'ok');
+            }).catch(function () { window.prompt('Copia el texto:', t); });
+          } else { window.prompt('Copia el texto:', t); }
+        });
+      });
       document.querySelectorAll('#summary [data-cfdip]').forEach(function (b) {
         b.addEventListener('click', function () { cfdiPVista = b.getAttribute('data-cfdip'); loadCfdiProv(); });
       });
@@ -11547,7 +11607,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.25-267';
+    var mia = '2026.08.25-268';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
