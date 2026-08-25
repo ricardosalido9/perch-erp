@@ -950,7 +950,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.25-268</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.25-269</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -2689,6 +2689,13 @@
             chip('sinIngreso', 'Facturado o complementado sin que entrara el dinero', r.papelSinIngreso) +
             chip('ligados', 'Ingresos que sí cuadran con su papel', r.ligados) +
           '</div>' +
+          (L.columnaMonto === '(NO SE ENCONTRÓ)'
+            ? '<div style="background:var(--danger-bg);border:1px solid var(--danger);' +
+              'border-radius:10px;padding:10px 14px;color:var(--danger);font-size:13px;' +
+              'margin-top:10px">En la pestaña de complementos no se encontró ninguna columna ' +
+              'con el importe pagado, así que todos aparecen en cero. Las columnas que hay son: ' +
+              esc((L.encabezadosComplementos || []).join(', ')) + '</div>'
+            : '') +
           (L.columnaRelacion === '(NO ESTÁ)'
             ? '<div style="background:var(--amber-bg);border:1px solid var(--amber);border-radius:10px;' +
               'padding:10px 14px;color:var(--amber);font-size:13px;margin-top:10px">' +
@@ -2736,16 +2743,19 @@
             '<th style="text-align:right">Falta</th><th>Estado</th></tr></thead><tbody>' +
             c.facturas.filter(function (f) { return f.estado !== 'saldada'; }).map(function (f) {
               var col = f.estado === 'sin complemento' ? 'var(--danger)' : 'var(--amber)';
-              return '<tr><td><b>' + esc(f.folio || f.uuid.slice(0, 8)) + '</b></td>' +
+              var raro = f.complementos > 0 && !f.cobrado;
+              return '<tr' + (raro ? ' style="background:var(--amber-bg)"' : '') + '>' +
+                '<td><b>' + esc(f.folio || f.uuid.slice(0, 8)) + '</b></td>' +
                 '<td class="s">' + esc(f.fechaTexto) + '</td>' +
                 '<td class="num">' + esc(formatMoney(f.total)) + '</td>' +
                 '<td class="num">' + (f.cobrado ? esc(formatMoney(f.cobrado)) : '—') + '</td>' +
                 '<td class="num" style="color:' + col + '">' + esc(formatMoney(f.falta)) + '</td>' +
                 '<td style="white-space:normal"><span class="s" style="color:' + col + '">' +
                   esc(f.estado) + '</span>' +
-                  '<div class="s" style="color:var(--muted)">' +
+                  '<div class="s" style="color:' + (raro ? 'var(--amber)' : 'var(--muted)') + '">' +
                     fmtNum(f.complementos) +
                     (f.complementos === 1 ? ' complemento' : ' complementos') +
+                    (raro ? ' pero sin importe: revisa la columna del monto' : '') +
                     (f.diasDesde ? ' · ' + fmtNum(f.diasDesde) + ' días' : '') +
                   '</div></td></tr>';
             }).join('') + '</tbody></table></div></div>';
@@ -11607,7 +11617,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.25-268';
+    var mia = '2026.08.25-269';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
