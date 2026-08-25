@@ -950,7 +950,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.25-257</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.25-258</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -2334,6 +2334,14 @@
           ' en tu hoja que el banco no tiene</span>' : '') +
       '</div>';
 
+    var L = d.lectura || {};
+    if (!L.ingresosLeidos && !L.egresosLeidos) {
+      h += '<div style="background:var(--amber-bg);border:1px solid var(--amber);border-radius:10px;' +
+        'padding:12px 16px;color:var(--amber);font-size:13px;margin-bottom:14px">' +
+        'No se pudo leer nada de INGRESOS ni de EGRESOS, así que <b>no se puede saber qué ya ' +
+        'estaba capturado</b>. Revisa que esas pestañas existan en el archivo de Finanzas ' +
+        'antes de capturar, o vas a duplicar.</div>';
+    }
     if (!(d.catalogo && d.catalogo.hay)) {
       h += '<div style="background:var(--amber-bg);border:1px solid var(--amber);border-radius:10px;' +
         'padding:12px 16px;color:var(--amber);font-size:13px;margin-bottom:14px">' +
@@ -2343,7 +2351,8 @@
     h += '<table class="mini-table"><thead><tr>' +
       '<th style="width:34px"></th><th style="width:92px">Fecha</th><th>Movimiento</th>' +
       '<th style="width:104px;text-align:right">Monto</th>' +
-      '<th style="width:210px">Concepto</th><th style="width:190px">Cliente / Proveedor</th>' +
+      '<th style="width:210px">Concepto</th>' +
+      '<th style="width:200px">Cliente <span style="color:var(--muted)">/</span> Proveedor</th>' +
       '</tr></thead><tbody>';
 
     (d.propuestas || []).forEach(function (p, i) {
@@ -2375,11 +2384,20 @@
           '<div class="s" id="bkCat' + i + '" style="color:var(--muted);margin-top:3px"></div>') +
         '</td>' +
         '<td>' + (p.yaCapturado ? '<span class="s">—</span>' :
-          '<input class="bk-par" data-i="' + i + '" value="' + esc(p.contraparte || '') +
-          '" placeholder="opcional">') + '</td>' +
+          '<input class="bk-par" data-i="' + i + '" list="bkLista' +
+            (p.tipo === 'INGRESO' ? 'Cli' : 'Prov') + '" value="' + esc(p.contraparte || '') +
+            '" placeholder="' + (p.tipo === 'INGRESO' ? 'cliente' : 'proveedor') + '">' +
+          '<div class="s" style="color:var(--muted);margin-top:3px">' +
+            (p.tipo === 'INGRESO' ? 'Cliente' : 'Proveedor') + '</div>') + '</td>' +
         '</tr>';
     });
     h += '</tbody></table>';
+    // Las listas de sugerencias: clientes para ingresos, proveedores para egresos
+    var cc = (d.catalogo || {});
+    h += '<datalist id="bkListaCli">' + (cc.clientes || []).map(function (x) {
+        return '<option value="' + esc(x) + '">'; }).join('') + '</datalist>' +
+      '<datalist id="bkListaProv">' + (cc.proveedores || []).map(function (x) {
+        return '<option value="' + esc(x) + '">'; }).join('') + '</datalist>';
 
     if ((cu.detalleCapturadoSinBanco || []).length) {
       h += '<h3 class="sec-t" style="margin-top:22px">Capturado en tu hoja, sin respaldo en el banco</h3>' +
@@ -11204,7 +11222,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.25-257';
+    var mia = '2026.08.25-258';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
