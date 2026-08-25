@@ -950,7 +950,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.25-254</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.25-257</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1206,6 +1206,7 @@
     fac_proveedores:     'Qué facturas nos deben los proveedores de lo que ya les pagamos.',
     fac_impuestos:       'Impuestos por mes: base, tasa, a cargo, a favor y si ya se pagó.',
     fin_efectivo:        'Movimientos en efectivo, para pasarlos después a ingresos y egresos.',
+    fin_banco:           'Sube el estado de cuenta del banco y captura lo que falta, sin duplicar.',
     fin_gastos_op:       'Gastos de operación por categoría: renta, servicios, sueldos, marketing.',
     fin_estados:         'Estado de resultados por mes.',
     rh_resumen:          'La plantilla de un vistazo: costo, altas, bajas y rotación.',
@@ -2247,6 +2248,234 @@
         btn.textContent = 'Armar el reporte';
       })
       .then(function () { btn.disabled = false; });
+  }
+
+  // ===== Subir banco: del PDF a INGRESOS y EGRESOS, con aprobación =====
+  var bancoDatos = null, bancoSel = {};
+  function loadSubirBanco() {
+    document.getElementById('summary').innerHTML = '';
+    document.getElementById('summary').style.display = 'none';
+    mostrarAlta(false);
+    bancoDatos = null; bancoSel = {};
+    var anio = new Date().getFullYear();
+    document.getElementById('tableWrap').innerHTML =
+      '<div style="max-width:760px">' +
+      '<h3 class="sec-t">Subir el estado de cuenta</h3>' +
+      '<div class="s" style="color:var(--muted);margin-bottom:14px">Sirve el estado de cuenta ' +
+      'del mes o el detalle de movimientos del mes en curso. Se leen los movimientos y se ' +
+      'propone la captura; <b>nada se escribe hasta que lo apruebes</b>. Lo que ya esté ' +
+      'capturado se reconoce y no se repite.</div>' +
+      '<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">' +
+        '<div class="fld" style="width:230px"><label>Cuenta</label>' +
+          '<select id="bkCuenta">' +
+            '<option value="0117441789">BBVA 0117441789</option>' +
+            '<option value="0122411350">BBVA 0122411350</option>' +
+          '</select></div>' +
+        '<div class="fld" style="width:110px"><label>Año</label>' +
+          '<input id="bkAnio" type="number" value="' + anio + '"></div>' +
+        '<div class="fld" style="flex:1;min-width:220px"><label>Archivo PDF</label>' +
+          '<input id="bkFile" type="file" accept="application/pdf"></div>' +
+        '<button type="button" class="primary" id="bkLeer">Leer el archivo</button>' +
+      '</div>' +
+      '<div id="bkAviso" style="margin-top:14px"></div></div>' +
+      '<div id="bkResultado" style="margin-top:18px"></div>';
+    document.getElementById('bkLeer').addEventListener('click', leerArchivoBanco);
+  }
+
+  function leerArchivoBanco() {
+    var inp = document.getElementById('bkFile');
+    var f = inp.files && inp.files[0];
+    if (!f) { toast('Elige el PDF del banco.', 'err'); return; }
+    if (f.size > 8 * 1024 * 1024) { toast('El archivo pesa más de 8 MB.', 'err'); return; }
+    var btn = document.getElementById('bkLeer');
+    btn.disabled = true; btn.textContent = 'Leyendo…';
+    document.getElementById('bkAviso').innerHTML =
+      '<div class="state" style="padding:20px 0">Sacando los movimientos del PDF…</div>';
+    var lector = new FileReader();
+    lector.onload = function () {
+      var b64 = String(lector.result || '').split(',')[1] || '';
+      api('banco-import', { token: state.token, pdf: b64,
+          cuenta: document.getElementById('bkCuenta').value,
+          anio: +document.getElementById('bkAnio').value })
+        .then(function (d) {
+          bancoDatos = d; bancoSel = {};
+          // Lo que ya está capturado no se preselecciona; lo demás sí
+          (d.propuestas || []).forEach(function (p, i) {
+            if (!p.yaCapturado) bancoSel[i] = true;
+          });
+          document.getElementById('bkAviso').innerHTML = '';
+          pintarBanco();
+        })
+        .catch(function (e) {
+          document.getElementById('bkAviso').innerHTML =
+            '<div class="state" style="color:var(--danger)">' +
+            esc((e && e.message) || 'No se pudo leer.') + '</div>';
+        })
+        .then(function () { btn.disabled = false; btn.textContent = 'Leer el archivo'; });
+    };
+    lector.readAsDataURL(f);
+  }
+
+  function conceptosDe(tipo) {
+    var c = (bancoDatos && bancoDatos.catalogo) || {};
+    return (tipo === 'INGRESO' ? c.ingresos : c.egresos) || [];
+  }
+
+  function pintarBanco() {
+    var d = bancoDatos;
+    if (!d) return;
+    var cu = d.cuadre || {};
+    var h = '<div class="mes-chips" style="margin-bottom:14px">' +
+      '<span class="mes-chip on">' + fmtNum(d.movimientos) + ' movimientos en el PDF</span>' +
+      '<span class="mes-chip">' + fmtNum(d.yaCapturados) + ' ya estaban capturados</span>' +
+      '<span class="mes-chip">' + fmtNum(d.nuevos) + ' por capturar</span>' +
+      (cu.capturadoSinBanco
+        ? '<span class="mes-chip" style="color:var(--amber)">' + fmtNum(cu.capturadoSinBanco) +
+          ' en tu hoja que el banco no tiene</span>' : '') +
+      '</div>';
+
+    if (!(d.catalogo && d.catalogo.hay)) {
+      h += '<div style="background:var(--amber-bg);border:1px solid var(--amber);border-radius:10px;' +
+        'padding:12px 16px;color:var(--amber);font-size:13px;margin-bottom:14px">' +
+        'No se pudo leer el catálogo de categorías, así que el concepto se captura a mano.</div>';
+    }
+
+    h += '<table class="mini-table"><thead><tr>' +
+      '<th style="width:34px"></th><th style="width:92px">Fecha</th><th>Movimiento</th>' +
+      '<th style="width:104px;text-align:right">Monto</th>' +
+      '<th style="width:210px">Concepto</th><th style="width:190px">Cliente / Proveedor</th>' +
+      '</tr></thead><tbody>';
+
+    (d.propuestas || []).forEach(function (p, i) {
+      var ops = conceptosDe(p.tipo);
+      var color = p.tipo === 'INGRESO' ? 'var(--success)' : 'var(--slate)';
+      h += '<tr' + (p.yaCapturado ? ' style="opacity:.5"' : '') + '>' +
+        '<td><input type="checkbox" class="bk-sel" data-i="' + i + '"' +
+          (bancoSel[i] ? ' checked' : '') + (p.yaCapturado ? ' disabled' : '') + '></td>' +
+        '<td class="s">' + esc(p.fechaTexto) + '</td>' +
+        '<td><b style="color:' + color + '">' + esc(p.concepto || '—') + '</b>' +
+          (p.descripcion ? '<div class="s" style="color:var(--muted)">' +
+            esc(String(p.descripcion).slice(0, 70)) + '</div>' : '') +
+          (p.yaCapturado
+            ? '<div class="s" style="color:var(--muted)">Ya está en la fila ' +
+              (p.capturadoEn ? p.capturadoEn.fila : '?') + '</div>'
+            : (p.porQue ? '<div class="s" style="color:var(--accent-ink)">' + esc(p.porQue) +
+               '</div>' : '')) +
+        '</td>' +
+        '<td class="num" style="color:' + color + '">' + esc(formatMoney(p.total)) + '</td>' +
+        '<td>' + (p.yaCapturado ? '<span class="s">—</span>' :
+          '<select class="bk-con" data-i="' + i + '">' +
+            '<option value="">— elegir —</option>' +
+            ops.map(function (o) {
+              return '<option value="' + esc(o.concepto) + '"' +
+                (norm(o.concepto) === norm(p.categoria) ||
+                 norm(o.concepto) === norm(p.concepto) ? ' selected' : '') +
+                '>' + esc(o.concepto) + '</option>';
+            }).join('') + '</select>' +
+          '<div class="s" id="bkCat' + i + '" style="color:var(--muted);margin-top:3px"></div>') +
+        '</td>' +
+        '<td>' + (p.yaCapturado ? '<span class="s">—</span>' :
+          '<input class="bk-par" data-i="' + i + '" value="' + esc(p.contraparte || '') +
+          '" placeholder="opcional">') + '</td>' +
+        '</tr>';
+    });
+    h += '</tbody></table>';
+
+    if ((cu.detalleCapturadoSinBanco || []).length) {
+      h += '<h3 class="sec-t" style="margin-top:22px">Capturado en tu hoja, sin respaldo en el banco</h3>' +
+        '<div class="s" style="color:var(--muted);margin-bottom:8px">Estos renglones están en ' +
+        'INGRESOS o EGRESOS con fecha de este periodo, pero el banco no los tiene. O son de otra ' +
+        'cuenta, o están capturados de más.</div>' +
+        '<table class="mini-table"><thead><tr><th>Fila</th><th>Fecha</th><th>Concepto</th>' +
+        '<th style="text-align:right">Monto</th></tr></thead><tbody>' +
+        cu.detalleCapturadoSinBanco.map(function (x) {
+          return '<tr><td class="s">' + x.fila + '</td>' +
+            '<td class="s">' + esc(formatDateCell(x.fecha)) + '</td>' +
+            '<td>' + esc(x.concepto || x.descripcion || '—') + '</td>' +
+            '<td class="num">' + esc(formatMoney(x.monto)) + '</td></tr>';
+        }).join('') + '</tbody></table>';
+    }
+
+    h += '<div class="cot-acciones" style="margin-top:18px">' +
+      '<button type="button" class="primary" id="bkGuardar">Capturar los seleccionados</button>' +
+      '<span class="s" style="color:var(--muted)" id="bkCuenta2"></span></div>';
+
+    document.getElementById('bkResultado').innerHTML = h;
+    document.querySelectorAll('.bk-sel').forEach(function (c) {
+      c.addEventListener('change', function () {
+        bancoSel[c.getAttribute('data-i')] = c.checked;
+        contarBanco();
+      });
+    });
+    document.querySelectorAll('.bk-con').forEach(function (s) {
+      s.addEventListener('change', function () { mostrarCatDe(s); });
+      mostrarCatDe(s);
+    });
+    document.getElementById('bkGuardar').addEventListener('click', guardarBanco);
+    contarBanco();
+  }
+
+  // Al elegir el concepto se muestran la categoría y la subcategoría que le tocan:
+  // en el catálogo esas dos cuelgan del concepto, no se eligen aparte.
+  function mostrarCatDe(sel) {
+    var i = sel.getAttribute('data-i');
+    var p = bancoDatos.propuestas[i];
+    var o = conceptosDe(p.tipo).filter(function (x) { return x.concepto === sel.value; })[0];
+    var el = document.getElementById('bkCat' + i);
+    if (!el) return;
+    el.textContent = o ? (o.categoria + (o.subcategoria ? ' · ' + o.subcategoria : ''))
+                       : (sel.value ? '' : 'Sin concepto no se captura');
+  }
+
+  function contarBanco() {
+    var n = Object.keys(bancoSel).filter(function (k) { return bancoSel[k]; }).length;
+    var el = document.getElementById('bkCuenta2');
+    if (el) el.textContent = n ? (n + (n === 1 ? ' movimiento seleccionado' : ' movimientos seleccionados'))
+                               : 'No has seleccionado nada';
+  }
+
+  function guardarBanco() {
+    var aprobados = [];
+    var faltanConcepto = 0;
+    Object.keys(bancoSel).forEach(function (k) {
+      if (!bancoSel[k]) return;
+      var p = bancoDatos.propuestas[k];
+      var sel = document.querySelector('.bk-con[data-i="' + k + '"]');
+      var par = document.querySelector('.bk-par[data-i="' + k + '"]');
+      var concepto = sel ? sel.value : '';
+      if (!concepto) { faltanConcepto++; return; }
+      var o = conceptosDe(p.tipo).filter(function (x) { return x.concepto === concepto; })[0] || {};
+      aprobados.push({
+        tipo: p.tipo, fechaTexto: p.fechaTexto, mes: p.mes, total: p.total,
+        cuenta: p.cuentaLarga || p.cuenta, metodo: p.metodo,
+        concepto: concepto, descripcion: p.descripcion,
+        conceptoEstadoDeCuenta: p.conceptoEstadoDeCuenta,
+        contraparte: par ? par.value : '',
+        categoria: o.categoria || '', subcategoria: o.subcategoria || ''
+      });
+    });
+    if (faltanConcepto) {
+      toast('Hay ' + faltanConcepto + ' sin concepto. Elígelo o quítales la palomita.', 'err');
+      return;
+    }
+    if (!aprobados.length) { toast('No seleccionaste nada.', 'err'); return; }
+    var btn = document.getElementById('bkGuardar');
+    btn.disabled = true; btn.textContent = 'Capturando…';
+    api('banco-aprobar', { token: state.token, aprobados: aprobados })
+      .then(function (d) {
+        toast(d.mensaje || 'Listo.', 'ok');
+        avisoFijo('<b>' + esc(d.mensaje || '') + '</b><div style="margin-top:6px">' +
+          fmtNum(d.ingresos) + ' a INGRESOS · ' + fmtNum(d.egresos) + ' a EGRESOS' +
+          (d.reglasNuevas ? ' · ' + fmtNum(d.reglasNuevas) + ' reglas nuevas aprendidas' : '') +
+          (d.reglasReforzadas ? ' · ' + fmtNum(d.reglasReforzadas) + ' reglas reforzadas' : '') +
+          '</div>' +
+          ((d.columnasQueFaltan || []).length
+            ? '<div style="margin-top:8px;color:var(--amber)">Columnas que no se encontraron: ' +
+              esc(d.columnasQueFaltan.join(', ')) + '</div>' : ''));
+        loadSubirBanco();
+      })
+      .catch(fail)
+      .then(function () { btn.disabled = false; btn.textContent = 'Capturar los seleccionados'; });
   }
 
   function loadInvProv() {
@@ -4459,6 +4688,7 @@
 
   function loadArea() {
     if (state.key === 'log_calendario') return loadLogistica();
+    if (state.key === 'fin_banco') return loadSubirBanco();
     if (state.key === 'pagos_pedidos') return loadPagos();
     if (state.key === 'fac_impuestos') return loadImpuestos();
     if (state.key === 'fin_efectivo') return loadEfectivo();
@@ -10974,7 +11204,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.25-254';
+    var mia = '2026.08.25-257';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
