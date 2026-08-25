@@ -950,7 +950,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.19-233</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.19-235</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1710,9 +1710,14 @@
           fmtNum(lejos) + '</div><div class="k" style="text-transform:none;letter-spacing:0">real vs catálogo</div></div>' +
         '</div>';
 
-      var celda = function (v, m) {
-        return '<td class="num">' + (v === null ? '—' : esc(formatMoney(v))) + '</td>' +
-               '<td class="num">' + (m === null ? '—' : m.toFixed(1) + '%') + '</td>';
+      var celda = function (v, m, motivo) {
+        return '<td class="num">' + (v === null
+            ? '<span title="' + esc(motivo || '') + '" style="color:var(--muted)">' +
+              (motivo === 'sin costear' ? 'sin costear'
+                : (motivo === 'sin salidas' ? 'sin salidas' : '—')) + '</span>'
+            : esc(formatMoney(v))) + '</td>' +
+               '<td class="num">' + (m === null ? '<span style="color:var(--muted)">—</span>'
+                                                : m.toFixed(1) + '%') + '</td>';
       };
       var anios = {};
       F.forEach(function (r) { if (r.anio) anios[r.anio] = (anios[r.anio] || 0) + 1; });
@@ -1747,7 +1752,8 @@
           '<td>' + esc(r.fecha ? formatDateCell(r.fecha) : '') + '</td>' +
           '<td title="' + esc(r.cliente) + '">' + esc(r.cliente || '—') + '</td>' +
           '<td class="num">' + esc(formatMoney(r.venta)) + '</td>' +
-          celda(r.costoReal, r.margenReal) + celda(r.costoVentas, r.margenVentas) +
+          celda(r.costoReal, r.margenReal, r.estadoCosto) +
+          celda(r.costoVentas, r.margenVentas, r.piezas ? '' : 'sin salidas') +
           celda(r.costoCatalogo, r.margenCatalogo) +
           '<td title="' + esc(r.proveedores) + '">' + esc((r.proveedores || '').slice(0, 28)) + '</td></tr>';
         if (costoAbierto === r.folio && r.detalle && r.detalle.length) {
@@ -10645,7 +10651,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.19-233';
+    var mia = '2026.08.19-235';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
