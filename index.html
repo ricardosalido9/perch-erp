@@ -950,7 +950,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.25-266</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.25-267</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -3468,15 +3468,16 @@
         box.innerHTML += '<div style="background:var(--amber-bg);border:1px solid var(--amber);' +
           'border-radius:10px;padding:12px 16px;font-size:13px;color:var(--amber);margin-top:12px">' +
           '<b>Hay nombres repetidos en la Lista de Proveedores.</b> Estas razones sociales están ' +
-          'dentro de otro proveedor pero también tienen su propio renglón, así que sus facturas se ' +
-          'quedan con el renglón propio:' +
+          'dentro de otro proveedor y además tienen su propio renglón. <b>Manda la relación</b>: ' +
+          'sus facturas se cuentan al proveedor que las declara como razón social suya.' +
           '<ul style="margin:6px 0 0 18px;padding:0">' +
           d.duplicados.map(function (x) {
             return '<li>"' + esc(x.razonSocial) + '" está dentro de <b>' + esc(x.dentroDe) +
               '</b> y también aparece solo.</li>';
           }).join('') + '</ul>' +
-          '<div style="margin-top:8px">Para juntarlos: quítale el renglón propio y deja solo la ' +
-          'razón social dentro del otro. Para separarlos: quítalo de la razón social del otro.</div></div>';
+          '<div style="margin-top:8px">Si de verdad son la misma persona, quítale el renglón ' +
+          'propio y deja solo la razón social dentro del otro. Si son distintos, quítalo de la ' +
+          'razón social del otro o sus facturas se van a ir al lugar equivocado.</div></div>';
       }
       if (dgp.columnaMetodoDePago === '(NO SE ENCONTRÓ)') {
         box.innerHTML += '<div style="background:var(--danger-bg);border:1px solid var(--danger);' +
@@ -11546,7 +11547,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.25-266';
+    var mia = '2026.08.25-267';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
