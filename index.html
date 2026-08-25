@@ -950,7 +950,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.25-260</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.25-261</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -2325,7 +2325,22 @@
     var d = bancoDatos;
     if (!d) return;
     var cu = d.cuadre || {};
-    var h = '<div class="mes-chips" style="margin-bottom:14px">' +
+    var entran = (d.propuestas || []).filter(function (x) { return x.tipo === 'INGRESO'; });
+    var salen = (d.propuestas || []).filter(function (x) { return x.tipo === 'EGRESO'; });
+    var suma = function (l) { return l.reduce(function (a, x) { return a + x.total; }, 0); };
+    var h = '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">' +
+      '<div style="flex:1;min-width:180px;background:#E6F2EA;border-radius:10px;padding:12px 16px">' +
+        '<div class="k" style="color:#1B6B3A">＋ ENTRÓ</div>' +
+        '<div style="font-size:20px;font-weight:700;color:#1B6B3A">' +
+          esc(formatMoney(suma(entran))) + '</div>' +
+        '<div class="s" style="color:#1B6B3A">' + fmtNum(entran.length) + ' movimientos</div></div>' +
+      '<div style="flex:1;min-width:180px;background:#FBEAE7;border-radius:10px;padding:12px 16px">' +
+        '<div class="k" style="color:#A13A2C">－ SALIÓ</div>' +
+        '<div style="font-size:20px;font-weight:700;color:#A13A2C">' +
+          esc(formatMoney(suma(salen))) + '</div>' +
+        '<div class="s" style="color:#A13A2C">' + fmtNum(salen.length) + ' movimientos</div></div>' +
+      '</div>' +
+      '<div class="mes-chips" style="margin-bottom:14px">' +
       '<span class="mes-chip on">' + fmtNum(d.movimientos) + ' movimientos en el PDF</span>' +
       '<span class="mes-chip">' + fmtNum(d.yaCapturados) + ' ya estaban capturados</span>' +
       '<span class="mes-chip">' + fmtNum(d.nuevos) + ' por capturar</span>' +
@@ -2349,7 +2364,8 @@
     }
 
     h += '<table class="mini-table"><thead><tr>' +
-      '<th style="width:34px"></th><th style="width:92px">Fecha</th><th>Movimiento</th>' +
+      '<th style="width:34px"></th><th style="width:92px">Fecha</th>' +
+      '<th style="width:78px">Entra o sale</th><th>Movimiento</th>' +
       '<th style="width:104px;text-align:right">Monto</th>' +
       '<th style="width:210px">Concepto</th>' +
       '<th style="width:200px">Cliente <span style="color:var(--muted)">/</span> Proveedor</th>' +
@@ -2362,23 +2378,28 @@
         '<td><input type="checkbox" class="bk-sel" data-i="' + i + '"' +
           (bancoSel[i] ? ' checked' : '') + (p.yaCapturado ? ' disabled' : '') + '></td>' +
         '<td class="s">' + esc(p.fechaTexto) + '</td>' +
+        '<td><span style="display:inline-block;padding:2px 8px;border-radius:20px;' +
+          'font-size:11px;font-weight:700;letter-spacing:.4px;' +
+          (p.tipo === 'INGRESO'
+            ? 'background:#E6F2EA;color:#1B6B3A">＋ ENTRA'
+            : 'background:#FBEAE7;color:#A13A2C">－ SALE') + '</span></td>' +
         '<td><b style="color:' + color + '">' + esc(p.concepto || '—') + '</b>' +
-          (p.descripcion ? '<div class="s" style="color:var(--muted)">' +
-            esc(String(p.descripcion).slice(0, 70)) + '</div>' : '') +
+          (p.descripcion ? '<div class="s" style="color:var(--muted);white-space:normal">' +
+            esc(String(p.descripcion).slice(0, 110)) + '</div>' : '') +
           (p.yaCapturado
             ? '<div class="s" style="color:var(--muted)">Ya está en la fila ' +
               (p.capturadoEn ? p.capturadoEn.fila : '?') + '</div>'
-            : (p.porQue ? '<div class="s" style="color:var(--accent-ink)">' + esc(p.porQue) +
-               '</div>' : '')) +
+            : (p.porQue ? '<div class="s" style="color:var(--accent-ink);white-space:normal;' +
+               'max-width:340px">' + esc(p.porQue) + '</div>' : '')) +
         '</td>' +
         '<td class="num" style="color:' + color + '">' + esc(formatMoney(p.total)) + '</td>' +
         '<td>' + (p.yaCapturado ? '<span class="s">—</span>' :
           '<select class="bk-con" data-i="' + i + '">' +
             '<option value="">— elegir —</option>' +
             ops.map(function (o) {
-              return '<option value="' + esc(o.concepto) + '"' +
-                (norm(o.concepto) === norm(p.categoria) ||
-                 norm(o.concepto) === norm(p.concepto) ? ' selected' : '') +
+              var elegido = p.conceptoSugerido ? norm(o.concepto) === norm(p.conceptoSugerido)
+                : (norm(o.concepto) === norm(p.categoria) || norm(o.concepto) === norm(p.concepto));
+              return '<option value="' + esc(o.concepto) + '"' + (elegido ? ' selected' : '') +
                 '>' + esc(o.concepto) + '</option>';
             }).join('') + '</select>' +
           '<div class="s" id="bkCat' + i + '" style="color:var(--muted);margin-top:3px"></div>') +
@@ -2395,8 +2416,11 @@
                     esc(c.folio) + ' · ' + esc(c.cliente) + ' · ' + esc(formatMoney(c.saldo)) +
                     '</option>';
                 }).join('') + '</select>'
-            : '<div class="s" style="color:var(--muted);margin-top:3px">' +
-              (p.tipo === 'INGRESO' ? 'Cliente' : 'Proveedor') + '</div>')) + '</td>' +
+            : '<div class="s" style="margin-top:3px;color:' +
+              (p.contraparte ? 'var(--muted)' : 'var(--amber)') + '">' +
+              (p.contraparte ? (p.tipo === 'INGRESO' ? 'Cliente' : 'Proveedor')
+                : (p.tipo === 'INGRESO' ? 'Falta el cliente' : 'Falta el proveedor')) +
+              '</div>')) + '</td>' +
         '</tr>';
     });
     h += '</tbody></table>';
@@ -11259,7 +11283,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.25-260';
+    var mia = '2026.08.25-261';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
