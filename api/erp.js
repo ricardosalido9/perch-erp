@@ -43,6 +43,7 @@ const RUTAS = {
   'orden-pdf':    require('../lib/handlers/orden-pdf'),
   'relacion-pdf': require('../lib/handlers/relacion-pdf'),
   'envios-folio': require('../lib/handlers/envios-folio'),
+  'cfdi-reporte': require('../lib/handlers/cfdi-reporte'),
   'cta-clientes': require('../lib/handlers/clientes-cuenta'),
   'cxc-notas':    require('../lib/handlers/cxc-notas'),
   facturacion:    require('../lib/handlers/facturacion'),

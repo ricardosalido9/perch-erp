@@ -950,7 +950,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.19-231</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.19-233</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -2734,6 +2734,18 @@
           esc(fmtMoneyShort(t.efectivoMonto)) + ' en efectivo u otra forma') : '');
 
       var dgp = d.diagnostico || {};
+      // Cuando entra Operación, la lista viene recortada a sus proveedores: se dice,
+      // para que nadie crea que faltan facturas.
+      if (d.filtradoDeOperacion && d.filtradoDeOperacion.activo) {
+        box.innerHTML += '<div style="background:var(--paper);border:1px solid var(--line);' +
+          'border-radius:10px;padding:10px 14px;font-size:13px;color:var(--slate);margin-top:12px">' +
+          'Estás viendo solo a los <b>' + fmtNum(d.filtradoDeOperacion.proveedoresDeProduccion) +
+          ' proveedores de producción</b>' +
+          (d.filtradoDeOperacion.ocultos > 0
+            ? '. Los administrativos (' + fmtNum(d.filtradoDeOperacion.ocultos) +
+              ' renglones) no salen aquí.'
+            : '.') + '</div>';
+      }
       if ((d.duplicados || []).length) {
         box.innerHTML += '<div style="background:var(--amber-bg);border:1px solid var(--amber);' +
           'border-radius:10px;padding:12px 16px;font-size:13px;color:var(--amber);margin-top:12px">' +
@@ -3698,20 +3710,33 @@
         h += !L.length ? '<div class="state">Nada pagado todavía.</div>' :
           '<table class="mini-table"><thead><tr><th>Pagado el</th><th>Proveedor</th>' +
           '<th>Pedido</th><th>Concepto</th><th style="text-align:right">Monto</th>' +
-          '<th>Quién</th></tr></thead><tbody>' +
+          '<th>Quién</th><th>Comprobante</th></tr></thead><tbody>' +
           L.map(function (p) {
             return '<tr><td>' + esc(formatDateCell(p.fechaPago || p.fecha)) + '</td>' +
               '<td><b>' + esc(p.proveedor) + '</b></td>' +
               '<td>' + esc(p.pedido) + '</td>' +
               '<td class="s">' + esc((p.concepto || p.descripcion || '').slice(0, 40)) + '</td>' +
               '<td class="num">' + esc(formatMoney(p.monto)) + '</td>' +
-              '<td class="s">' + esc(p.quienPago) + '</td></tr>';
+              '<td class="s">' + esc(p.quienPago) + '</td>' +
+              // El comprobante: Pau lo sube, Nico lo abre desde aquí mismo
+              '<td>' + (p.comprobante
+                ? (/^https?:\/\//i.test(p.comprobante)
+                    ? '<a href="' + esc(p.comprobante) + '" target="_blank" rel="noopener" ' +
+                      'class="row-btn">Ver</a>'
+                    : '<span class="s">' + esc(p.comprobante) + '</span>')
+                : (esSoloLectura('pagos_pedidos') ? '<span class="s" style="color:var(--muted)">—</span>'
+                    : '<button type="button" class="row-btn subir-comp" data-fila="' + p.fila +
+                      '" data-prov="' + esc(p.proveedor).replace(/"/g, '&quot;') +
+                      '">Subir</button>')) + '</td></tr>';
           }).join('') + '</tbody></table>';
       } else if (!(d.grupos || []).length) {
         h += '<div class="state" style="padding:40px 0">No hay pagos pendientes.</div>';
       } else {
         // Barra de acción: cuántos seleccionados y el botón de marcar
         h += '<div id="pagosBarra" class="pagos-barra"></div>';
+        h += '<div class="cot-acciones" style="margin-bottom:12px">' +
+          '<button type="button" class="primary" id="pedirPagoBtn">+ Pedir un pago</button>' +
+          '<span class="s" style="color:var(--muted)">Se agrega a la cola sin pagar</span></div>';
         h += '<div class="cot-grid">';
         d.grupos.forEach(function (g) {
           h += '<div class="cot-card open">' +
@@ -3776,12 +3801,107 @@
           loadPagos();
         });
       });
+      var pedirBtn = document.getElementById('pedirPagoBtn');
+      if (pedirBtn) pedirBtn.addEventListener('click', abrirPedirPago);
+      document.querySelectorAll('#tableWrap .subir-comp').forEach(function (b) {
+        b.addEventListener('click', function () { subirComprobante(b); });
+      });
       pintarBarraPagos();
     }).catch(function (e) {
       document.getElementById('tableWrap').innerHTML =
         '<div class="state">' + esc((e && e.message) || 'No se pudieron leer los pagos.') + '</div>';
     });
   }
+  // Nico pide un pago: se escribe en la misma hoja, sin pagar, y le sale a Pau.
+  function abrirPedirPago() {
+    var provs = (pagosDatos && pagosDatos.grupos || []).map(function (g) { return g.proveedor; });
+    var h = '<div style="display:flex;gap:12px;flex-wrap:wrap">' +
+      '<div class="fld" style="flex:1;min-width:220px"><label>A quién se le paga *</label>' +
+        '<input id="pp_prov" list="pp_provs" placeholder="Proveedor">' +
+        '<datalist id="pp_provs">' + provs.map(function (p) {
+          return '<option value="' + esc(p) + '">'; }).join('') + '</datalist></div>' +
+      '<div class="fld" style="width:150px"><label>Monto *</label>' +
+        '<input id="pp_monto" type="number" step="0.01" min="0"></div>' +
+      '<div class="fld" style="width:170px"><label>Pedido</label><input id="pp_pedido"></div>' +
+      '</div>' +
+      '<div style="display:flex;gap:12px;flex-wrap:wrap">' +
+      '<div class="fld" style="flex:1;min-width:220px"><label>Concepto</label>' +
+        '<input id="pp_concepto" placeholder="Anticipo, finiquito, material…"></div>' +
+      '<div class="fld" style="width:150px"><label>Urgencia</label>' +
+        '<select id="pp_urgencia"><option value="">Normal</option>' +
+        '<option>Urgente</option><option>Alta</option></select></div>' +
+      '<div class="fld" style="width:170px"><label>Para cuándo</label>' +
+        '<input id="pp_para" type="date"></div>' +
+      '</div>' +
+      '<div class="fld"><label>Comentarios</label><input id="pp_com" placeholder="Lo que Pau necesita saber"></div>' +
+      '<div class="s" style="color:var(--muted)">Se guarda sin pagar, así que aparece de ' +
+      'inmediato en la cola de pagos por hacer.</div>';
+    document.getElementById('aventaTitulo').textContent = 'Pedir un pago';
+    document.getElementById('aventaCuerpo').innerHTML = h;
+    document.getElementById('aventaOk').textContent = 'Solicitar el pago';
+    document.getElementById('aventaCancel').textContent = 'Cancelar';
+    document.getElementById('aventaModal').classList.add('on');
+    aventaPedido = null; entradaPedido = null;
+  }
+  function guardarPedirPago() {
+    var v = function (id) { var e = document.getElementById(id); return e ? e.value : ''; };
+    var prov = String(v('pp_prov') || '').trim();
+    var monto = parseFloat(v('pp_monto') || '0');
+    if (!prov) { toast('Falta a quién se le paga.', 'err'); return; }
+    if (!monto) { toast('Falta el monto.', 'err'); return; }
+    var btn = document.getElementById('aventaOk');
+    btn.disabled = true; btn.textContent = 'Guardando…';
+    api('pagos', { token: state.token, nuevo: {
+      proveedor: prov, monto: monto, pedido: v('pp_pedido'), concepto: v('pp_concepto'),
+      urgencia: v('pp_urgencia'), paraCuando: v('pp_para') ? isoToLargo(v('pp_para')) : '',
+      comentarios: v('pp_com')
+    }}).then(function (d) {
+      toast(d.mensaje || 'Pago solicitado.', 'ok');
+      cerrarMandarAVenta();
+      loadPagos();
+    }).catch(fail).then(function () {
+      btn.disabled = false; btn.textContent = 'Solicitar el pago';
+    });
+  }
+
+  // Pau sube el comprobante al pagar; queda ligado a ese renglón y Nico lo abre
+  function subirComprobante(btn) {
+    var fila = btn.getAttribute('data-fila');
+    var prov = btn.getAttribute('data-prov') || '';
+    var inp = document.createElement('input');
+    inp.type = 'file';
+    inp.accept = 'image/*,application/pdf';
+    inp.addEventListener('change', function () {
+      var f = inp.files && inp.files[0];
+      if (!f) return;
+      if (f.size > 4 * 1024 * 1024) { toast('El archivo pesa más de 4 MB.', 'err'); return; }
+      var lector = new FileReader();
+      lector.onload = function () {
+        var b64 = String(lector.result || '').split(',')[1] || '';
+        btn.disabled = true; btn.textContent = 'Subiendo…';
+        api('upload', { token: state.token,
+          nombre: 'Comprobante ' + prov + ' fila ' + fila + '.' + (f.name.split('.').pop() || 'pdf'),
+          mime: f.type, data: b64, carpetaNombre: 'Comprobantes de pago' })
+          .then(function (d) {
+            return api('pagos', { token: state.token, fila: fila,
+                                  comprobante: d.archivo || d.carpeta || '' });
+          })
+          .then(function () { toast('Comprobante guardado.', 'ok'); loadPagos(); })
+          .catch(function (err) {
+            fail(err);
+            var url = window.prompt('No se pudo subir a Drive. Si ya tienes la liga, pégala aquí:');
+            if (!url || !url.trim()) return;
+            api('pagos', { token: state.token, fila: fila, comprobante: url.trim() })
+              .then(function () { toast('Liga guardada.', 'ok'); loadPagos(); })
+              .catch(fail);
+          })
+          .then(function () { btn.disabled = false; btn.textContent = 'Subir'; });
+      };
+      lector.readAsDataURL(f);
+    });
+    inp.click();
+  }
+
   var pagosDatos = null;
   function pintarBarraPagos() {
     var caja = document.getElementById('pagosBarra');
@@ -4160,7 +4280,11 @@
             'con datos. No estorban al ERP.</div>' : ''));
       }
       document.getElementById('driveCostosBtn').style.display = (state.key === 'costos') ? '' : 'none';
-      document.getElementById('driveStockBtn').style.display = (state.key === 'op_stock') ? '' : 'none';
+      // El recálculo reescribe Stock Y Revisar, así que el botón sale en las dos
+      // pantallas: si estás viendo las diferencias, ahí mismo puedes rehacerlas.
+      var bs = document.getElementById('driveStockBtn');
+      bs.style.display = (state.key === 'op_stock' || state.key === 'op_revisar') ? '' : 'none';
+      bs.textContent = (state.key === 'op_revisar') ? 'Volver a revisar' : 'Recalcular stock';
       document.getElementById('driveProvBtn').style.display = (state.key === 'proveedores') ? '' : 'none';
       var cvb = document.getElementById('catViewBtn');
       cvb.style.display = ['inventario','cotizaciones','ventas_registro','prov_pedidos','fin_cxc','op_envios'].indexOf(state.key) !== -1 ? '' : 'none';
@@ -10521,7 +10645,7 @@
   document.getElementById('logoutSide').addEventListener('click', doLogout);
   // Si el servidor ya tiene una versión más nueva, el navegador está sirviendo caché
   fetch('/api/erp?action=version').then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.19-231';
+    var mia = '2026.08.19-233';
     if (v && v.version && v.version !== mia) {
       var el = document.querySelector('.nav-foot div');
       if (el) {
@@ -10555,6 +10679,7 @@
   document.getElementById('aventaClose').addEventListener('click', cerrarMandarAVenta);
   document.getElementById('aventaCancel').addEventListener('click', cerrarMandarAVenta);
   document.getElementById('aventaOk').addEventListener('click', function () {
+    if (document.getElementById('pp_prov')) { guardarPedirPago(); return; }
     if (document.getElementById('pgFecha')) { confirmarPagados(); return; }
     if (document.getElementById('pnNombre')) { guardarProductoNuevo(); return; }
     if (document.getElementById('ciMes')) {
@@ -10613,8 +10738,9 @@
     var b = this, t = b.textContent;
     b.disabled = true; b.textContent = 'Recalculando...';
     api('stock-export', { token: state.token }).then(function (o) {
-      toast('Stock recalculado: ' + fmtNum(o.piezas) + ' piezas en ' + fmtNum(o.combinaciones) +
-            ' combinaciones · ' + fmtNum(o.porLlegar) + ' por llegar · ' + fmtNum(o.revisar) + ' a revisar.', 'ok');
+      toast('Listo: ' + fmtNum(o.piezas) + ' piezas en ' + fmtNum(o.combinaciones) +
+            ' combinaciones · ' + fmtNum(o.porLlegar) + ' por llegar · ' +
+            fmtNum(o.revisar) + ' renglones a revisar.', 'ok');
       loadArea();
     }).catch(fail).then(function () { b.disabled = false; b.textContent = t; });
   });
