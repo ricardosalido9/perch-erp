@@ -950,7 +950,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.26-272</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.26-273</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -997,6 +997,7 @@
         <button id="driveCostosBtn" type="button" style="display:none">Actualizar en Drive</button>
         <button id="driveStockBtn" type="button" style="display:none">Recalcular stock</button>
         <button id="driveProvBtn" type="button" style="display:none">Exportar a Drive</button>
+        <button id="quincenaBtn" type="button" style="display:none">Armar la quincena</button>
         <button id="reporteNominaBtn" type="button" style="display:none">Reporte de nómina</button>
         <button id="reporteMesBtn" type="button" style="display:none">Reporte mensual</button>
         <button id="downloadBtn" type="button">Descargar</button>
@@ -2836,6 +2837,149 @@
     }
     document.getElementById('tableWrap').innerHTML = h;
     document.getElementById('count').textContent = '';
+  }
+
+  // ===== Armar la quincena: replicar, ligar recibos y ajustar =====
+  var quincenaDatos = null;
+  function abrirQuincena(anio, mes, mitad) {
+    document.getElementById('aventaTitulo').textContent = 'Armar la quincena';
+    document.getElementById('aventaCuerpo').innerHTML =
+      '<div class="state" style="padding:40px 0">Buscando la quincena anterior y los recibos…</div>';
+    document.getElementById('aventaOk').textContent = 'Guardar la quincena';
+    document.getElementById('aventaCancel').textContent = 'Cerrar';
+    document.getElementById('aventaModal').classList.add('on');
+    aventaPedido = null; entradaPedido = null;
+    var p = { token: state.token };
+    if (anio) { p.anio = anio; p.mes = mes; p.mitad = mitad; }
+    api('nomina-quincena', p)
+      .then(function (d) { quincenaDatos = d; pintarQuincena(); })
+      .catch(function (e) {
+        document.getElementById('aventaCuerpo').innerHTML =
+          '<div class="state">' + esc((e && e.message) || 'No se pudo armar.') + '</div>';
+      });
+  }
+
+  function pintarQuincena() {
+    var d = quincenaDatos, r = d.resumen || {}, q = d.quincena || {};
+    var cambio = r.netoAnterior
+      ? ((r.netoTotal - r.netoAnterior) / r.netoAnterior) * 100 : null;
+    var h = '<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px">' +
+      '<div class="fld" style="width:210px"><label>Quincena</label>' +
+        '<select id="qnMitad">' +
+          '<option value="1"' + (q.mitad === 1 ? ' selected' : '') + '>Del 1 al 15</option>' +
+          '<option value="2"' + (q.mitad === 2 ? ' selected' : '') + '>Del 16 al fin</option>' +
+        '</select></div>' +
+      '<div class="fld" style="width:150px"><label>Mes</label>' +
+        '<select id="qnMes">' + MESES_ES.map(function (m, i) {
+          return '<option value="' + (i + 1) + '"' + (q.mes === i + 1 ? ' selected' : '') +
+            '>' + esc(m) + '</option>'; }).join('') + '</select></div>' +
+      '<div class="fld" style="width:110px"><label>Año</label>' +
+        '<input id="qnAnio" type="number" value="' + (q.anio || '') + '"></div>' +
+      '<button type="button" id="qnCargar">Ver esta</button>' +
+      '</div>';
+
+    h += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">' +
+      '<div style="flex:1;min-width:140px;background:var(--paper);border:1px solid var(--line);' +
+        'border-radius:10px;padding:9px 12px"><div class="k">Con recibo</div>' +
+        '<div style="font-size:17px;font-weight:700;color:var(--success)">' +
+          fmtNum(r.conRecibo) + '</div><div class="s">ya timbrados</div></div>' +
+      '<div style="flex:1;min-width:140px;background:var(--paper);border:1px solid var(--line);' +
+        'border-radius:10px;padding:9px 12px"><div class="k">Por ajustar</div>' +
+        '<div style="font-size:17px;font-weight:700;color:var(--amber)">' +
+          fmtNum(r.porReplicar + r.propuestasGuardadas) + '</div>' +
+        '<div class="s">' + fmtNum(r.enEfectivo) + ' en efectivo</div></div>' +
+      '<div style="flex:1;min-width:150px;background:var(--paper);border:1px solid var(--line);' +
+        'border-radius:10px;padding:9px 12px"><div class="k">Neto de la quincena</div>' +
+        '<div style="font-size:17px;font-weight:700">' + esc(formatMoney(r.netoTotal)) + '</div>' +
+        '<div class="s">' + (cambio === null ? '' :
+          (cambio >= 0 ? '+' : '') + cambio.toFixed(1) + '% vs la anterior') + '</div></div>' +
+      '</div>';
+
+    if ((d.columnas || {}).aviso) {
+      h += '<div style="background:var(--amber-bg);border:1px solid var(--amber);border-radius:10px;' +
+        'padding:10px 14px;color:var(--amber);font-size:13px;margin-bottom:12px">' +
+        esc(d.columnas.aviso) + '</div>';
+    }
+    (d.duplicados || []).forEach(function (x) {
+      h += '<div style="background:var(--danger-bg);border:1px solid var(--danger);' +
+        'border-radius:10px;padding:10px 14px;color:var(--danger);font-size:13px;margin-bottom:8px">' +
+        '<b>' + esc(x.nombre) + '</b> · ' + esc(x.que) + '</div>';
+    });
+
+    h += '<table class="mini-table"><thead><tr><th>Quién</th><th>Puesto</th>' +
+      '<th style="width:120px;text-align:right">Bruto</th>' +
+      '<th style="width:120px;text-align:right">Neto</th>' +
+      '<th>Situación</th></tr></thead><tbody>' +
+      (d.borrador || []).map(function (b, i) {
+        var esT = b.estado === 'timbrado';
+        var color = esT ? 'var(--success)' : (b.enEfectivo ? 'var(--slate)' : 'var(--amber)');
+        return '<tr' + (esT ? ' style="background:var(--paper)"' : '') + '>' +
+          '<td><b>' + esc(b.nombre) + '</b>' +
+            (b.area ? '<div class="s" style="color:var(--muted)">' + esc(b.area) + '</div>' : '') +
+          '</td>' +
+          '<td class="s">' + esc(b.puesto || '') +
+            (b.tipoPago ? '<div class="s" style="color:var(--muted)">' + esc(b.tipoPago) +
+              '</div>' : '') + '</td>' +
+          '<td class="num">' + (esT ? esc(formatMoney(b.bruto)) :
+            '<input class="qn-bruto" data-i="' + i + '" type="number" step="0.01" ' +
+            'style="text-align:right;width:110px" value="' + (b.bruto || '') + '">') + '</td>' +
+          '<td class="num">' + (esT ? '<b>' + esc(formatMoney(b.neto)) + '</b>' :
+            '<input class="qn-neto" data-i="' + i + '" type="number" step="0.01" ' +
+            'style="text-align:right;width:110px" value="' + (b.neto || '') + '">') + '</td>' +
+          '<td style="white-space:normal;max-width:280px">' +
+            '<span class="s" style="color:' + color + ';font-weight:600">' +
+              (esT ? 'Timbrado' : (b.enEfectivo ? 'Efectivo' : 'Por ajustar')) + '</span>' +
+            '<div class="s" style="color:var(--muted)">' + esc(b.porQue || '') + '</div>' +
+            (esT ? '' : '<input class="qn-com" data-i="' + i + '" placeholder="motivo, si hubo incidencia" ' +
+              'style="width:100%;margin-top:4px;font-size:12px" value="' +
+              esc(b.comentarios || '') + '">') +
+          '</td></tr>';
+      }).join('') + '</tbody></table>' +
+      '<div class="s" style="color:var(--muted);margin-top:10px">Los timbrados no se editan: ' +
+      'ese dato viene del recibo y es el bueno. Se guardan solo los demás, como propuesta.</div>';
+
+    document.getElementById('aventaCuerpo').innerHTML = h;
+    document.getElementById('qnCargar').addEventListener('click', function () {
+      abrirQuincena(+document.getElementById('qnAnio').value,
+                    +document.getElementById('qnMes').value,
+                    +document.getElementById('qnMitad').value);
+    });
+  }
+
+  function guardarQuincena() {
+    var d = quincenaDatos;
+    if (!d) return;
+    var renglones = [];
+    (d.borrador || []).forEach(function (b, i) {
+      if (b.estado === 'timbrado') return;
+      var br = document.querySelector('.qn-bruto[data-i="' + i + '"]');
+      var ne = document.querySelector('.qn-neto[data-i="' + i + '"]');
+      var co = document.querySelector('.qn-com[data-i="' + i + '"]');
+      renglones.push({
+        nombre: b.nombre, fila: b.fila, estado: b.estado,
+        bruto: br ? parseFloat(br.value || '0') : b.bruto,
+        neto: ne ? parseFloat(ne.value || '0') : b.neto,
+        puesto: b.puesto, area: b.area, departamento: b.departamento,
+        tipoPago: b.tipoPago, comentarios: co ? co.value : ''
+      });
+    });
+    if (!renglones.length) {
+      toast('Todos están timbrados: no hay nada que guardar.', 'ok');
+      return;
+    }
+    var btn = document.getElementById('aventaOk');
+    btn.disabled = true; btn.textContent = 'Guardando…';
+    api('nomina-guardar', { token: state.token, quincena: d.quincena, renglones: renglones })
+      .then(function (o) {
+        toast(o.mensaje || 'Guardado.', 'ok');
+        avisoFijo('<b>' + esc(o.mensaje || '') + '</b><div style="margin-top:6px">' +
+          fmtNum(o.creados) + ' nuevos · ' + fmtNum(o.actualizados) + ' actualizados</div>' +
+          '<div style="margin-top:6px;color:var(--muted)">' + esc(o.nota || '') + '</div>');
+        cerrarMandarAVenta();
+        loadArea();
+      })
+      .catch(fail)
+      .then(function () { btn.disabled = false; btn.textContent = 'Guardar la quincena'; });
   }
 
   function loadInvProv() {
@@ -5205,6 +5349,8 @@
       // El recálculo reescribe Stock Y Revisar, así que el botón sale en las dos
       // pantallas: si estás viendo las diferencias, ahí mismo puedes rehacerlas.
       // El reporte mensual se arma desde Ventas, que es donde se busca
+      var bq = document.getElementById('quincenaBtn');
+      if (bq) bq.style.display = (state.key === 'rh_nomina') ? '' : 'none';
       var brn = document.getElementById('reporteNominaBtn');
       if (brn) brn.style.display =
         (state.key === 'rh_nomina' || state.key === 'rh_resumen') ? '' : 'none';
@@ -11638,7 +11784,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.26-272';
+    var mia = '2026.08.26-273';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
@@ -11691,6 +11837,7 @@
   document.getElementById('aventaClose').addEventListener('click', cerrarMandarAVenta);
   document.getElementById('aventaCancel').addEventListener('click', cerrarMandarAVenta);
   document.getElementById('aventaOk').addEventListener('click', function () {
+    if (document.getElementById('qnMitad')) { guardarQuincena(); return; }
     if (document.getElementById('noMes')) { generarReporteNomina(); return; }
     if (document.querySelector('.ver-inc')) { guardarVersionNueva(); return; }
     if (document.getElementById('pp_prov')) { guardarPedirPago(); return; }
@@ -11752,6 +11899,7 @@
     .addEventListener('click', function () { abrirCierre('ventas'); });
   document.getElementById('reporteNominaBtn')
     .addEventListener('click', abrirReporteNomina);
+  document.getElementById('quincenaBtn').addEventListener('click', abrirQuincena);
   document.getElementById('driveStockBtn').addEventListener('click', function () {
     var b = this, t = b.textContent;
     b.disabled = true; b.textContent = 'Recalculando...';
