@@ -45,6 +45,7 @@ const RUTAS = {
   'nomina-pdf':   require('../lib/handlers/nomina-pdf'),
   'banco-import': require('../lib/handlers/banco-import'),
   'banco-aprobar':require('../lib/handlers/banco-aprobar'),
+  'banco-cuentas':require('../lib/handlers/banco-cuentas'),
   emitidos:       require('../lib/handlers/emitidos'),
   'relacion-pdf': require('../lib/handlers/relacion-pdf'),
   'envios-folio': require('../lib/handlers/envios-folio'),

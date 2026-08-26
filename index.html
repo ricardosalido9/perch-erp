@@ -950,7 +950,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.25-269</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.25-270</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -2260,7 +2260,20 @@
 
   // ===== Subir banco: del PDF a INGRESOS y EGRESOS, con aprobación =====
   var bancoDatos = null, bancoSel = {};
+  // Las cuentas salen del catálogo, las mismas que se usan al capturar a mano
+  var bancoCuentas = [], bancoCuentasDe = '';
   function loadSubirBanco() {
+    document.getElementById('tableWrap').innerHTML =
+      '<div class="state" style="padding:50px 0">Cargando las cuentas…</div>';
+    api('banco-cuentas', { token: state.token })
+      .then(function (d) {
+        bancoCuentas = d.cuentas || [];
+        bancoCuentasDe = d.deDonde || '';
+        pintarFormBanco();
+      })
+      .catch(function () { bancoCuentas = []; pintarFormBanco(); });
+  }
+  function pintarFormBanco() {
     document.getElementById('summary').innerHTML = '';
     document.getElementById('summary').style.display = 'none';
     mostrarAlta(false);
@@ -2274,11 +2287,19 @@
       'propone la captura; <b>nada se escribe hasta que lo apruebes</b>. Lo que ya esté ' +
       'capturado se reconoce y no se repite.</div>' +
       '<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">' +
-        '<div class="fld" style="width:230px"><label>Cuenta</label>' +
-          '<select id="bkCuenta">' +
-            '<option value="0117441789">BBVA 0117441789</option>' +
-            '<option value="0122411350">BBVA 0122411350</option>' +
-          '</select></div>' +
+        '<div class="fld" style="width:260px"><label>Cuenta</label>' +
+          (bancoCuentas.length
+            ? '<select id="bkCuenta">' + bancoCuentas.map(function (c) {
+                return '<option value="' + esc(c.numero || c.nombre) + '"' +
+                  (c.esBancaria ? '' : ' disabled') + '>' + esc(c.nombre) +
+                  (c.esBancaria ? '' : ' — sin número de cuenta') + '</option>';
+              }).join('') + '</select>' +
+              '<div class="s" style="color:var(--muted);margin-top:4px">' +
+                fmtNum(bancoCuentas.filter(function (c) { return c.esBancaria; }).length) +
+                ' cuentas' + (bancoCuentasDe ? ' · de ' + esc(bancoCuentasDe) : '') + '</div>'
+            : '<input id="bkCuenta" placeholder="número de cuenta">' +
+              '<div class="s" style="color:var(--amber);margin-top:4px">No se encontró la ' +
+              'lista de cuentas en el catálogo</div>') + '</div>' +
         '<div class="fld" style="width:110px"><label>Año</label>' +
           '<input id="bkAnio" type="number" value="' + anio + '"></div>' +
         '<div class="fld" style="flex:1;min-width:220px"><label>Archivo PDF</label>' +
@@ -11617,7 +11638,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.25-269';
+    var mia = '2026.08.25-270';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
