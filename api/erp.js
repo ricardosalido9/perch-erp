@@ -47,6 +47,8 @@ const RUTAS = {
   'banco-aprobar':require('../lib/handlers/banco-aprobar'),
   'banco-cuentas':require('../lib/handlers/banco-cuentas'),
   'fotos-catalogo':require('../lib/handlers/fotos-catalogo'),
+  'nomina-quincena':require('../lib/handlers/nomina-quincena'),
+  'nomina-guardar':require('../lib/handlers/nomina-guardar'),
   emitidos:       require('../lib/handlers/emitidos'),
   'relacion-pdf': require('../lib/handlers/relacion-pdf'),
   'envios-folio': require('../lib/handlers/envios-folio'),
