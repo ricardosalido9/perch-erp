@@ -950,7 +950,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.31-275</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.31-276</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -2130,7 +2130,7 @@
 
   // Versión nueva de una cotización: la anterior ya se mandó, así que no se toca.
   // Se copia como base, se ajustan cantidades o descuentos, y nace con folio propio.
-  var versionDe = null, versionFilas = [];
+  var versionDe = null, versionFilas = [], versionAgregados = [];
   function abrirVersionNueva(folio) {
     var cRef = findHeaderByName('No. de Referencia') || findHeaderByName('Folio');
     var cProd = findHeaderByName('Producto') || findHeaderByName('Productos');
@@ -2138,6 +2138,7 @@
     var cCant = findHeaderByName('Cantidad');
     var cDesc = findHeaderByName('% descuento') || findHeaderByName('Descuentos');
     versionDe = folio;
+    versionAgregados = [];
     versionFilas = (state.rows || []).filter(function (r) {
       return cRef && String(r[cRef] || '').trim() === folio;
     });
@@ -2161,9 +2162,27 @@
             'style="text-align:right" value="' + esc(r[cDesc] || '') + '"></td>' : '') +
           '</tr>';
       }).join('') + '</tbody></table>' +
-      '<div class="s" style="color:var(--muted);margin-top:10px">Si el cliente se queda con la ' +
-      'nueva, cambia el status de ' + esc(folio) + ' a "Rechazada" para que no cuente dos veces ' +
-      'en la tasa de conversión.</div>';
+      // Faltaba poder agregar: solo se podía quitar y ajustar. Se toma el catálogo
+      // que ya está cargado en la pantalla, así que no hay que pedir nada al servidor.
+      '<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">' +
+      '<div class="s" style="color:var(--slate);margin-bottom:8px"><b>Agregar un producto</b></div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">' +
+        '<div class="fld" style="flex:1;min-width:220px;margin:0"><label>Producto</label>' +
+          '<input id="vnProd" list="vnProds" placeholder="del catálogo"></div>' +
+        '<div class="fld" style="width:150px;margin:0"><label>Material</label>' +
+          '<input id="vnMat" list="vnMats"></div>' +
+        '<div class="fld" style="width:100px;margin:0"><label>Cantidad</label>' +
+          '<input id="vnCant" type="number" min="1" value="1"></div>' +
+        '<div class="fld" style="width:130px;margin:0"><label>Precio unitario</label>' +
+          '<input id="vnPrecio" type="number" step="0.01" placeholder="del catálogo"></div>' +
+        '<button type="button" id="vnAgregar">Agregar</button>' +
+      '</div>' +
+      listasDelCatalogo() +
+      '<div id="vnNuevos" style="margin-top:10px"></div></div>' +
+      '<div class="s" style="color:var(--muted);margin-top:10px">' + esc(folio) + ' no se toca: ' +
+      'se queda tal como está, por si el cliente se decide por ella. Más adelante, cuando sepas ' +
+      'cuál se quedó, marca la otra como Rechazada para que no cuenten las dos en la conversión. ' +
+      'No hace falta hacerlo ahora.</div>';
 
     document.getElementById('aventaTitulo').textContent = 'Versión nueva de ' + folio;
     document.getElementById('aventaCuerpo').innerHTML = h;
@@ -2171,6 +2190,8 @@
     document.getElementById('aventaCancel').textContent = 'Cancelar';
     document.getElementById('aventaModal').classList.add('on');
     aventaPedido = null; entradaPedido = null;
+    conectarAgregarVersion();
+    pintarAgregadosVersion();
   }
   function guardarVersionNueva() {
     var cCant = findHeaderByName('Cantidad');
@@ -2186,12 +2207,25 @@
       if (ed && cDesc) cam[cDesc] = ed.value;
       if (Object.keys(cam).length) cambios[i] = cam;
     });
-    if (quitar.length === versionFilas.length) {
-      toast('No puedes quitar todos los productos.', 'err'); return;
+    if (quitar.length === versionFilas.length && !versionAgregados.length) {
+      toast('No puedes quitar todos los productos sin agregar otro.', 'err'); return;
     }
     var btn = document.getElementById('aventaOk');
     btn.disabled = true; btn.textContent = 'Creando…';
-    api('dup-cot', { token: state.token, folio: versionDe, quitar: quitar, cambios: cambios })
+    // Los productos nuevos van con los nombres de columna de la hoja
+    var cProd = findHeaderByName('Producto') || findHeaderByName('Productos');
+    var cMat2 = findHeaderByName('Material');
+    var cPre = findHeaderByName('Precio Unitario');
+    var agregar = versionAgregados.map(function (x) {
+      var rec = {};
+      if (cProd) rec[cProd] = x.producto;
+      if (cMat2) rec[cMat2] = x.material;
+      if (cCant) rec[cCant] = x.cantidad;
+      if (cPre) rec[cPre] = x.precio;
+      return rec;
+    });
+    api('dup-cot', { token: state.token, folio: versionDe, quitar: quitar,
+                     cambios: cambios, agregar: agregar })
       .then(function (d) {
         toast(d.mensaje || 'Versión nueva creada.', 'ok');
         avisoFijo('<b>' + esc(d.mensaje || '') + '</b><div style="margin-top:6px">' +
@@ -3062,6 +3096,91 @@
       })
       .catch(fail)
       .then(function () { btn.disabled = false; btn.textContent = 'Cambiar el cliente'; });
+  }
+
+  // Las listas de productos y materiales salen del catálogo que la pantalla ya
+  // tiene cargado, así que no hay que pedirle nada al servidor.
+  function listasDelCatalogo() {
+    var c = cascadeLU();
+    if (!c) return '';
+    var prods = {}, mats = {};
+    (c.rows || []).forEach(function (r) {
+      var p1 = valorNivel(r, c.levels[0]); if (p1) prods[p1] = 1;
+      var m1 = c.levels[1] ? valorNivel(r, c.levels[1]) : ''; if (m1) mats[m1] = 1;
+    });
+    var lista = function (id, o) {
+      return '<datalist id="' + id + '">' + Object.keys(o).sort().map(function (v) {
+        return '<option value="' + esc(v) + '">'; }).join('') + '</datalist>';
+    };
+    return lista('vnProds', prods) + lista('vnMats', mats);
+  }
+  // El precio del catálogo para ese producto y material
+  function precioDelCatalogo(producto, material) {
+    var c = cascadeLU();
+    if (!c) return null;
+    var fila = (c.rows || []).filter(function (r) {
+      if (norm(valorNivel(r, c.levels[0])) !== norm(producto)) return false;
+      if (!material || !c.levels[1]) return true;
+      return norm(valorNivel(r, c.levels[1])) === norm(material);
+    })[0];
+    if (!fila) return null;
+    var lc = lineCfg() || {};
+    var v = fila[lc.precio || 'Precio Unitario'] || fila['Precio Unitario'] ||
+            fila['Precio de venta'] || fila['Precio'];
+    var n = toNum(v);
+    return n > 0 ? n : null;
+  }
+
+  var versionAgregados = [];
+  function pintarAgregadosVersion() {
+    var el = document.getElementById('vnNuevos');
+    if (!el) return;
+    if (!versionAgregados.length) { el.innerHTML = ''; return; }
+    el.innerHTML = '<table class="mini-table"><tbody>' +
+      versionAgregados.map(function (x, i) {
+        return '<tr><td><b>' + esc(x.producto) + '</b> · ' + esc(x.material || '—') + '</td>' +
+          '<td class="num">' + fmtNum(x.cantidad) + '</td>' +
+          '<td class="num">' + esc(formatMoney(x.precio)) + '</td>' +
+          '<td><button type="button" class="row-btn vn-quitar" data-i="' + i +
+            '">Quitar</button></td></tr>';
+      }).join('') + '</tbody></table>';
+    el.querySelectorAll('.vn-quitar').forEach(function (b) {
+      b.addEventListener('click', function () {
+        versionAgregados.splice(+b.getAttribute('data-i'), 1);
+        pintarAgregadosVersion();
+      });
+    });
+  }
+  function conectarAgregarVersion() {
+    var btn = document.getElementById('vnAgregar');
+    if (!btn) return;
+    var elProd = document.getElementById('vnProd');
+    var elMat = document.getElementById('vnMat');
+    var elPre = document.getElementById('vnPrecio');
+    // Al elegir producto y material se propone el precio del catálogo
+    var proponer = function () {
+      if (elPre.value) return;
+      var pr = precioDelCatalogo(elProd.value, elMat.value);
+      if (pr) elPre.value = pr;
+    };
+    elProd.addEventListener('change', proponer);
+    elMat.addEventListener('change', proponer);
+    btn.addEventListener('click', function () {
+      var producto = elProd.value.trim();
+      if (!producto) { toast('Elige el producto.', 'err'); return; }
+      var cant = parseFloat(document.getElementById('vnCant').value || '1') || 1;
+      var precio = parseFloat(elPre.value || '0') ||
+                   precioDelCatalogo(producto, elMat.value) || 0;
+      if (!precio) {
+        toast('Ese producto no tiene precio en el catálogo. Escríbelo a mano.', 'err');
+        return;
+      }
+      versionAgregados.push({ producto: producto, material: elMat.value.trim(),
+                              cantidad: cant, precio: precio });
+      elProd.value = ''; elMat.value = ''; elPre.value = '';
+      document.getElementById('vnCant').value = 1;
+      pintarAgregadosVersion();
+    });
   }
 
   function loadInvProv() {
@@ -11893,7 +12012,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.31-275';
+    var mia = '2026.08.31-276';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
