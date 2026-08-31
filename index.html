@@ -950,7 +950,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.31-274</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.31-275</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -2980,6 +2980,88 @@
       })
       .catch(fail)
       .then(function () { btn.disabled = false; btn.textContent = 'Guardar la quincena'; });
+  }
+
+  // Corregir el cliente de un folio. Pregunta antes y cambia en las dos hojas,
+  // porque el cliente es la llave de cuentas por cobrar y del expediente: si se
+  // cambia en un lado y no en el otro, dejan de cuadrar.
+  var fixCliFolio = null, fixCliDatos = null;
+  function abrirCorregirCliente(folio) {
+    fixCliFolio = folio; fixCliDatos = null;
+    document.getElementById('aventaTitulo').textContent = 'Corregir el cliente · ' + folio;
+    document.getElementById('aventaCuerpo').innerHTML =
+      '<div class="state" style="padding:30px 0">Buscando dónde aparece este folio…</div>';
+    document.getElementById('aventaOk').textContent = 'Buscar';
+    document.getElementById('aventaCancel').textContent = 'Cancelar';
+    document.getElementById('aventaModal').classList.add('on');
+    aventaPedido = null; entradaPedido = null;
+    api('cambiar-cliente', { token: state.token, folio: folio })
+      .then(function (d) { fixCliDatos = d; pintarCorregirCliente(); })
+      .catch(function (e) {
+        document.getElementById('aventaCuerpo').innerHTML =
+          '<div class="state">' + esc((e && e.message) || 'No se encontró.') + '</div>';
+      });
+  }
+  function pintarCorregirCliente() {
+    var d = fixCliDatos;
+    var h = '<div class="fld"><label>Cliente actual</label>' +
+      '<input value="' + esc(d.clienteActual || '') + '" readonly ' +
+      'style="background:var(--paper)"></div>' +
+      '<div class="fld"><label>Nombre correcto *</label>' +
+      '<input id="fcNuevo" list="fcClientes" value="' + esc(d.clienteActual || '') + '"></div>' +
+      '<datalist id="fcClientes">' +
+        (state.lookups || []).map(function (l) {
+          return (l.keyField && norm(l.keyField) === norm('Cliente'))
+            ? (l.options || []).map(function (o) {
+                return '<option value="' + esc(o) + '">'; }).join('') : '';
+        }).join('') + '</datalist>' +
+      '<div class="s" style="color:var(--slate);margin:10px 0 6px">Se va a cambiar en:</div>';
+    (d.donde || []).forEach(function (x, i) {
+      h += '<label style="display:flex;gap:8px;align-items:center;margin-bottom:6px">' +
+        '<input type="checkbox" class="fc-hoja" data-i="' + i + '" checked> ' +
+        '<span>' + esc(x.que) + ' · ' + fmtNum(x.renglones) +
+        (x.renglones === 1 ? ' renglón' : ' renglones') + '</span></label>';
+    });
+    h += '<div class="s" style="color:var(--muted);margin-top:10px">' + esc(d.nota || '') + '</div>';
+    document.getElementById('aventaCuerpo').innerHTML = h;
+    document.getElementById('aventaOk').textContent = 'Cambiar el cliente';
+  }
+  function guardarCorregirCliente() {
+    var el = document.getElementById('fcNuevo');
+    var nuevo = el ? el.value.trim() : '';
+    if (!nuevo) { toast('Escribe el nombre correcto.', 'err'); return; }
+    if (norm(nuevo) === norm(fixCliDatos.clienteActual || '')) {
+      toast('Es el mismo nombre que ya tenía.', 'err'); return;
+    }
+    var hojas = [];
+    document.querySelectorAll('.fc-hoja').forEach(function (c) {
+      if (c.checked) {
+        var i = +c.getAttribute('data-i');
+        // El handler devuelve las hojas en el mismo orden que las pinta
+        var claves = ['ventas_registro', 'cotizaciones', 'fin_cxc'];
+        var q = (fixCliDatos.donde[i] || {}).que;
+        if (/venta/i.test(q)) hojas.push('ventas_registro');
+        else if (/cotizaci/i.test(q)) hojas.push('cotizaciones');
+        else hojas.push('fin_cxc');
+      }
+    });
+    if (!hojas.length) { toast('No elegiste ninguna hoja.', 'err'); return; }
+    var btn = document.getElementById('aventaOk');
+    btn.disabled = true; btn.textContent = 'Cambiando…';
+    api('cambiar-cliente', { token: state.token, folio: fixCliFolio,
+                             cliente: nuevo, hojas: hojas, confirmar: true })
+      .then(function (o) {
+        toast(o.mensaje || 'Listo.', 'ok');
+        avisoFijo('<b>' + esc(o.mensaje || '') + '</b><div style="margin-top:6px">' +
+          (o.detalle || []).map(function (x) {
+            return esc(x.que) + ': ' + fmtNum(x.renglones) + ' · ' +
+              esc(x.antes) + ' → ' + esc(x.ahora);
+          }).join('<br>') + '</div>');
+        cerrarMandarAVenta();
+        loadArea();
+      })
+      .catch(fail)
+      .then(function () { btn.disabled = false; btn.textContent = 'Cambiar el cliente'; });
   }
 
   function loadInvProv() {
@@ -7794,6 +7876,9 @@
             (state.key === 'cotizaciones' && !esSoloLectura(state.key)
               ? '<button type="button" class="dup-cot" data-folio="' + esc(k).replace(/"/g, '&quot;') +
                 '">Hacer una versión nueva</button>' : '') +
+            (!esSoloLectura(state.key)
+              ? '<button type="button" class="fix-cli" data-folio="' + esc(k).replace(/"/g, '&quot;') +
+                '">Corregir el cliente</button>' : '') +
             (state.key === 'ventas_registro'
               ? (cSt ? '<span class="cot-st"><label>Status</label>' + selectStatusCot(k, st) + '</span>' : '')
               : ((vendida ? '<span class="s" style="color:var(--success)">Ya se convirtió en venta</span>'
@@ -9225,7 +9310,11 @@
   var PAGO_AREAS = ['ventas_registro', 'cotizaciones'];
   // El dinero entra completo a la pasarela. Lo que cobran por pasarlo al banco
   // es un movimiento aparte, no un descuento de la venta.
-  function aplicarDescuentoPedido() {
+  // lista: sobre qué renglones se reparte. Si no se pasa, sobre los ya agregados.
+  // Hace falta pasarla al guardar, porque el último producto todavía vive en el
+  // formulario y no está en state.lineItems: ese era el que se guardaba sin
+  // descuento, y si solo había uno, la venta entera salía sin descuento.
+  function aplicarDescuentoPedido(lista) {
     var cfg = specialCfg();
     if (!cfg || !cfg.descuento) return;
     // Si el descuento se puso arriba (en el producto que se está capturando) y abajo
@@ -9239,7 +9328,7 @@
     }
     var cPct = findHeaderByName(cfg.descuento.pct);
     var cVal = findHeaderByName(cfg.descuento.val);
-    var items = state.lineItems || [];
+    var items = lista || state.lineItems || [];
     if (!items.length) return;
     var monto = parseFloat(descPedido.monto || '0') || 0;
     if (!descPedido.tipo || !monto) {
@@ -10312,8 +10401,9 @@
     }
     if (!lines.length) { toast('Agrega al menos un producto a la venta.', 'err'); return; }
 
-    // El descuento del pedido se reparte ahora, por si se agregaron productos después
-    aplicarDescuentoPedido();
+    // El descuento se reparte sobre las líneas que de verdad se van a guardar,
+    // no solo sobre las agregadas: la última sigue en el formulario.
+    aplicarDescuentoPedido(lines);
 
     // 4) Arma una fila por producto (envío solo en la primera)
     var envioCol = lc.envioOnce ? findHeaderByName(lc.envioOnce) : null;
@@ -11803,7 +11893,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.31-274';
+    var mia = '2026.08.31-275';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
@@ -11856,6 +11946,7 @@
   document.getElementById('aventaClose').addEventListener('click', cerrarMandarAVenta);
   document.getElementById('aventaCancel').addEventListener('click', cerrarMandarAVenta);
   document.getElementById('aventaOk').addEventListener('click', function () {
+    if (document.getElementById('fcNuevo')) { guardarCorregirCliente(); return; }
     if (document.getElementById('qnMitad')) { guardarQuincena(); return; }
     if (document.getElementById('noMes')) { generarReporteNomina(); return; }
     if (document.querySelector('.ver-inc')) { guardarVersionNueva(); return; }
@@ -12019,6 +12110,8 @@
     if (av) { abrirMandarAVenta(av.getAttribute('data-ped')); return; }
     var dc = e.target.closest('.dup-cot');
     if (dc) { abrirVersionNueva(dc.getAttribute('data-folio')); return; }
+    var fc = e.target.closest('.fix-cli');
+    if (fc) { abrirCorregirCliente(fc.getAttribute('data-folio')); return; }
     var oc = e.target.closest('.oc-btn');
     if (oc) { bajarOrdenDeCompra(oc); return; }
     var ed = e.target.closest('.env-doc');

@@ -49,6 +49,7 @@ const RUTAS = {
   'fotos-catalogo':require('../lib/handlers/fotos-catalogo'),
   'nomina-quincena':require('../lib/handlers/nomina-quincena'),
   'nomina-guardar':require('../lib/handlers/nomina-guardar'),
+  'cambiar-cliente':require('../lib/handlers/cambiar-cliente'),
   emitidos:       require('../lib/handlers/emitidos'),
   'relacion-pdf': require('../lib/handlers/relacion-pdf'),
   'envios-folio': require('../lib/handlers/envios-folio'),
