@@ -950,7 +950,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.31-277</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.31-278</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -3181,6 +3181,66 @@
       document.getElementById('vnCant').value = 1;
       pintarAgregadosVersion();
     });
+  }
+
+  // Cancelar una cotización o venta capturada por error. No se borra el renglón:
+  // borrar corre las filas de abajo y deja un hueco en los folios que nadie puede
+  // explicar después. Se marca como Cancelada y deja de contar en los análisis.
+  var anularFolio = null, anularDatos = null;
+  function abrirAnular(folio) {
+    anularFolio = folio; anularDatos = null;
+    document.getElementById('aventaTitulo').textContent = 'Cancelar ' + folio;
+    document.getElementById('aventaCuerpo').innerHTML =
+      '<div class="state" style="padding:30px 0">Revisando qué se va a cancelar…</div>';
+    document.getElementById('aventaOk').textContent = 'Revisando…';
+    document.getElementById('aventaCancel').textContent = 'Cerrar';
+    document.getElementById('aventaModal').classList.add('on');
+    aventaPedido = null; entradaPedido = null; impactoContinuar = null;
+    api('anular', { token: state.token, key: state.key, folio: folio })
+      .then(function (d) { anularDatos = d; pintarAnular(); })
+      .catch(function (e) {
+        document.getElementById('aventaCuerpo').innerHTML =
+          '<div class="state">' + esc((e && e.message) || 'No se pudo.') + '</div>';
+      });
+  }
+  function pintarAnular() {
+    var d = anularDatos;
+    var h = '';
+    if (d.yaCancelada) {
+      h += '<div style="background:var(--paper);border-radius:10px;padding:10px 14px;' +
+        'font-size:13px;margin-bottom:12px">Este folio ya estaba cancelado.</div>';
+    }
+    h += '<div class="s" style="color:var(--slate);margin-bottom:12px">' +
+      'Se van a marcar como <b>Canceladas</b> las ' + fmtNum(d.renglones) +
+      (d.renglones === 1 ? ' línea' : ' líneas') + ' de ' + esc(d.folio) +
+      (d.cliente ? ' · ' + esc(d.cliente) : '') + '.</div>' +
+      '<table class="mini-table"><tbody>' +
+      (d.detalle || []).map(function (x) {
+        return '<tr><td class="s">fila ' + x.fila + '</td>' +
+          '<td>' + esc(x.producto || '—') + '</td>' +
+          '<td class="num">' + esc(x.total || '') + '</td></tr>';
+      }).join('') + '</tbody></table>' +
+      '<div class="fld" style="margin-top:12px"><label>Por qué se cancela</label>' +
+      '<input id="anMotivo" placeholder="se capturó mal, el cliente se arrepintió…"></div>' +
+      '<div class="s" style="color:var(--muted);margin-top:10px">' + esc(d.nota || '') + '</div>';
+    document.getElementById('aventaCuerpo').innerHTML = h;
+    document.getElementById('aventaOk').textContent = 'Cancelar el folio';
+  }
+  function guardarAnular() {
+    var el = document.getElementById('anMotivo');
+    var btn = document.getElementById('aventaOk');
+    btn.disabled = true; btn.textContent = 'Cancelando…';
+    api('anular', { token: state.token, key: state.key, folio: anularFolio,
+                    motivo: el ? el.value : '', confirmar: true })
+      .then(function (o) {
+        toast(o.mensaje || 'Cancelada.', 'ok');
+        avisoFijo('<b>' + esc(o.mensaje || '') + '</b><div style="margin-top:6px">' +
+          esc(o.nota || '') + '</div>');
+        cerrarMandarAVenta();
+        loadArea();
+      })
+      .catch(fail)
+      .then(function () { btn.disabled = false; btn.textContent = 'Cancelar el folio'; });
   }
 
   function loadInvProv() {
@@ -7997,7 +8057,9 @@
                 '">Hacer una versión nueva</button>' : '') +
             (!esSoloLectura(state.key)
               ? '<button type="button" class="fix-cli" data-folio="' + esc(k).replace(/"/g, '&quot;') +
-                '">Corregir el cliente</button>' : '') +
+                '">Corregir el cliente</button>' +
+                '<button type="button" class="anular-btn" data-folio="' +
+                esc(k).replace(/"/g, '&quot;') + '">Cancelar</button>' : '') +
             (state.key === 'ventas_registro'
               ? (cSt ? '<span class="cot-st"><label>Status</label>' + selectStatusCot(k, st) + '</span>' : '')
               : ((vendida ? '<span class="s" style="color:var(--success)">Ya se convirtió en venta</span>'
@@ -12090,7 +12152,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.31-277';
+    var mia = '2026.08.31-278';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
@@ -12147,6 +12209,7 @@
       var seguir = impactoContinuar; impactoContinuar = null;
       cerrarMandarAVenta(); seguir(); return;
     }
+    if (document.getElementById('anMotivo')) { guardarAnular(); return; }
     if (document.getElementById('fcNuevo')) { guardarCorregirCliente(); return; }
     if (document.getElementById('qnMitad')) { guardarQuincena(); return; }
     if (document.getElementById('noMes')) { generarReporteNomina(); return; }
@@ -12313,6 +12376,8 @@
     if (dc) { abrirVersionNueva(dc.getAttribute('data-folio')); return; }
     var fc = e.target.closest('.fix-cli');
     if (fc) { abrirCorregirCliente(fc.getAttribute('data-folio')); return; }
+    var an = e.target.closest('.anular-btn');
+    if (an) { abrirAnular(an.getAttribute('data-folio')); return; }
     var oc = e.target.closest('.oc-btn');
     if (oc) { bajarOrdenDeCompra(oc); return; }
     var ed = e.target.closest('.env-doc');

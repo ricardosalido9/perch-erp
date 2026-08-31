@@ -51,6 +51,7 @@ const RUTAS = {
   'nomina-guardar':require('../lib/handlers/nomina-guardar'),
   'cambiar-cliente':require('../lib/handlers/cambiar-cliente'),
   'impacto-cambio':require('../lib/handlers/impacto-cambio'),
+  anular:         require('../lib/handlers/anular'),
   emitidos:       require('../lib/handlers/emitidos'),
   'relacion-pdf': require('../lib/handlers/relacion-pdf'),
   'envios-folio': require('../lib/handlers/envios-folio'),
