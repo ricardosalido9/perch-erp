@@ -950,7 +950,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.26-273</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.31-274</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -5559,11 +5559,11 @@
     funnel: ['MES', 'Prioridad', 'Cliente', 'Despacho', 'TIPO CLIENTE', 'Forma de Contacto',
              'Visito Showroom', 'Cotización', 'Estatus'],
     cotizaciones: ['Fecha del Cierre', 'Fecha de entrega acordada', 'No. de Referencia', 'Cliente',
-                      'Vendedor', 'Status', 'Tipo de producto', 'Material', 'Material Extra', 'Producto',
-                      'Cantidad'],
+                      'Proyecto', 'Vendedor', 'Status', 'Tipo de producto', 'Material',
+                      'Material Extra', 'Producto', 'Cantidad'],
     ventas_registro: ['Fecha del Cierre', 'Fecha de entrega acordada', 'No. de Referencia', 'Cliente',
-                      'Vendedor', 'Status', 'Tipo de producto', 'Material', 'Material Extra', 'Producto',
-                      'Cantidad'],
+                      'Proyecto', 'Vendedor', 'Status', 'Tipo de producto', 'Material',
+                      'Material Extra', 'Producto', 'Cantidad'],
     proyectos_registro: ['Fecha', 'Cliente', 'Tipo', 'Estatus', 'Responsable'],
     prod_ordenes: ['Fecha', 'Estatus', 'Responsable', 'Proyecto'],
     cli_membresias: ['Tipo de membresia'],
@@ -8800,12 +8800,19 @@
     sel.innerHTML = html;
   }
   // Valores distintos (no vacíos) del nivel `level` entre filas que coinciden con lo elegido antes.
+  // Hay productos que no llevan segundo material y en el catálogo esa celda va
+  // vacía. Si el vacío no se ofrece, esas variantes no se pueden elegir y el
+  // precio nunca aparece. Se muestra como "NA".
+  var VACIO = 'NA';
   function cascDistinct(c, chosen, level) {
     var seen = {}, out = [];
     c.rows.forEach(function (r) {
-      for (var k = 0; k < level; k++) { if (norm(valorNivel(r, c.levels[k])) !== norm(chosen[k] || '')) return; }
+      for (var k = 0; k < level; k++) {
+        if (norm(valorNivel(r, c.levels[k])) !== norm(sinNA(chosen[k]))) return;
+      }
       var v = valorNivel(r, c.levels[level]);
-      if (v && !seen[norm(v)]) { seen[norm(v)] = 1; out.push(v); }
+      var etiqueta = v || VACIO;
+      if (!seen[norm(etiqueta)]) { seen[norm(etiqueta)] = 1; out.push(etiqueta); }
     });
     out.sort(function (a, b) { return a.localeCompare(b, 'es'); });
     return out;
@@ -8830,18 +8837,30 @@
     c.rows.forEach(function (r) {
       if (norm(valorNivel(r, c.levels[0])) !== norm(prod || '')) return;
       var v = valorNivel(r, c.levels[d]);
-      if (v && !seen[norm(v)]) { seen[norm(v)] = 1; out.push(v); }
+      var etiqueta = v || VACIO;
+      if (!seen[norm(etiqueta)]) { seen[norm(etiqueta)] = 1; out.push(etiqueta); }
     });
     out.sort(function (a, b) { return a.localeCompare(b, 'es'); });
     return out;
   }
+  // "NA" en pantalla es una celda vacía en el catálogo
+  function sinNA(v) {
+    var t = String(v == null ? '' : v).trim();
+    return /^(na|n\/a|no aplica|-|—)$/i.test(t) ? '' : t;
+  }
   function resolveCascadeFills() {
     var c = cascadeLU(); if (!c) return;
     var chosen = [];
-    for (var i = 0; i < c.levels.length; i++) { var el = cascElem(i); chosen[i] = el ? el.value : ''; }
+    for (var i = 0; i < c.levels.length; i++) {
+      var el = cascElem(i);
+      chosen[i] = el ? sinNA(el.value) : '';
+      // Se guarda si el usuario eligió NA, para distinguirlo de "no eligió nada"
+      chosen['eligio' + i] = !!(el && el.value);
+    }
     var matches = c.rows.filter(function (r) {
       for (var k = 0; k < c.levels.length; k++) {
-        if (chosen[k] && norm(valorNivel(r, c.levels[k])) !== norm(chosen[k])) return false;
+        if (!chosen['eligio' + k]) continue;
+        if (norm(valorNivel(r, c.levels[k])) !== norm(chosen[k])) return false;
       }
       return true;
     });
@@ -11784,7 +11803,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.26-273';
+    var mia = '2026.08.31-274';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
