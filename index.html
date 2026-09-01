@@ -290,6 +290,8 @@
   .est-tabla tr.est-n0 td.est-con { background:var(--surface-2, #faf6ef); }
   .est-tabla tr.est-n1 td { font-weight:600; }
   .est-tabla tr.est-n2 td.est-con { padding-left:30px; color:var(--slate); font-weight:400; }
+  .est-tabla tr.est-n3 td { font-weight:400; }
+  .est-tabla tr.est-n3 td.est-con { padding-left:52px; color:var(--muted); }
   .est-tabla tr.est-margen td { font-weight:600; color:var(--slate); border-top:none;
     background:transparent; font-size:12px; }
   .est-tabla tr.est-margen td.est-con { background:var(--surface); padding-left:30px; }
@@ -990,7 +992,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-294</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-296</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -5472,6 +5474,8 @@
   // ilegible para leer. Esta pantalla la vuelve el estado de siempre: sangría por
   // nivel, subtotales en negrita, los doce meses, el total y el año anterior.
   var estadoCual = 'resultados', estadoAnio = new Date().getFullYear();
+  var estadoDesde = 1, estadoHasta = 12, estadoVista = 'importes', estadoVacios = false;
+  var estadoUlt = null, estadoCruce = null;
   function loadEstado(cual) {
     estadoCual = cual;
     document.getElementById('summary').innerHTML = '';
@@ -5480,8 +5484,9 @@
     document.getElementById('count').textContent = '';
     document.getElementById('tableWrap').innerHTML =
       '<div class="state" style="padding:50px 0">Armando el estado…</div>';
-    api('estados', { token: state.token, estado: cual, anio: estadoAnio })
-      .then(pintarEstado)
+    api('estados', { token: state.token, estado: cual, anio: estadoAnio,
+                     desde: estadoDesde, hasta: estadoHasta })
+      .then(function (d) { estadoUlt = d; pintarEstado(d); })
       .catch(function (e) {
         document.getElementById('tableWrap').innerHTML =
           '<div class="state" style="color:var(--danger);padding:40px 0">' +
@@ -5489,6 +5494,12 @@
           (e && e.pista ? '<div class="s" style="color:var(--slate);margin-top:10px;font-weight:400">' +
             esc(e.pista) + '</div>' : '') + '</div>';
       });
+  }
+  function MES_OPTS(sel) {
+    return MESES_ES.map(function (m, i) {
+      return '<option value="' + (i+1) + '"' + ((i+1) === sel ? ' selected' : '') +
+             '>' + esc(m) + '</option>';
+    }).join('');
   }
   function fmtEstado(v, esMargen) {
     if (v === null || v === undefined) return '';
@@ -5506,10 +5517,24 @@
       '<div class="s" style="color:var(--muted)">Se arma solo desde ' + esc(d.hoja) +
       ', con la estructura de ' + esc(d.estructura) + '. Nada de esta pantalla se captura.</div></div>' +
       '<div style="display:flex;gap:10px;align-items:flex-end">' +
-      '<div class="fld" style="width:110px;margin:0"><label>Año</label><select id="estAnio">' +
+      '<div class="fld" style="width:100px;margin:0"><label>Año</label><select id="estAnio">' +
         anios.map(function (x) {
           return '<option value="' + x + '"' + (x === d.anio ? ' selected' : '') + '>' + x + '</option>';
         }).join('') + '</select></div>' +
+      // Rango de meses: el ERP se ve de enero a julio, el estado también
+      '<div class="fld" style="width:110px;margin:0"><label>Desde</label><select id="estDesde">' +
+        MES_OPTS(d.desde) + '</select></div>' +
+      '<div class="fld" style="width:110px;margin:0"><label>Hasta</label><select id="estHasta">' +
+        MES_OPTS(d.hasta) + '</select></div>' +
+      '<div class="fld" style="width:150px;margin:0"><label>Ver</label><select id="estVista">' +
+        [['importes','Importes'],['vertical','Análisis vertical'],
+         ['horizontal','Análisis horizontal']].map(function (o) {
+          return '<option value="' + o[0] + '"' + (estadoVista === o[0] ? ' selected' : '') +
+                 '>' + o[1] + '</option>'; }).join('') + '</select></div>' +
+      '<label class="s" style="display:flex;align-items:center;gap:6px;padding-bottom:8px;cursor:pointer">' +
+        '<input type="checkbox" id="estVacios"' + (estadoVacios ? ' checked' : '') + '>' +
+        'Mostrar los renglones vacíos</label>' +
+      '<button type="button" id="estCruce">Cuadrar contra Ventas</button>' +
       '<button type="button" id="estPdf">Descargar</button></div></div>';
 
     // El cuadre va arriba y solo cuando hay algo que decir: dinero capturado que
@@ -5529,11 +5554,22 @@
 
     h += '<div class="est-wrap"><table class="est-tabla"><thead><tr>' +
       '<th class="est-con">CONCEPTO</th>' +
-      MES3.map(function (m) { return '<th>' + m + '</th>'; }).join('') +
+      MES3.filter(function (_m, i) { return i + 1 >= d.desde && i + 1 <= d.hasta; })
+          .map(function (m) { return '<th>' + m + '</th>'; }).join('') +
       '<th class="est-tot">TOTAL</th><th class="est-tot">' + (d.anio - 1) + '</th>' +
       '<th class="est-tot">VAR.</th></tr></thead><tbody>';
 
+    // El renglón base del análisis vertical: todo se mide contra él
+    var base = (d.filas || []).filter(function (x) { return x.concepto === d.base; })[0];
+    var pct = function (v, b) {
+      if (v === null || v === undefined || !b) return '';
+      return (v / b * 100).toFixed(1) + '%';
+    };
+    var mostradas = 0;
     (d.filas || []).forEach(function (f) {
+      // Un renglón vacío todo el rango no aporta nada y sí estorba
+      if (f.vacio && !estadoVacios) return;
+      mostradas++;
       var esM = f.tipo === 'margen';
       var cls = 'est-n' + f.nivel + (esM ? ' est-margen' : '');
       var vr = '';
@@ -5546,25 +5582,74 @@
         var v = (f.total - f.anterior) / Math.abs(f.anterior) * 100;
         vr = (v > 0 ? '+' : '') + v.toFixed(1) + '%';
       }
-      h += '<tr class="' + cls + '"><td class="est-con">' + esc(f.concepto) + '</td>' +
-        f.meses.map(function (x) {
-          return '<td' + (x < 0 ? ' class="neg"' : '') + '>' + esc(fmtEstado(x, esM)) + '</td>';
-        }).join('') +
-        '<td class="est-tot' + (f.total < 0 ? ' neg' : '') + '">' + esc(fmtEstado(f.total, esM)) + '</td>' +
-        '<td class="est-tot est-ant">' + esc(fmtEstado(f.anterior, esM)) + '</td>' +
+      var celdas = '';
+      f.meses.forEach(function (x, i) {
+        if (x === null && (i + 1 < d.desde || i + 1 > d.hasta)) return;
+        var txtc, neg = false;
+        if (estadoVista === 'vertical') {
+          txtc = esM ? fmtEstado(x, true) : pct(x, base ? base.meses[i] : 0);
+        } else if (estadoVista === 'horizontal') {
+          // Contra el mismo mes del año pasado, no contra el mes anterior: así
+          // no se confunde la estacionalidad con un cambio de verdad.
+          var a = f.anteriorMeses ? f.anteriorMeses[i] : null;
+          if (!a || x === null) txtc = '';
+          else {
+            var vv = (x - a) / Math.abs(a) * 100;
+            neg = vv < 0;
+            txtc = (vv > 0 ? '+' : '') + vv.toFixed(0) + '%';
+          }
+        } else {
+          txtc = fmtEstado(x, esM); neg = x < 0;
+        }
+        celdas += '<td' + (neg ? ' class="neg"' : '') + '>' + esc(txtc) + '</td>';
+      });
+      var tTot = estadoVista === 'vertical'
+        ? (esM ? fmtEstado(f.total, true) : pct(f.total, base ? base.total : 0))
+        : fmtEstado(f.total, esM);
+      var tAnt = estadoVista === 'vertical'
+        ? (esM ? fmtEstado(f.anterior, true) : pct(f.anterior, base ? base.anterior : 0))
+        : fmtEstado(f.anterior, esM);
+      h += '<tr class="' + cls + '"><td class="est-con">' + esc(f.concepto) + '</td>' + celdas +
+        '<td class="est-tot' + (f.total < 0 ? ' neg' : '') + '">' + esc(tTot) + '</td>' +
+        '<td class="est-tot est-ant">' + esc(tAnt) + '</td>' +
         '<td class="est-tot est-var' + (vr.indexOf('-') === 0 ? ' neg' : '') + '">' + esc(vr) + '</td></tr>';
     });
+    var escondidas = (d.filas || []).length - mostradas;
     h += '</tbody></table></div>';
     h += '<div class="s" style="color:var(--muted);margin-top:10px">' +
-         fmtNum(d.cuadre ? d.cuadre.renglones : 0) + ' renglones capturados en ' + esc(String(d.anio)) +
-         '. La variación de los márgenes va en puntos porcentuales, no en porcentaje.</div>';
+         fmtNum(d.cuadre ? d.cuadre.renglones : 0) + ' renglones capturados de ' +
+         esc(MESES_ES[d.desde - 1]) + ' a ' + esc(MESES_ES[d.hasta - 1]) + ' de ' + esc(String(d.anio)) +
+         '. La columna del año anterior toma los mismos meses.' +
+         (escondidas ? ' ' + fmtNum(escondidas) + ' renglones sin nada en el rango están escondidos.' : '') +
+         (estadoVista === 'vertical' ? ' El análisis vertical va sobre ' + esc(d.base) + '.' : '') +
+         (estadoVista === 'horizontal' ? ' El análisis horizontal compara cada mes contra el mismo mes del año pasado.' : '') +
+         '</div><div id="estCruceCaja" style="margin-top:16px"></div>';
 
     document.getElementById('tableWrap').innerHTML = h;
     var fuente = document.getElementById('areaFuente');
     if (fuente) fuente.innerHTML = '';
+    var recargar = function () { loadEstado(estadoCual); };
     document.getElementById('estAnio').addEventListener('change', function () {
-      estadoAnio = +this.value; loadEstado(estadoCual);
+      estadoAnio = +this.value; recargar();
     });
+    document.getElementById('estDesde').addEventListener('change', function () {
+      estadoDesde = +this.value;
+      if (estadoHasta < estadoDesde) estadoHasta = estadoDesde;
+      recargar();
+    });
+    document.getElementById('estHasta').addEventListener('change', function () {
+      estadoHasta = +this.value;
+      if (estadoDesde > estadoHasta) estadoDesde = estadoHasta;
+      recargar();
+    });
+    // La vista y los vacíos no cambian los números: se repinta con lo que ya está
+    document.getElementById('estVista').addEventListener('change', function () {
+      estadoVista = this.value; pintarEstado(estadoUlt);
+    });
+    document.getElementById('estVacios').addEventListener('change', function () {
+      estadoVacios = this.checked; pintarEstado(estadoUlt);
+    });
+    document.getElementById('estCruce').addEventListener('click', pintarCruceVentas);
     document.getElementById('estPdf').addEventListener('click', function () {
       bajarCsvEstado(d);
     });
@@ -5585,6 +5670,75 @@
     a.href = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }));
     a.download = d.titulo + ' ' + d.anio + '.csv';
     a.click();
+  }
+
+  // Cuadre contra VENTAS: lo que dice el estado contra lo que el ERP sabe folio
+  // por folio. La gracia es que VENTAS sí sabe cuál está cancelado, y el Excel
+  // del que salió el estado a veces no las descuenta.
+  function pintarCruceVentas() {
+    var caja = document.getElementById('estCruceCaja');
+    if (!caja) return;
+    var b = document.getElementById('estCruce');
+    b.disabled = true; b.textContent = 'Cuadrando…';
+    caja.innerHTML = '<div class="state" style="padding:20px 0">Leyendo VENTAS folio por folio…</div>';
+    api('cruce-ventas', { token: state.token, anio: estadoAnio })
+      .then(function (d) {
+        estadoCruce = d;
+        var t = d.totales || {};
+        var h = '<h3 class="sec-t">Estado de resultados contra VENTAS · ' + esc(String(d.anio)) + '</h3>' +
+          '<div class="s" style="color:var(--muted);margin-bottom:10px">' + esc(d.nota || '') + '</div>' +
+          '<div class="kpi-grid" style="margin-bottom:12px">' +
+          ['<div class="sum-card"><div class="k">Ventas vivas</div><div class="v">' +
+             esc(formatMoney(t.ventas)) + '</div></div>',
+           '<div class="sum-card"><div class="k">Canceladas</div><div class="v">' +
+             esc(formatMoney(t.canceladas)) + '</div></div>',
+           '<div class="sum-card"><div class="k">Dice el estado</div><div class="v">' +
+             esc(formatMoney(t.estado)) + '</div></div>',
+           '<div class="sum-card"><div class="k">Diferencia</div><div class="v"' +
+             (Math.abs(t.diferencia) > 1 ? ' style="color:var(--danger)"' : '') + '>' +
+             esc(formatMoney(t.diferencia)) + '</div></div>'].join('') + '</div>';
+        h += '<div class="est-wrap"><table class="est-tabla"><thead><tr>' +
+          '<th class="est-con">MES</th><th>VENTAS VIVAS</th><th>CANCELADAS</th>' +
+          '<th>DICE EL ESTADO</th><th>DIFERENCIA</th><th class="est-con2">QUÉ PASÓ</th>' +
+          '</tr></thead><tbody>';
+        (d.meses || []).forEach(function (m) {
+          var mala = Math.abs(m.diferencia) > 1;
+          h += '<tr><td class="est-con">' + esc(MESES_ES[m.mes - 1]) + '</td>' +
+            '<td>' + esc(formatMoney(m.ventas)) + '</td>' +
+            '<td' + (m.canceladas ? ' class="neg"' : '') + '>' +
+              esc(m.canceladas ? formatMoney(m.canceladas) + ' (' + fmtNum(m.nCanceladas) + ')' : '\u2013') +
+            '</td>' +
+            '<td>' + esc(formatMoney(m.estado)) + '</td>' +
+            '<td' + (mala ? ' class="neg"' : '') + '>' + esc(formatMoney(m.diferencia)) + '</td>' +
+            '<td style="text-align:left;white-space:normal;min-width:260px' +
+              (mala ? ';color:var(--danger)' : ';color:var(--muted)') + '">' +
+              esc(m.porQue || '') + '</td></tr>';
+        });
+        h += '</tbody></table></div>';
+        if ((d.canceladas || []).length) {
+          h += '<div class="s" style="margin-top:12px"><b>Los folios cancelados del año</b> ' +
+               '(los de más monto primero):</div>' +
+               '<table class="mini-table" style="margin-top:6px"><tbody>' +
+               d.canceladas.map(function (x) {
+                 return '<tr><td>' + esc(x.folio || 'sin folio') + '</td><td>' +
+                   esc(MESES_ES[x.mes - 1]) + '</td><td class="num">' +
+                   esc(formatMoney(x.monto)) + '</td></tr>';
+               }).join('') + '</tbody></table>';
+        }
+        if (d.sinFecha) {
+          h += '<div class="s" style="color:var(--amber);margin-top:10px">' +
+               fmtNum(d.sinFecha) + ' renglones de VENTAS no tienen fecha legible y quedaron ' +
+               'fuera de esta comparación.</div>';
+        }
+        caja.innerHTML = h;
+      })
+      .catch(function (e) {
+        caja.innerHTML = '<div class="state" style="color:var(--danger)">' +
+          esc((e && e.message) || 'No se pudo cuadrar.') +
+          (e && e.pista ? '<div class="s" style="color:var(--slate);margin-top:8px;font-weight:400">' +
+            esc(e.pista) + '</div>' : '') + '</div>';
+      })
+      .then(function () { b.disabled = false; b.textContent = 'Cuadrar contra Ventas'; });
   }
 
   function loadLogistica() {
@@ -12540,7 +12694,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.01-294';
+    var mia = '2026.09.01-296';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
