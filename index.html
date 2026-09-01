@@ -693,10 +693,15 @@
     padding:2px 8px; cursor:pointer; }
   .modal-x:hover { color:var(--ink); border-color:transparent; }
   .modal-body { padding:24px; overflow-y:auto; flex:1 1 auto; }
-  .modal-foot { display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:flex-end;
+  /* El botón principal va a la IZQUIERDA. Estaba alineado a la derecha y si la
+     ventana del navegador es más ancha que la pantalla —o está a medio salir—,
+     ese botón queda fuera de vista y parece que la ventana no tiene con qué
+     confirmar. Solo se ve "Cancelar" y no hay forma de continuar. */
+  .modal-foot { display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:flex-start;
     padding:16px 24px; border-top:1px solid var(--line); background:var(--paper);
-    border-radius:0 0 16px 16px; }
-  .modal-foot .grow { margin-right:auto; }
+    border-radius:0 0 16px 16px; position:sticky; bottom:0; }
+  .modal-foot .primary { order:-1; }
+  .modal-foot .grow { margin-right:0; }
   @media (max-width:640px) { .modal { padding:12px; } .modal-card { max-height:calc(100vh - 24px); } }
 
   /* ---------- Catálogo por producto ---------- */
@@ -950,7 +955,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-281</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-282</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -12226,7 +12231,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.01-281';
+    var mia = '2026.09.01-282';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
