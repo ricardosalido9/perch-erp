@@ -299,6 +299,9 @@
   .est-tabla tbody tr:hover td.est-con { background:#f2efe8; }
   .aviso-caja { border:1px solid var(--amber); background:#fdf6e3; border-radius:10px;
     padding:12px 14px; font-size:13px; }
+  .lectura { border-left:3px solid var(--ink); background:var(--surface); border-radius:0 10px 10px 0;
+    padding:12px 16px; margin:0 0 14px; }
+  .lectura li { margin:3px 0; }
   input[type=text], input[type=search] { font:inherit; color:var(--ink); background:var(--surface);
     border:1px solid var(--line); border-radius:8px; padding:8px 10px; }
   input:focus { outline:2px solid var(--ink); outline-offset:1px; border-color:var(--ink); }
@@ -992,7 +995,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-296</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-299</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1261,6 +1264,7 @@
     fin_gastos_op:       'Gastos de operación por categoría: renta, servicios, sueldos, marketing.',
     fin_estados:         'Estado de resultados: un renglón por año, mes y concepto.',
     fin_flujo:           'Flujo de efectivo: un renglón por año, mes y concepto.',
+    fin_balance:         'Balance general: saldos por año, mes y concepto.',
     rh_resumen:          'La plantilla de un vistazo: costo, altas, bajas y rotación.',
     rh_personal:         'Quién trabaja aquí, desde cuándo y bajo qué esquema.',
     rh_nomina:           'Lo que se paga cada periodo, con sus deducciones.',
@@ -1285,7 +1289,7 @@
     fin_cxc:             'Saldos por cobrar de cada pedido.',
     fin_ingresos:        'Cobros recibidos, ligados al folio del pedido.'
   };
-  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'fac_control', 'cfdi_control', 'cfdi_prov', 'prov_razon', 'rh_resumen', 'fin_gastos_op', 'fin_efectivo', 'fac_impuestos', 'fac_emitidos', 'log_calendario', 'fin_estados', 'fin_flujo',
+  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'fac_control', 'cfdi_control', 'cfdi_prov', 'prov_razon', 'rh_resumen', 'fin_gastos_op', 'fin_efectivo', 'fac_impuestos', 'fac_emitidos', 'log_calendario', 'fin_estados', 'fin_flujo', 'fin_balance',
     // El stock sale de pedidos, entradas y salidas: se recalcula, no se edita
     'op_stock', 'op_revisar', 'prov_revision'];
   function esLector() {
@@ -5475,7 +5479,7 @@
   // nivel, subtotales en negrita, los doce meses, el total y el año anterior.
   var estadoCual = 'resultados', estadoAnio = new Date().getFullYear();
   var estadoDesde = 1, estadoHasta = 12, estadoVista = 'importes', estadoVacios = false;
-  var estadoUlt = null, estadoCruce = null;
+  var estadoUlt = null, estadoCruce = null, estadoPdf = null;
   function loadEstado(cual) {
     estadoCual = cual;
     document.getElementById('summary').innerHTML = '';
@@ -5534,8 +5538,12 @@
       '<label class="s" style="display:flex;align-items:center;gap:6px;padding-bottom:8px;cursor:pointer">' +
         '<input type="checkbox" id="estVacios"' + (estadoVacios ? ' checked' : '') + '>' +
         'Mostrar los renglones vacíos</label>' +
-      '<button type="button" id="estCruce">Cuadrar contra Ventas</button>' +
-      '<button type="button" id="estPdf">Descargar</button></div></div>';
+      (estadoCual === 'resultados'
+        ? '<button type="button" id="estCruce">Cuadrar contra Ventas</button>' : '') +
+      (estadoCual === 'flujo'
+        ? '<button type="button" id="estCruceF">Cuadrar contra Ingresos y Egresos</button>' : '') +
+      '<button type="button" class="primary" id="estPdf">Reporte en PDF</button>' +
+      '<button type="button" id="estCsv">CSV</button></div></div>';
 
     // El cuadre va arriba y solo cuando hay algo que decir: dinero capturado que
     // ningún renglón del estado está recogiendo porque el concepto no existe.
@@ -5552,6 +5560,12 @@
         esc(d.estructura) + ' o corrige cómo están escritos en ' + esc(d.hoja) + '.</div></div>';
     }
 
+    if ((d.lectura || []).length) {
+      h += '<div class="lectura"><div class="s" style="font-weight:700;margin-bottom:6px">' +
+        'LO QUE DICEN ESTOS NÚMEROS</div><ul style="margin:0;padding-left:18px">' +
+        d.lectura.map(function (l) { return '<li class="s">' + esc(l) + '</li>'; }).join('') +
+        '</ul></div>';
+    }
     h += '<div class="est-wrap"><table class="est-tabla"><thead><tr>' +
       '<th class="est-con">CONCEPTO</th>' +
       MES3.filter(function (_m, i) { return i + 1 >= d.desde && i + 1 <= d.hasta; })
@@ -5649,10 +5663,27 @@
     document.getElementById('estVacios').addEventListener('change', function () {
       estadoVacios = this.checked; pintarEstado(estadoUlt);
     });
-    document.getElementById('estCruce').addEventListener('click', pintarCruceVentas);
+    var bc = document.getElementById('estCruce');
+    if (bc) bc.addEventListener('click', pintarCruceVentas);
+    document.getElementById('estCsv').addEventListener('click', function () { bajarCsvEstado(d); });
     document.getElementById('estPdf').addEventListener('click', function () {
-      bajarCsvEstado(d);
+      var b = this;
+      if (estadoPdf && estadoPdf.clave === estadoCual + estadoAnio + estadoDesde + estadoHasta) {
+        bajarPdf(estadoPdf.pdf, estadoPdf.nombre); return;
+      }
+      b.disabled = true; b.textContent = 'Armando…';
+      api('estado-pdf', { token: state.token, estado: estadoCual, anio: estadoAnio,
+                          desde: estadoDesde, hasta: estadoHasta, vacios: estadoVacios })
+        .then(function (o) {
+          estadoPdf = { pdf: o.pdf, nombre: o.nombre,
+                        clave: estadoCual + estadoAnio + estadoDesde + estadoHasta };
+          bajarPdf(o.pdf, o.nombre);
+        })
+        .catch(fail)
+        .then(function () { b.disabled = false; b.textContent = 'Reporte en PDF'; });
     });
+    var bcf = document.getElementById('estCruceF');
+    if (bcf) bcf.addEventListener('click', pintarCruceFlujo);
   }
   // Se baja como CSV para poder pegarlo en una presentación o mandarlo por correo
   function bajarCsvEstado(d) {
@@ -5739,6 +5770,81 @@
             esc(e.pista) + '</div>' : '') + '</div>';
       })
       .then(function () { b.disabled = false; b.textContent = 'Cuadrar contra Ventas'; });
+  }
+
+  // Cuadre del flujo contra INGRESOS y EGRESOS, concepto por concepto
+  function pintarCruceFlujo() {
+    var caja = document.getElementById('estCruceCaja');
+    if (!caja) return;
+    var b = document.getElementById('estCruceF');
+    b.disabled = true; b.textContent = 'Cuadrando…';
+    caja.innerHTML = '<div class="state" style="padding:20px 0">Leyendo INGRESOS y EGRESOS…</div>';
+    api('cruce-flujo', { token: state.token, anio: estadoAnio,
+                         desde: estadoDesde, hasta: estadoHasta })
+      .then(function (d) {
+        var t = d.totales || {};
+        var h = '<h3 class="sec-t">Flujo contra Ingresos y Egresos · ' +
+          esc(MESES_ES[d.desde - 1]) + ' a ' + esc(MESES_ES[d.hasta - 1]) + ' ' + esc(String(d.anio)) +
+          '</h3><div class="s" style="color:var(--muted);margin-bottom:10px">' +
+          esc(d.nota || '') + '</div>' +
+          '<div class="kpi-grid" style="margin-bottom:12px">' +
+          ['<div class="sum-card"><div class="k">Conceptos que cuadran</div><div class="v">' +
+             fmtNum(t.cuadran) + '</div></div>',
+           '<div class="sum-card"><div class="k">Con diferencia</div><div class="v"' +
+             (t.noCuadran ? ' style="color:var(--danger)"' : '') + '>' + fmtNum(t.noCuadran) + '</div></div>',
+           '<div class="sum-card"><div class="k">Solo en el banco</div><div class="v">' +
+             esc(formatMoney(t.montoSoloBanco)) + '</div></div>',
+           '<div class="sum-card"><div class="k">Solo en el flujo</div><div class="v">' +
+             esc(formatMoney(t.montoSoloFlujo)) + '</div></div>'].join('') + '</div>';
+
+        var tabla = function (titulo, filas, cols) {
+          if (!filas.length) return '';
+          return '<div class="s" style="font-weight:700;margin:14px 0 6px">' + esc(titulo) + '</div>' +
+            '<div class="est-wrap"><table class="est-tabla"><thead><tr>' +
+            '<th class="est-con">CONCEPTO</th>' +
+            cols.map(function (c) { return '<th>' + esc(c[0]) + '</th>'; }).join('') +
+            '</tr></thead><tbody>' +
+            filas.map(function (f) {
+              return '<tr><td class="est-con">' + esc(f.concepto) + '</td>' +
+                cols.map(function (c) {
+                  var v = c[1](f);
+                  return '<td' + (c[2] && c[2](f) ? ' class="neg"' : '') + '>' + esc(v) + '</td>';
+                }).join('') + '</tr>';
+            }).join('') + '</tbody></table></div>';
+        };
+
+        var malos = (d.emparejados || []).filter(function (x) { return !x.cuadra; });
+        h += tabla('Los que no cuadran', malos, [
+          ['EN EL BANCO', function (f) { return formatMoney(f.banco); }],
+          ['EN EL FLUJO', function (f) { return formatMoney(f.flujo); }],
+          ['DIFERENCIA', function (f) { return formatMoney(f.diferencia); }, function () { return true; }],
+          ['MOVIMIENTOS', function (f) { return fmtNum(f.movimientos); }]
+        ]);
+        h += tabla('Están en el banco y no en el flujo', (d.soloBanco || []).slice(0, 30), [
+          ['ENTRADAS', function (f) { return formatMoney(f.entrada); }],
+          ['SALIDAS', function (f) { return formatMoney(f.salida); }],
+          ['NETO', function (f) { return formatMoney(f.monto); }],
+          ['MOVIMIENTOS', function (f) { return fmtNum(f.movimientos); }]
+        ]);
+        h += tabla('Están en el flujo y no en el banco', (d.soloFlujo || []).slice(0, 30), [
+          ['MONTO', function (f) { return formatMoney(f.monto); }]
+        ]);
+        var buenos = (d.emparejados || []).filter(function (x) { return x.cuadra; });
+        if (buenos.length) {
+          h += '<div class="s" style="color:var(--muted);margin-top:12px">' +
+            fmtNum(buenos.length) + ' conceptos cuadran al peso: ' +
+            esc(buenos.map(function (x) { return x.concepto; }).slice(0, 12).join(' · ')) +
+            (buenos.length > 12 ? ' …' : '') + '</div>';
+        }
+        caja.innerHTML = h;
+      })
+      .catch(function (e) {
+        caja.innerHTML = '<div class="state" style="color:var(--danger)">' +
+          esc((e && e.message) || 'No se pudo cuadrar.') +
+          (e && e.pista ? '<div class="s" style="color:var(--slate);margin-top:8px;font-weight:400">' +
+            esc(e.pista) + '</div>' : '') + '</div>';
+      })
+      .then(function () { b.disabled = false; b.textContent = 'Cuadrar contra Ingresos y Egresos'; });
   }
 
   function loadLogistica() {
@@ -5962,6 +6068,7 @@
   function loadArea() {
     if (state.key === 'fin_estados') return loadEstado('resultados');
     if (state.key === 'fin_flujo')   return loadEstado('flujo');
+    if (state.key === 'fin_balance') return loadEstado('balance');
     if (state.key === 'log_calendario') return loadLogistica();
     if (state.key === 'fin_banco') return loadSubirBanco();
     if (state.key === 'fac_emitidos') return loadEmitidos();
@@ -12694,7 +12801,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.01-296';
+    var mia = '2026.09.01-299';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {

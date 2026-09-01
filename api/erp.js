@@ -44,6 +44,8 @@ const RUTAS = {
   'dup-cot':      require('../lib/handlers/dup-cot'),
   'estados':      require('../lib/handlers/estados'),
   'cruce-ventas': require('../lib/handlers/cruce-ventas'),
+  'cruce-flujo':  require('../lib/handlers/cruce-flujo'),
+  'estado-pdf':   require('../lib/handlers/estado-pdf'),
   'nomina-pdf':   require('../lib/handlers/nomina-pdf'),
   'banco-import': require('../lib/handlers/banco-import'),
   'banco-aprobar':require('../lib/handlers/banco-aprobar'),
