@@ -955,7 +955,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-286</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-287</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -3113,10 +3113,17 @@
       '<input value="' + esc(d.clienteActual || '') + '" readonly ' +
       'style="background:var(--paper)"></div>' +
       '<div class="fld"><label>Nombre correcto *</label>' +
-      '<input id="fcNuevo" list="fcClientes" value="' + esc(d.clienteActual || '') + '"></div>' +
-      datalistClientes('fcClientes') +
-      '<div class="s" style="color:var(--muted);margin-top:3px">' +
-        fmtNum(listaDeClientes().length) + ' clientes para elegir</div>' +
+      '<select id="fcLista" style="width:100%;max-width:380px">' +
+        '<option value="">— elige de la lista —</option>' +
+        listaDeClientes().map(function (o) {
+          return '<option value="' + esc(o) + '">' + esc(o) + '</option>';
+        }).join('') +
+        '<option value="__otro__">Otro nombre, lo escribo…</option>' +
+      '</select>' +
+      '<input id="fcNuevo" style="display:none;margin-top:8px;width:100%;max-width:380px" ' +
+        'placeholder="nombre del cliente">' +
+      '<div class="s" style="color:var(--muted);margin-top:4px">' +
+        fmtNum(listaDeClientes().length) + ' clientes en la lista</div></div>' +
       '<div class="s" style="color:var(--slate);margin:10px 0 6px">Se va a cambiar en:</div>';
     (d.donde || []).forEach(function (x, i) {
       h += '<label style="display:flex;gap:8px;align-items:center;margin-bottom:6px">' +
@@ -3127,10 +3134,19 @@
     h += '<div class="s" style="color:var(--muted);margin-top:10px">' + esc(d.nota || '') + '</div>';
     document.getElementById('aventaCuerpo').innerHTML = h;
     document.getElementById('aventaOk').textContent = 'Cambiar el cliente';
+    var sel = document.getElementById('fcLista');
+    var libre = document.getElementById('fcNuevo');
+    if (sel) sel.addEventListener('change', function () {
+      var otro = (sel.value === '__otro__');
+      libre.style.display = otro ? '' : 'none';
+      if (otro) libre.focus();
+    });
   }
   function guardarCorregirCliente() {
+    var sel = document.getElementById('fcLista');
     var el = document.getElementById('fcNuevo');
-    var nuevo = el ? el.value.trim() : '';
+    var nuevo = (sel && sel.value && sel.value !== '__otro__')
+      ? sel.value.trim() : (el ? el.value.trim() : '');
     if (!nuevo) { toast('Escribe el nombre correcto.', 'err'); return; }
     if (norm(nuevo) === norm(fixCliDatos.clienteActual || '')) {
       toast('Es el mismo nombre que ya tenía.', 'err'); return;
@@ -8027,6 +8043,19 @@
       if (!g[k]) { g[k] = []; orden.push(k); }
       g[k].push(r);
     });
+    // De la más nueva a la más vieja. Las tarjetas salían en el orden de la hoja,
+    // así que lo de enero quedaba hasta arriba y lo de esta semana hasta abajo.
+    // Si no hay fecha se usa el folio, que también trae el mes.
+    var fechaDelFolio = function (k) {
+      var f = (g[k] || [])[0] || {};
+      var d = cFec ? parseDate(f[cFec]) : null;
+      return d || 0;
+    };
+    orden.sort(function (a, b) {
+      var da = fechaDelFolio(a), db = fechaDelFolio(b);
+      if (da !== db) return db - da;
+      return String(b).localeCompare(String(a), 'es', { numeric: true });
+    });
 
     var h = '<div class="cot-grid">';
     orden.forEach(function (k) {
@@ -8524,8 +8553,19 @@
     abrirCorregirCliente(folio);
     // Se precarga el nombre que ya había escrito
     setTimeout(function () {
-      var el = document.getElementById('fcNuevo');
-      if (el) { el.value = nombreNuevo; el.focus(); }
+      var sel = document.getElementById('fcLista');
+      var libre = document.getElementById('fcNuevo');
+      if (!sel || !libre) return;
+      // Si el nombre que escribió ya existe en la lista, se selecciona; si no,
+      // se abre el campo libre con lo que ya había escrito.
+      var existe = Array.prototype.slice.call(sel.options).filter(function (o) {
+        return norm(o.value) === norm(nombreNuevo);
+      })[0];
+      if (existe) { sel.value = existe.value; }
+      else {
+        sel.value = '__otro__';
+        libre.style.display = ''; libre.value = nombreNuevo; libre.focus();
+      }
     }, 700);
   }
 
@@ -12286,7 +12326,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.01-286';
+    var mia = '2026.09.01-287';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
