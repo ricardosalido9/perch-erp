@@ -955,7 +955,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-284</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-285</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -3042,9 +3042,51 @@
   // Corregir el cliente de un folio. Pregunta antes y cambia en las dos hojas,
   // porque el cliente es la llave de cuentas por cobrar y del expediente: si se
   // cambia en un lado y no en el otro, dejan de cuadrar.
+  // Los clientes para sugerir. No se depende solo de la lista de referencia: si
+  // ese archivo no cargó —le pasa a Comercial, que no siempre tiene acceso— el
+  // desplegable salía vacío y solo se veía el nombre equivocado que ya estaba.
+  // Se juntan tres fuentes: la lista de referencia, los clientes que ya aparecen
+  // en la pantalla, y los que traiga el servidor.
+  var clientesExtra = [];
+  function listaDeClientes() {
+    var vistos = {}, out = [];
+    var meter = function (v) {
+      var t = String(v == null ? '' : v).trim();
+      if (t && t.length > 1 && !vistos[norm(t)]) { vistos[norm(t)] = 1; out.push(t); }
+    };
+    (state.lookups || []).forEach(function (l) {
+      if (l.keyField && norm(l.keyField) === norm('Cliente')) {
+        (l.options || []).forEach(meter);
+      }
+    });
+    var cCli = findHeaderByName('Cliente');
+    if (cCli) (state.rows || []).forEach(function (r) { meter(r[cCli]); });
+    clientesExtra.forEach(meter);
+    out.sort(function (a, b) { return a.localeCompare(b, 'es'); });
+    return out;
+  }
+  function datalistClientes(id) {
+    return '<datalist id="' + id + '">' + listaDeClientes().map(function (o) {
+      return '<option value="' + esc(o) + '">'; }).join('') + '</datalist>';
+  }
+
   var fixCliFolio = null, fixCliDatos = null;
   function abrirCorregirCliente(folio) {
     fixCliFolio = folio; fixCliDatos = null; modalModo = 'cliente';
+    // Se pide la lista completa por si el archivo de clientes no cargó al abrir
+    // el área. Si falla, quedan los que ya están en la pantalla.
+    if (!clientesExtra.length) {
+      api('lookup', { token: state.token, key: 'ventas_registro' })
+        .then(function (d) {
+          (d.lookups || []).forEach(function (l) {
+            if (l.keyField && norm(l.keyField) === norm('Cliente')) {
+              clientesExtra = (l.options || []).slice();
+            }
+          });
+          if (fixCliDatos) pintarCorregirCliente();   // se repinta con la lista completa
+        })
+        .catch(function () {});
+    }
     document.getElementById('aventaTitulo').textContent = 'Corregir el cliente · ' + folio;
     document.getElementById('aventaCuerpo').innerHTML =
       '<div class="state" style="padding:30px 0">Buscando dónde aparece este folio…</div>';
@@ -3072,12 +3114,9 @@
       'style="background:var(--paper)"></div>' +
       '<div class="fld"><label>Nombre correcto *</label>' +
       '<input id="fcNuevo" list="fcClientes" value="' + esc(d.clienteActual || '') + '"></div>' +
-      '<datalist id="fcClientes">' +
-        (state.lookups || []).map(function (l) {
-          return (l.keyField && norm(l.keyField) === norm('Cliente'))
-            ? (l.options || []).map(function (o) {
-                return '<option value="' + esc(o) + '">'; }).join('') : '';
-        }).join('') + '</datalist>' +
+      datalistClientes('fcClientes') +
+      '<div class="s" style="color:var(--muted);margin-top:3px">' +
+        fmtNum(listaDeClientes().length) + ' clientes para elegir</div>' +
       '<div class="s" style="color:var(--slate);margin:10px 0 6px">Se va a cambiar en:</div>';
     (d.donde || []).forEach(function (x, i) {
       h += '<label style="display:flex;gap:8px;align-items:center;margin-bottom:6px">' +
@@ -12247,7 +12286,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.01-284';
+    var mia = '2026.09.01-285';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
