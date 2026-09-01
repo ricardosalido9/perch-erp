@@ -955,7 +955,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-282</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-283</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -2197,6 +2197,14 @@
     aventaPedido = null; entradaPedido = null;
     conectarAgregarVersion();
     pintarAgregadosVersion();
+    document.querySelectorAll('input[name="vnQuien"]').forEach(function (r) {
+      r.addEventListener('change', function () {
+        var caja = document.getElementById('vnOtroCli');
+        var otro = (r.value === 'otro' && r.checked);
+        caja.style.display = otro ? '' : 'none';
+        if (otro) { var el = document.getElementById('vnCliente'); if (el) el.focus(); }
+      });
+    });
   }
   function guardarVersionNueva() {
     var cCant = findHeaderByName('Cantidad');
@@ -2229,8 +2237,16 @@
       if (cPre) rec[cPre] = x.precio;
       return rec;
     });
+    // Para quién es la versión nueva
+    var quien = document.querySelector('input[name="vnQuien"]:checked');
+    var clienteNuevo = '';
+    if (quien && quien.value === 'otro') {
+      var elc = document.getElementById('vnCliente');
+      clienteNuevo = elc ? elc.value.trim() : '';
+      if (!clienteNuevo) { toast('Escribe el nombre del otro cliente.', 'err'); return; }
+    }
     api('dup-cot', { token: state.token, folio: versionDe, quitar: quitar,
-                     cambios: cambios, agregar: agregar })
+                     cambios: cambios, agregar: agregar, cliente: clienteNuevo })
       .then(function (d) {
         toast(d.mensaje || 'Versión nueva creada.', 'ok');
         avisoFijo('<b>' + esc(d.mensaje || '') + '</b><div style="margin-top:6px">' +
@@ -12231,7 +12247,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.01-282';
+    var mia = '2026.09.01-283';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
