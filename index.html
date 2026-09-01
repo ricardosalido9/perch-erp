@@ -302,6 +302,16 @@
   .lectura { border-left:3px solid var(--ink); background:var(--surface); border-radius:0 10px 10px 0;
     padding:12px 16px; margin:0 0 14px; }
   .lectura li { margin:3px 0; }
+  .cuadre-lado { border:1px solid var(--line); border-left-width:4px; border-radius:0 10px 10px 0;
+    padding:14px 16px; margin-bottom:14px; background:var(--surface); }
+  .cuadre-lado.ok  { border-left-color:var(--ink); }
+  .cuadre-lado.mal { border-left-color:var(--danger); }
+  .cuadre-cab { display:flex; gap:12px; align-items:baseline; flex-wrap:wrap; margin-bottom:10px; }
+  .cuadre-cab b { font-size:15px; }
+  .cuadre-cab .s { color:var(--slate); }
+  .cuadre-nums { display:flex; gap:34px; flex-wrap:wrap; }
+  .cuadre-nums .k { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; }
+  .cuadre-nums .v { font-size:19px; font-weight:700; font-variant-numeric:tabular-nums; }
   input[type=text], input[type=search] { font:inherit; color:var(--ink); background:var(--surface);
     border:1px solid var(--line); border-radius:8px; padding:8px 10px; }
   input:focus { outline:2px solid var(--ink); outline-offset:1px; border-color:var(--ink); }
@@ -995,7 +1005,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-300</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-302</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -5772,69 +5782,77 @@
       .then(function () { b.disabled = false; b.textContent = 'Cuadrar contra Ventas'; });
   }
 
-  // Cuadre del flujo contra INGRESOS y EGRESOS, concepto por concepto
+  // Cuadre del flujo contra INGRESOS y EGRESOS.
+  // Primero la pregunta grande: ¿el total del flujo es el total de la hoja? El
+  // detalle por concepto solo aparece si no cuadra, y solo del lado que falla.
   function pintarCruceFlujo() {
     var caja = document.getElementById('estCruceCaja');
     if (!caja) return;
     var b = document.getElementById('estCruceF');
     b.disabled = true; b.textContent = 'Cuadrando…';
-    caja.innerHTML = '<div class="state" style="padding:20px 0">Leyendo INGRESOS y EGRESOS…</div>';
+    caja.innerHTML = '<div class="state" style="padding:20px 0">Sumando INGRESOS y EGRESOS del periodo…</div>';
     api('cruce-flujo', { token: state.token, anio: estadoAnio,
                          desde: estadoDesde, hasta: estadoHasta })
       .then(function (d) {
-        var t = d.totales || {};
         var h = '<h3 class="sec-t">Flujo contra Ingresos y Egresos · ' +
-          esc(MESES_ES[d.desde - 1]) + ' a ' + esc(MESES_ES[d.hasta - 1]) + ' ' + esc(String(d.anio)) +
-          '</h3><div class="s" style="color:var(--muted);margin-bottom:10px">' +
-          esc(d.nota || '') + '</div>' +
-          '<div class="kpi-grid" style="margin-bottom:12px">' +
-          ['<div class="sum-card"><div class="k">Conceptos que cuadran</div><div class="v">' +
-             fmtNum(t.cuadran) + '</div></div>',
-           '<div class="sum-card"><div class="k">Con diferencia</div><div class="v"' +
-             (t.noCuadran ? ' style="color:var(--danger)"' : '') + '>' + fmtNum(t.noCuadran) + '</div></div>',
-           '<div class="sum-card"><div class="k">Solo en el banco</div><div class="v">' +
-             esc(formatMoney(t.montoSoloBanco)) + '</div></div>',
-           '<div class="sum-card"><div class="k">Solo en el flujo</div><div class="v">' +
-             esc(formatMoney(t.montoSoloFlujo)) + '</div></div>'].join('') + '</div>';
+          esc(MESES_ES[d.desde - 1]) + ' a ' + esc(MESES_ES[d.hasta - 1]) + ' ' +
+          esc(String(d.anio)) + '</h3>';
 
-        var tabla = function (titulo, filas, cols) {
-          if (!filas.length) return '';
-          return '<div class="s" style="font-weight:700;margin:14px 0 6px">' + esc(titulo) + '</div>' +
-            '<div class="est-wrap"><table class="est-tabla"><thead><tr>' +
-            '<th class="est-con">CONCEPTO</th>' +
-            cols.map(function (c) { return '<th>' + esc(c[0]) + '</th>'; }).join('') +
-            '</tr></thead><tbody>' +
-            filas.map(function (f) {
-              return '<tr><td class="est-con">' + esc(f.concepto) + '</td>' +
-                cols.map(function (c) {
-                  var v = c[1](f);
-                  return '<td' + (c[2] && c[2](f) ? ' class="neg"' : '') + '>' + esc(v) + '</td>';
-                }).join('') + '</tr>';
-            }).join('') + '</tbody></table></div>';
-        };
+        (d.lados || []).forEach(function (x) {
+          h += '<div class="cuadre-lado' + (x.cuadra ? ' ok' : ' mal') + '">' +
+            '<div class="cuadre-cab"><b>' + esc(x.lado) + '</b>' +
+            '<span class="s">' + esc(x.resumen) + '</span></div>' +
+            '<div class="cuadre-nums">' +
+              '<div><div class="k">Dice el flujo</div><div class="v">' +
+                esc(formatMoney(x.flujo)) + '</div></div>' +
+              '<div><div class="k">Suma ' + esc(x.hoja) + '</div><div class="v">' +
+                esc(formatMoney(x.banco)) + '</div>' +
+                '<div class="k">' + fmtNum(x.movimientos) + ' movimientos</div></div>' +
+              '<div><div class="k">Diferencia</div><div class="v"' +
+                (x.cuadra ? '' : ' style="color:var(--danger)"') + '>' +
+                esc(formatMoney(x.diferencia)) + '</div>' +
+                (x.porcentaje !== null && !x.cuadra
+                  ? '<div class="k">' + esc(x.porcentaje.toFixed(1)) + '% de la hoja</div>' : '') +
+              '</div></div>';
 
-        var malos = (d.emparejados || []).filter(function (x) { return !x.cuadra; });
-        h += tabla('Los que no cuadran', malos, [
-          ['EN EL BANCO', function (f) { return formatMoney(f.banco); }],
-          ['EN EL FLUJO', function (f) { return formatMoney(f.flujo); }],
-          ['DIFERENCIA', function (f) { return formatMoney(f.diferencia); }, function () { return true; }],
-          ['MOVIMIENTOS', function (f) { return fmtNum(f.movimientos); }]
-        ]);
-        h += tabla('Están en el banco y no en el flujo', (d.soloBanco || []).slice(0, 30), [
-          ['ENTRADAS', function (f) { return formatMoney(f.entrada); }],
-          ['SALIDAS', function (f) { return formatMoney(f.salida); }],
-          ['NETO', function (f) { return formatMoney(f.monto); }],
-          ['MOVIMIENTOS', function (f) { return fmtNum(f.movimientos); }]
-        ]);
-        h += tabla('Están en el flujo y no en el banco', (d.soloFlujo || []).slice(0, 30), [
-          ['MONTO', function (f) { return formatMoney(f.monto); }]
-        ]);
-        var buenos = (d.emparejados || []).filter(function (x) { return x.cuadra; });
-        if (buenos.length) {
-          h += '<div class="s" style="color:var(--muted);margin-top:12px">' +
-            fmtNum(buenos.length) + ' conceptos cuadran al peso: ' +
-            esc(buenos.map(function (x) { return x.concepto; }).slice(0, 12).join(' · ')) +
-            (buenos.length > 12 ? ' …' : '') + '</div>';
+          var lista = (d.revisar || {})[x.lado] || [];
+          if (!x.cuadra && lista.length) {
+            h += '<div class="s" style="margin:10px 0 6px"><b>Conceptos que hay que revisar</b> ' +
+              '· del que más explica al que menos. La columna EXPLICA dice cuánto de la ' +
+              'diferencia queda cubierto al llegar a ese renglón.</div>' +
+              '<div class="est-wrap"><table class="est-tabla"><thead><tr>' +
+              '<th class="est-con">CONCEPTO</th><th>EN EL FLUJO</th><th>EN ' + esc(x.hoja) + '</th>' +
+              '<th>DIFERENCIA</th><th>EXPLICA</th>' +
+              '<th style="text-align:left">QUÉ PASA</th></tr></thead><tbody>' +
+              lista.map(function (f) {
+                return '<tr><td class="est-con">' + esc(f.concepto) + '</td>' +
+                  '<td>' + esc(f.flujo ? formatMoney(f.flujo) : '\u2013') + '</td>' +
+                  '<td>' + esc(f.banco ? formatMoney(f.banco) : '\u2013') + '</td>' +
+                  '<td class="neg">' + esc(formatMoney(f.diferencia)) + '</td>' +
+                  '<td>' + esc(f.explicado === null ? '' : f.explicado.toFixed(0) + '%') + '</td>' +
+                  '<td style="text-align:left;white-space:normal;min-width:240px;color:var(--slate)">' +
+                    esc(f.porQue) + '</td></tr>';
+              }).join('') + '</tbody></table></div>';
+          }
+          h += '</div>';
+        });
+
+        if ((d.sinLado || []).length) {
+          h += '<div class="aviso-caja" style="margin-top:12px"><b>Estos conceptos del flujo no ' +
+            'están en la estructura, así que no se supo si son entrada o salida:</b><div class="s" ' +
+            'style="margin-top:6px">' + d.sinLado.map(function (x) {
+              return esc(x.concepto) + ' · ' + esc(formatMoney(x.monto));
+            }).join('<br>') + '</div></div>';
+        }
+        if (d.sinEstructura) {
+          h += '<div class="aviso-caja" style="margin-top:12px">No se pudo leer EF Conceptos, ' +
+            'así que todo se contó como entrada. El cuadre de Salidas no sirve hasta que ' +
+            'esa pestaña se lea.</div>';
+        }
+        h += '<div class="s" style="color:var(--muted);margin-top:12px">' + esc(d.nota || '') + '</div>';
+        if (d.sinFecha) {
+          h += '<div class="s" style="color:var(--amber);margin-top:6px">' + fmtNum(d.sinFecha) +
+            ' movimientos sin fecha legible quedaron fuera.</div>';
         }
         caja.innerHTML = h;
       })
@@ -12801,7 +12819,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.01-300';
+    var mia = '2026.09.01-302';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
