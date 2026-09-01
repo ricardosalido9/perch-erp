@@ -950,7 +950,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.31-280</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-281</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -2138,7 +2138,7 @@
     var cCant = findHeaderByName('Cantidad');
     var cDesc = findHeaderByName('% descuento') || findHeaderByName('Descuentos');
     versionDe = folio;
-    versionAgregados = [];
+    versionAgregados = []; modalModo = 'versionNueva';
     versionFilas = (state.rows || []).filter(function (r) {
       return cRef && String(r[cRef] || '').trim() === folio;
     });
@@ -2247,6 +2247,7 @@
       return '<option value="' + (i + 1) + '"' + (mesDef === i + 1 ? ' selected' : '') +
         '>' + esc(m) + '</option>';
     }).join('');
+    modalModo = 'reporteNomina';
     document.getElementById('aventaTitulo').textContent = 'Reporte de nómina';
     document.getElementById('aventaCuerpo').innerHTML =
       '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">' +
@@ -2876,6 +2877,7 @@
   // ===== Armar la quincena: replicar, ligar recibos y ajustar =====
   var quincenaDatos = null;
   function abrirQuincena(anio, mes, mitad) {
+    modalModo = 'quincena';
     document.getElementById('aventaTitulo').textContent = 'Armar la quincena';
     document.getElementById('aventaCuerpo').innerHTML =
       '<div class="state" style="padding:40px 0">Buscando la quincena anterior y los recibos…</div>';
@@ -3021,7 +3023,7 @@
   // cambia en un lado y no en el otro, dejan de cuadrar.
   var fixCliFolio = null, fixCliDatos = null;
   function abrirCorregirCliente(folio) {
-    fixCliFolio = folio; fixCliDatos = null;
+    fixCliFolio = folio; fixCliDatos = null; modalModo = 'cliente';
     document.getElementById('aventaTitulo').textContent = 'Corregir el cliente · ' + folio;
     document.getElementById('aventaCuerpo').innerHTML =
       '<div class="state" style="padding:30px 0">Buscando dónde aparece este folio…</div>';
@@ -3032,8 +3034,14 @@
     api('cambiar-cliente', { token: state.token, folio: folio })
       .then(function (d) { fixCliDatos = d; pintarCorregirCliente(); })
       .catch(function (e) {
+        var msg = (e && e.message) || 'No se pudo leer el folio.';
         document.getElementById('aventaCuerpo').innerHTML =
-          '<div class="state">' + esc((e && e.message) || 'No se encontró.') + '</div>';
+          '<div style="background:var(--danger-bg);border:1px solid var(--danger);' +
+          'border-radius:10px;padding:14px 16px;color:var(--danger)">' +
+          '<b>No se pudo abrir.</b><div style="margin-top:6px">' + esc(msg) + '</div></div>';
+        document.getElementById('aventaOk').textContent = 'Cerrar';
+        modalModo = '';
+        toast(msg, 'err');
       });
   }
   function pintarCorregirCliente() {
@@ -3188,7 +3196,7 @@
   // explicar después. Se marca como Cancelada y deja de contar en los análisis.
   var anularFolio = null, anularDatos = null;
   function abrirAnular(folio) {
-    anularFolio = folio; anularDatos = null;
+    anularFolio = folio; anularDatos = null; modalModo = 'anular';
     document.getElementById('aventaTitulo').textContent = 'Cancelar ' + folio;
     document.getElementById('aventaCuerpo').innerHTML =
       '<div class="state" style="padding:30px 0">Revisando qué se va a cancelar…</div>';
@@ -5161,6 +5169,7 @@
       '<div class="fld"><label>Comentarios</label><input id="pp_com" placeholder="Lo que Pau necesita saber"></div>' +
       '<div class="s" style="color:var(--muted)">Se guarda sin pagar, así que aparece de ' +
       'inmediato en la cola de pagos por hacer.</div>';
+    modalModo = 'pedirPago';
     document.getElementById('aventaTitulo').textContent = 'Pedir un pago';
     document.getElementById('aventaCuerpo').innerHTML = h;
     document.getElementById('aventaOk').textContent = 'Solicitar el pago';
@@ -7124,6 +7133,7 @@
   var cierreAlcance = 'todo';
   function abrirCierre(alcance) {
     cierreAlcance = (alcance === 'ventas') ? 'ventas' : 'todo';
+    modalModo = 'cierre';
     var hoy = new Date();
     var mesPrev = hoy.getMonth();            // el mes pasado, en base 1
     if (mesPrev === 0) mesPrev = 12;
@@ -8519,6 +8529,8 @@
       .catch(function () { continuar(); });   // si falla la revisión, no se estorba
   }
   var impactoContinuar = null;
+  // Qué ventana está abierta. Lo pone quien la abre; se limpia al cerrar.
+  var modalModo = '';
 
   // Campos visibles en "Agregar registro" por área (en orden).
   // Un área que no esté acá muestra todas sus columnas.
@@ -11250,7 +11262,7 @@
     document.getElementById('aventaModal').classList.remove('on');
     document.getElementById('aventaCancel').textContent = 'Cerrar';
     terminarPaso();
-    impactoContinuar = null;
+    impactoContinuar = null; modalModo = '';
     aventaPedido = null; aventaLineas = []; aventaPend = []; aventaDest = {};
     aventaYaSalio = {};
     entradaPedido = null; entradaLineas = []; entradaPend = null;
@@ -12214,7 +12226,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.31-280';
+    var mia = '2026.09.01-281';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
@@ -12267,26 +12279,35 @@
   document.getElementById('aventaClose').addEventListener('click', cerrarMandarAVenta);
   document.getElementById('aventaCancel').addEventListener('click', cerrarMandarAVenta);
   document.getElementById('aventaOk').addEventListener('click', function () {
+    // Cada pantalla dice explícitamente qué es. Antes se adivinaba buscando ids
+    // en el HTML, y si el modal estaba cargando o el servidor devolvía un error,
+    // ninguno existía y el clic caía al último caso —registrar salidas—, que no
+    // tenía nada que ver. Se veía como "el botón no hace nada".
     if (impactoContinuar) {
       var seguir = impactoContinuar; impactoContinuar = null;
       cerrarMandarAVenta(); seguir(); return;
     }
-    if (document.getElementById('anMotivo')) { guardarAnular(); return; }
-    if (document.getElementById('fcNuevo')) { guardarCorregirCliente(); return; }
-    if (document.getElementById('qnMitad')) { guardarQuincena(); return; }
-    if (document.getElementById('noMes')) { generarReporteNomina(); return; }
-    if (document.querySelector('.ver-inc')) { guardarVersionNueva(); return; }
-    if (document.getElementById('pp_prov')) { guardarPedirPago(); return; }
+    switch (modalModo) {
+      case 'anular':          if (anularDatos) guardarAnular(); return;
+      case 'cliente':         if (fixCliDatos) guardarCorregirCliente(); return;
+      case 'quincena':        if (quincenaDatos) guardarQuincena(); return;
+      case 'reporteNomina':   generarReporteNomina(); return;
+      case 'versionNueva':    guardarVersionNueva(); return;
+      case 'pedirPago':       guardarPedirPago(); return;
+      case 'cierre':
+        if (cierrePdf) { bajarPdf(cierrePdf.pdf, cierrePdf.nombre); return; }
+        generarCierre(); return;
+    }
+    // Las pantallas viejas se siguen reconociendo por su campo, pero ya no hay
+    // un caso por omisión: si no se reconoce ninguna, no se hace nada.
     if (document.getElementById('pgFecha')) { confirmarPagados(); return; }
     if (document.getElementById('pnNombre')) { guardarProductoNuevo(); return; }
-    if (document.getElementById('ciMes')) {
-      if (cierrePdf) { bajarPdf(cierrePdf.pdf, cierrePdf.nombre); return; }
-      generarCierre();
-      return;
+    if (document.getElementById('efeFecha')) { registrarEfectivo(); return; }
+    if (document.getElementById('entFecha')) { registrarEntrada(); return; }
+    if (document.getElementById('aventaCuerpo').querySelector('.avta-linea, table')) {
+      registrarSalidas(); return;
     }
-    if (document.getElementById('efeFecha')) registrarEfectivo();
-    else if (document.getElementById('entFecha')) registrarEntrada();
-    else registrarSalidas();
+    toast('Esta ventana todavía está cargando.', 'err');
   });
   document.getElementById('ventaClose').addEventListener('click', cerrarConvertirVenta);
   document.getElementById('ventaCancel').addEventListener('click', cerrarConvertirVenta);
