@@ -955,7 +955,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-289</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-293</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1189,7 +1189,14 @@
       body: JSON.stringify(payload)
     });
     const data = await res.json().catch(function(){ return {}; });
-    if (!res.ok) throw new Error(data.error || ('Error ' + res.status));
+    // Los handlers mandan "pista": una frase que dice qué hacer con el error.
+    // Se estaba tirando aquí, así que el usuario solo veía la parte seca del
+    // mensaje. Hay 17 pistas escritas en el servidor y ninguna se veía.
+    if (!res.ok) {
+      const err = new Error(data.error || ('Error ' + res.status));
+      if (data.pista) err.pista = data.pista;
+      throw err;
+    }
     return data;
   }
 
@@ -1215,7 +1222,8 @@
     fin_banco:           'Sube el estado de cuenta del banco y captura lo que falta, sin duplicar.',
     fac_emitidos:        'Facturas en parcialidades sin complemento, y qué entró al banco sin papel.',
     fin_gastos_op:       'Gastos de operación por categoría: renta, servicios, sueldos, marketing.',
-    fin_estados:         'Estado de resultados por mes.',
+    fin_estados:         'Estado de resultados: un renglón por año, mes y concepto.',
+    fin_flujo:           'Flujo de efectivo: un renglón por año, mes y concepto.',
     rh_resumen:          'La plantilla de un vistazo: costo, altas, bajas y rotación.',
     rh_personal:         'Quién trabaja aquí, desde cuándo y bajo qué esquema.',
     rh_nomina:           'Lo que se paga cada periodo, con sus deducciones.',
@@ -1240,7 +1248,7 @@
     fin_cxc:             'Saldos por cobrar de cada pedido.',
     fin_ingresos:        'Cobros recibidos, ligados al folio del pedido.'
   };
-  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'fac_control', 'cfdi_control', 'cfdi_prov', 'prov_razon', 'rh_resumen', 'fin_gastos_op', 'fin_efectivo', 'fac_impuestos', 'fac_emitidos', 'log_calendario',
+  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'fac_control', 'cfdi_control', 'cfdi_prov', 'prov_razon', 'rh_resumen', 'fin_gastos_op', 'fin_efectivo', 'fac_impuestos', 'fac_emitidos', 'log_calendario', 'fin_estados', 'fin_flujo',
     // El stock sale de pedidos, entradas y salidas: se recalcula, no se edita
     'op_stock', 'op_revisar', 'prov_revision'];
   function esLector() {
@@ -2365,13 +2373,16 @@
         '<div class="fld" style="width:260px"><label>Cuenta</label>' +
           (bancoCuentas.length
             ? '<select id="bkCuenta">' + bancoCuentas.map(function (c) {
-                return '<option value="' + esc(c.numero || c.nombre) + '"' +
-                  (c.esBancaria ? '' : ' disabled') + '>' + esc(c.nombre) +
-                  (c.esBancaria ? '' : ' — sin número de cuenta') + '</option>';
+                // Antes las cuentas sin número iban deshabilitadas y no se podían
+                // elegir. El número solo sirve para afinar el aviso de "ya
+                // capturado"; no hace falta para leer el archivo. Una tarjeta como
+                // AMEX no tiene por qué traerlo y quedaba fuera sin razón.
+                return '<option value="' + esc(c.numero || c.nombre) + '" data-num="' +
+                  (c.esBancaria ? '1' : '0') + '">' + esc(c.nombre) + '</option>';
               }).join('') + '</select>' +
-              '<div class="s" style="color:var(--muted);margin-top:4px">' +
-                fmtNum(bancoCuentas.filter(function (c) { return c.esBancaria; }).length) +
-                ' cuentas' + (bancoCuentasDe ? ' · de ' + esc(bancoCuentasDe) : '') + '</div>'
+              '<div class="s" style="color:var(--muted);margin-top:4px" id="bkCtaNota">' +
+                fmtNum(bancoCuentas.length) + ' cuentas' +
+                (bancoCuentasDe ? ' · de ' + esc(bancoCuentasDe) : '') + '</div>'
             : '<input id="bkCuenta" placeholder="número de cuenta">' +
               '<div class="s" style="color:var(--amber);margin-top:4px">No se encontró la ' +
               'lista de cuentas en el catálogo</div>') + '</div>' +
@@ -2384,6 +2395,27 @@
       '<div id="bkAviso" style="margin-top:14px"></div></div>' +
       '<div id="bkResultado" style="margin-top:18px"></div>';
     document.getElementById('bkLeer').addEventListener('click', leerArchivoBanco);
+    var selCta = document.getElementById('bkCuenta');
+    if (selCta && selCta.tagName === 'SELECT') {
+      var notaCta = function () {
+        var op = selCta.options[selCta.selectedIndex];
+        var caja = document.getElementById('bkCtaNota');
+        if (!op || !caja) return;
+        if (op.getAttribute('data-num') === '1') {
+          caja.style.color = 'var(--muted)';
+          caja.innerHTML = fmtNum(bancoCuentas.length) + ' cuentas' +
+            (bancoCuentasDe ? ' · de ' + esc(bancoCuentasDe) : '');
+        } else {
+          caja.style.color = 'var(--amber)';
+          caja.innerHTML = 'Esta cuenta no trae número en el catálogo. El archivo se ' +
+            'lee igual, pero el aviso de "ya capturado" solo compara fecha y monto, no ' +
+            'la cuenta. Para que compare por cuenta, agrégale el número al nombre en la ' +
+            'columna <b>Cuenta</b> del catálogo.';
+        }
+      };
+      selCta.addEventListener('change', notaCta);
+      notaCta();
+    }
   }
 
   function leerArchivoBanco() {
@@ -2415,7 +2447,9 @@
         .catch(function (e) {
           document.getElementById('bkAviso').innerHTML =
             '<div class="state" style="color:var(--danger)">' +
-            esc((e && e.message) || 'No se pudo leer.') + '</div>';
+            esc((e && e.message) || 'No se pudo leer.') +
+            (e && e.pista ? '<div class="s" style="color:var(--slate);margin-top:8px;' +
+              'font-weight:400">' + esc(e.pista) + '</div>' : '') + '</div>';
         })
         .then(function () { btn.disabled = false; btn.textContent = 'Leer el archivo'; });
     };
@@ -12243,7 +12277,11 @@
     });
   }
 
-  function fail(err) { toast((err && err.message) || 'Ocurrió un error.', 'err'); }
+  function fail(err) {
+    var m = (err && err.message) || 'Ocurrió un error.';
+    if (err && err.pista) m += ' ' + err.pista;
+    toast(m, 'err');
+  }
 
   // Aviso que se queda en pantalla hasta que el usuario lo cierra
   function avisoFijo(html) {
@@ -12344,7 +12382,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.01-289';
+    var mia = '2026.09.01-293';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
