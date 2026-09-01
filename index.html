@@ -262,6 +262,41 @@
     letter-spacing:.5px; background:transparent; position:static; text-align:left; }
   .mini-table td.num { text-align:right; font-variant-numeric:tabular-nums; }
   .dash-empty { color:var(--muted); font-size:13px; padding:8px 0; }
+
+  /* Estados financieros. La tabla es ancha a fuerza: doce meses más totales. Se
+     deja rodar en horizontal con la columna del concepto fija, que es la única
+     que hay que seguir viendo mientras se recorre el año. */
+  .est-top { display:flex; justify-content:space-between; align-items:flex-end; gap:16px;
+    flex-wrap:wrap; margin-bottom:14px; }
+  .est-wrap { overflow-x:auto; border:1px solid var(--line); border-radius:10px;
+    background:var(--surface); }
+  .est-tabla { border-collapse:collapse; font-size:12.5px; white-space:nowrap; min-width:100%; }
+  .est-tabla th { background:var(--ink); color:#fff; font-weight:600; font-size:10.5px;
+    text-transform:uppercase; letter-spacing:.6px; padding:9px 12px; text-align:right;
+    position:sticky; top:0; z-index:2; }
+  .est-tabla th.est-con { text-align:left; }
+  .est-tabla td { padding:6px 12px; text-align:right; font-variant-numeric:tabular-nums;
+    border-bottom:1px solid var(--line); }
+  .est-tabla td.est-con { text-align:left; white-space:nowrap; }
+  .est-tabla .est-con { position:sticky; left:0; background:var(--surface); z-index:1;
+    min-width:270px; box-shadow:1px 0 0 var(--line); }
+  .est-tabla th.est-con { background:var(--ink); z-index:3; }
+  .est-tabla td.neg { color:var(--danger); }
+  .est-tabla td.est-ant { color:var(--muted); }
+  .est-tabla td.est-var { font-weight:600; }
+  /* Nivel 0 son los renglones de resultado: se separan del bloque de arriba */
+  .est-tabla tr.est-n0 td { font-weight:700; border-top:1px solid var(--slate);
+    background:var(--surface-2, #faf6ef); }
+  .est-tabla tr.est-n0 td.est-con { background:var(--surface-2, #faf6ef); }
+  .est-tabla tr.est-n1 td { font-weight:600; }
+  .est-tabla tr.est-n2 td.est-con { padding-left:30px; color:var(--slate); font-weight:400; }
+  .est-tabla tr.est-margen td { font-weight:600; color:var(--slate); border-top:none;
+    background:transparent; font-size:12px; }
+  .est-tabla tr.est-margen td.est-con { background:var(--surface); padding-left:30px; }
+  .est-tabla tbody tr:hover td { background:#f2efe8; }
+  .est-tabla tbody tr:hover td.est-con { background:#f2efe8; }
+  .aviso-caja { border:1px solid var(--amber); background:#fdf6e3; border-radius:10px;
+    padding:12px 14px; font-size:13px; }
   input[type=text], input[type=search] { font:inherit; color:var(--ink); background:var(--surface);
     border:1px solid var(--line); border-radius:8px; padding:8px 10px; }
   input:focus { outline:2px solid var(--ink); outline-offset:1px; border-color:var(--ink); }
@@ -955,7 +990,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-293</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-294</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -5431,6 +5466,127 @@
 
   // ===== Calendario de logística =====
   var logMes = null, logAnio = null, logDiaAbierto = null;
+
+  // ===== Estados financieros: se arman aquí, no se leen como tabla =====
+  // La tabla cruda de "un renglón por año, mes y concepto" sirve para guardar y es
+  // ilegible para leer. Esta pantalla la vuelve el estado de siempre: sangría por
+  // nivel, subtotales en negrita, los doce meses, el total y el año anterior.
+  var estadoCual = 'resultados', estadoAnio = new Date().getFullYear();
+  function loadEstado(cual) {
+    estadoCual = cual;
+    document.getElementById('summary').innerHTML = '';
+    document.getElementById('summary').style.display = 'none';
+    mostrarAlta(false);
+    document.getElementById('count').textContent = '';
+    document.getElementById('tableWrap').innerHTML =
+      '<div class="state" style="padding:50px 0">Armando el estado…</div>';
+    api('estados', { token: state.token, estado: cual, anio: estadoAnio })
+      .then(pintarEstado)
+      .catch(function (e) {
+        document.getElementById('tableWrap').innerHTML =
+          '<div class="state" style="color:var(--danger);padding:40px 0">' +
+          esc((e && e.message) || 'No se pudo armar.') +
+          (e && e.pista ? '<div class="s" style="color:var(--slate);margin-top:10px;font-weight:400">' +
+            esc(e.pista) + '</div>' : '') + '</div>';
+      });
+  }
+  function fmtEstado(v, esMargen) {
+    if (v === null || v === undefined) return '';
+    if (esMargen) return (v * 100).toFixed(1).replace('-', '\u2212') + '%';
+    if (!v) return '\u2013';
+    var t = formatMoney(Math.abs(v));
+    return v < 0 ? '(' + t + ')' : t;
+  }
+  function pintarEstado(d) {
+    var MES3 = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+    var anios = [];
+    for (var a = new Date().getFullYear(); a >= 2024; a--) anios.push(a);
+    var h = '<div class="est-top">' +
+      '<div><h3 class="sec-t" style="margin:0">' + esc(d.titulo) + '</h3>' +
+      '<div class="s" style="color:var(--muted)">Se arma solo desde ' + esc(d.hoja) +
+      ', con la estructura de ' + esc(d.estructura) + '. Nada de esta pantalla se captura.</div></div>' +
+      '<div style="display:flex;gap:10px;align-items:flex-end">' +
+      '<div class="fld" style="width:110px;margin:0"><label>Año</label><select id="estAnio">' +
+        anios.map(function (x) {
+          return '<option value="' + x + '"' + (x === d.anio ? ' selected' : '') + '>' + x + '</option>';
+        }).join('') + '</select></div>' +
+      '<button type="button" id="estPdf">Descargar</button></div></div>';
+
+    // El cuadre va arriba y solo cuando hay algo que decir: dinero capturado que
+    // ningún renglón del estado está recogiendo porque el concepto no existe.
+    var hu = (d.cuadre && d.cuadre.huerfanos) || [];
+    if (hu.length) {
+      h += '<div class="aviso-caja" style="margin:12px 0">' +
+        '<b>Hay ' + fmtNum(hu.length) + (hu.length === 1 ? ' concepto' : ' conceptos') +
+        ' capturados que no existen en la estructura, así que su dinero no entra al estado:</b>' +
+        '<div class="s" style="margin-top:6px">' +
+        hu.slice(0, 8).map(function (x) {
+          return esc(x.concepto) + ' \u00b7 ' + esc(formatMoney(x.monto));
+        }).join('<br>') + '</div>' +
+        '<div class="s" style="margin-top:6px;color:var(--slate)">Agrégalos en ' +
+        esc(d.estructura) + ' o corrige cómo están escritos en ' + esc(d.hoja) + '.</div></div>';
+    }
+
+    h += '<div class="est-wrap"><table class="est-tabla"><thead><tr>' +
+      '<th class="est-con">CONCEPTO</th>' +
+      MES3.map(function (m) { return '<th>' + m + '</th>'; }).join('') +
+      '<th class="est-tot">TOTAL</th><th class="est-tot">' + (d.anio - 1) + '</th>' +
+      '<th class="est-tot">VAR.</th></tr></thead><tbody>';
+
+    (d.filas || []).forEach(function (f) {
+      var esM = f.tipo === 'margen';
+      var cls = 'est-n' + f.nivel + (esM ? ' est-margen' : '');
+      var vr = '';
+      if (esM) {
+        if (f.total !== null && f.anterior !== null && f.anterior !== undefined) {
+          var pp = (f.total - f.anterior) * 100;
+          vr = (pp > 0 ? '+' : '') + pp.toFixed(1) + ' pp';
+        }
+      } else if (f.anterior) {
+        var v = (f.total - f.anterior) / Math.abs(f.anterior) * 100;
+        vr = (v > 0 ? '+' : '') + v.toFixed(1) + '%';
+      }
+      h += '<tr class="' + cls + '"><td class="est-con">' + esc(f.concepto) + '</td>' +
+        f.meses.map(function (x) {
+          return '<td' + (x < 0 ? ' class="neg"' : '') + '>' + esc(fmtEstado(x, esM)) + '</td>';
+        }).join('') +
+        '<td class="est-tot' + (f.total < 0 ? ' neg' : '') + '">' + esc(fmtEstado(f.total, esM)) + '</td>' +
+        '<td class="est-tot est-ant">' + esc(fmtEstado(f.anterior, esM)) + '</td>' +
+        '<td class="est-tot est-var' + (vr.indexOf('-') === 0 ? ' neg' : '') + '">' + esc(vr) + '</td></tr>';
+    });
+    h += '</tbody></table></div>';
+    h += '<div class="s" style="color:var(--muted);margin-top:10px">' +
+         fmtNum(d.cuadre ? d.cuadre.renglones : 0) + ' renglones capturados en ' + esc(String(d.anio)) +
+         '. La variación de los márgenes va en puntos porcentuales, no en porcentaje.</div>';
+
+    document.getElementById('tableWrap').innerHTML = h;
+    var fuente = document.getElementById('areaFuente');
+    if (fuente) fuente.innerHTML = '';
+    document.getElementById('estAnio').addEventListener('change', function () {
+      estadoAnio = +this.value; loadEstado(estadoCual);
+    });
+    document.getElementById('estPdf').addEventListener('click', function () {
+      bajarCsvEstado(d);
+    });
+  }
+  // Se baja como CSV para poder pegarlo en una presentación o mandarlo por correo
+  function bajarCsvEstado(d) {
+    var MES3 = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+    var lineas = [[d.titulo + ' ' + d.anio].concat(MES3).concat(['TOTAL', String(d.anio - 1)])];
+    (d.filas || []).forEach(function (f) {
+      lineas.push([f.concepto].concat(f.meses.map(function (x) {
+        return (x === null || x === undefined) ? '' : x;
+      })).concat([f.total === null ? '' : f.total, f.anterior === null ? '' : f.anterior]));
+    });
+    var csv = lineas.map(function (r) {
+      return r.map(function (c) { return '"' + String(c).replace(/"/g, '""') + '"'; }).join(',');
+    }).join('\n');
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }));
+    a.download = d.titulo + ' ' + d.anio + '.csv';
+    a.click();
+  }
+
   function loadLogistica() {
     var hoy = new Date();
     if (logMes === null) { logMes = hoy.getMonth() + 1; logAnio = hoy.getFullYear(); }
@@ -5650,6 +5806,8 @@
   }
 
   function loadArea() {
+    if (state.key === 'fin_estados') return loadEstado('resultados');
+    if (state.key === 'fin_flujo')   return loadEstado('flujo');
     if (state.key === 'log_calendario') return loadLogistica();
     if (state.key === 'fin_banco') return loadSubirBanco();
     if (state.key === 'fac_emitidos') return loadEmitidos();
@@ -12382,7 +12540,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.01-293';
+    var mia = '2026.09.01-294';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
