@@ -1002,7 +1002,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-309</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-310</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -5884,12 +5884,24 @@
               }).join('<br>') + '</div>' : '') + '</div>';
         });
         if ((d.sinLado || []).length) {
-          h += '<div class="aviso-caja" style="margin-top:12px"><b>Estos conceptos del flujo no ' +
-            'están en la estructura, así que no se supo si son entrada o salida:</b><div class="s" ' +
-            'style="margin-top:6px">' + d.sinLado.map(function (x) {
+          var totSL = d.sinLado.reduce(function (a, x) { return a + x.monto; }, 0);
+          h += '<div class="aviso-caja" style="margin-top:12px;border-color:var(--danger);' +
+            'background:#fdf0ee"><b>Hay ' + esc(formatMoney(totSL)) + ' capturado en el flujo ' +
+            'que ningún renglón del estado recoge</b>' +
+            '<div class="s" style="margin-top:4px">Estos conceptos están en EF Datos pero no en ' +
+            'EF Conceptos, así que no entran al estado ni a este cuadre. Casi siempre es toda ' +
+            'la diferencia. Agrégalos a la estructura o corrige cómo están escritos.</div>' +
+            '<div class="s" style="margin-top:6px;color:var(--slate)">' +
+            d.sinLado.map(function (x) {
               return esc(x.concepto) + ' · ' + esc(formatMoney(x.monto));
             }).join('<br>') + '</div></div>';
         }
+        (d.noRepartido || []).forEach(function (x) {
+          h += '<div class="aviso-caja" style="margin-top:12px"><b>' + esc(x.lado) + ': ' +
+            esc(formatMoney(x.monto)) + ' del total no se pudo repartir por concepto.</b>' +
+            '<div class="s" style="margin-top:4px">El total de arriba está bien —sale del mismo ' +
+            'cálculo que la pantalla del flujo— pero el detalle de abajo no va a sumar exacto.</div></div>';
+        });
         if (d.sinEstructura) {
           h += '<div class="aviso-caja" style="margin-top:12px">No se pudo leer EF Conceptos, ' +
             'así que todo se contó como entrada. El cuadre de Salidas no sirve hasta que ' +
@@ -12869,7 +12881,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.01-309';
+    var mia = '2026.09.01-310';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
