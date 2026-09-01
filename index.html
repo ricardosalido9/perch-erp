@@ -955,7 +955,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-287</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-288</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -2148,6 +2148,8 @@
       return cRef && String(r[cRef] || '').trim() === folio;
     });
     if (!versionFilas.length) { toast('No encontré los renglones de ' + folio + '.', 'err'); return; }
+    var cCliV = findHeaderByName('Cliente');
+    var clienteActual = cCliV ? String(versionFilas[0][cCliV] || '').trim() : '';
 
     var h = '<div class="s" style="color:var(--slate);margin-bottom:12px">' +
       '<b>' + esc(folio) + ' se queda como está.</b> Esto crea una cotización nueva con su ' +
@@ -2184,6 +2186,21 @@
       '</div>' +
       listasDelCatalogo() +
       '<div id="vnNuevos" style="margin-top:10px"></div></div>' +
+      // Para quién es. El guardado ya mandaba el cliente nuevo al servidor, pero
+      // esta parte nunca se dibujó: la opción existía y no se veía, así que toda
+      // versión nueva nacía con el cliente de la anterior.
+      '<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">' +
+      '<div class="s" style="color:var(--slate);margin-bottom:8px"><b>¿Para quién es?</b></div>' +
+      '<label class="s" style="display:block;margin-bottom:4px;cursor:pointer">' +
+        '<input type="radio" name="vnQuien" value="mismo" checked style="margin-right:6px">' +
+        'El mismo cliente' + (clienteActual ? ': ' + esc(clienteActual) : '') + '</label>' +
+      '<label class="s" style="display:block;cursor:pointer">' +
+        '<input type="radio" name="vnQuien" value="otro" style="margin-right:6px">' +
+        'Otro cliente</label>' +
+      '<div id="vnOtroCli" style="display:none;margin-top:8px">' +
+        '<div class="fld" style="max-width:320px;margin:0"><label>Cliente</label>' +
+        '<input id="vnCliente" list="vnClientes" placeholder="nombre del cliente"></div>' +
+        datalistClientes('vnClientes') + '</div></div>' +
       '<div class="s" style="color:var(--muted);margin-top:10px">' + esc(folio) + ' no se toca: ' +
       'se queda tal como está, por si el cliente se decide por ella. Más adelante, cuando sepas ' +
       'cuál se quedó, marca la otra como Rechazada para que no cuenten las dos en la conversión. ' +
@@ -2223,6 +2240,15 @@
     if (quitar.length === versionFilas.length && !versionAgregados.length) {
       toast('No puedes quitar todos los productos sin agregar otro.', 'err'); return;
     }
+    // Para quién es la versión nueva. Se valida antes de apagar el botón: si se
+    // valida después, un nombre vacío deja el botón en "Creando…" para siempre.
+    var quien = document.querySelector('input[name="vnQuien"]:checked');
+    var clienteNuevo = '';
+    if (quien && quien.value === 'otro') {
+      var elc = document.getElementById('vnCliente');
+      clienteNuevo = elc ? elc.value.trim() : '';
+      if (!clienteNuevo) { toast('Escribe el nombre del otro cliente.', 'err'); return; }
+    }
     var btn = document.getElementById('aventaOk');
     btn.disabled = true; btn.textContent = 'Creando…';
     // Los productos nuevos van con los nombres de columna de la hoja
@@ -2237,14 +2263,6 @@
       if (cPre) rec[cPre] = x.precio;
       return rec;
     });
-    // Para quién es la versión nueva
-    var quien = document.querySelector('input[name="vnQuien"]:checked');
-    var clienteNuevo = '';
-    if (quien && quien.value === 'otro') {
-      var elc = document.getElementById('vnCliente');
-      clienteNuevo = elc ? elc.value.trim() : '';
-      if (!clienteNuevo) { toast('Escribe el nombre del otro cliente.', 'err'); return; }
-    }
     api('dup-cot', { token: state.token, folio: versionDe, quitar: quitar,
                      cambios: cambios, agregar: agregar, cliente: clienteNuevo })
       .then(function (d) {
@@ -3215,7 +3233,7 @@
     return n > 0 ? n : null;
   }
 
-  var versionAgregados = [];
+  // versionAgregados se declara junto a versionDe y versionFilas, más arriba.
   function pintarAgregadosVersion() {
     var el = document.getElementById('vnNuevos');
     if (!el) return;
@@ -12326,7 +12344,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.01-287';
+    var mia = '2026.09.01-288';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
