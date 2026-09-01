@@ -1002,7 +1002,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-308</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-309</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -5869,6 +5869,20 @@
           h += '</div>';
         });
 
+        (d.negativos || []).forEach(function (n) {
+          h += '<div class="aviso-caja" style="margin-top:12px"><b>' + esc(n.hoja) +
+            ' trae ' + fmtNum(n.n) + (n.n === 1 ? ' renglón negativo' : ' renglones negativos') +
+            ' por ' + esc(formatMoney(n.monto)) + '</b>' +
+            '<div class="s" style="margin-top:4px">Se restan, igual que en tu hoja. Si el total ' +
+            'de aquí no coincide con el que ves en la pestaña, revisa primero estos.' +
+            (n.volteado ? ' Esta hoja guarda los montos en negativo, así que el lado completo ' +
+              'se volteó para poder compararlo contra el flujo.' : '') + '</div>' +
+            (n.ejemplos.length ? '<div class="s" style="margin-top:6px;color:var(--slate)">' +
+              n.ejemplos.map(function (e) {
+                return esc(e.fecha) + ' · ' + esc(e.concepto || 'sin concepto') + ' · ' +
+                  esc(formatMoney(e.monto));
+              }).join('<br>') + '</div>' : '') + '</div>';
+        });
         if ((d.sinLado || []).length) {
           h += '<div class="aviso-caja" style="margin-top:12px"><b>Estos conceptos del flujo no ' +
             'están en la estructura, así que no se supo si son entrada o salida:</b><div class="s" ' +
@@ -12855,7 +12869,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.01-308';
+    var mia = '2026.09.01-309';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
