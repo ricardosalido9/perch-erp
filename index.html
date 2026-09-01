@@ -950,7 +950,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.31-279</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.31-280</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -8415,8 +8415,20 @@
         return;
       }
     }
+    // También cuenta si cambió el precio o el descuento: los tres mueven el total
+    var cPreEd = findHeaderByName((lineCfg() || {}).precio || 'Precio Unitario');
+    var cPctEd = findHeaderByName('% descuento');
+    var cDesEd = findHeaderByName('Descuentos');
+    var cambioImporte = esVentaOCot && (
+      (cCant && toNum(record[cCant]) !== toNum(orig[cCant])) ||
+      (cPreEd && toNum(record[cPreEd]) !== toNum(orig[cPreEd])) ||
+      (cPctEd && pctNumero(record[cPctEd]) !== pctNumero(orig[cPctEd])) ||
+      (cDesEd && toNum(record[cDesEd]) !== toNum(orig[cDesEd])));
     var cambioCantidad = cCant && esVentaOCot &&
       toNum(record[cCant]) !== toNum(orig[cCant]);
+    // Si cambió el precio o el descuento pero no la cantidad, se recalcula y ya:
+    // no hay nada que avisar del otro lado porque no se movieron piezas.
+    if (cambioImporte && !cambioCantidad) recalcularRenglon(record);
     if (cambioCantidad) {
       recalcularRenglon(record);
       var cRef = findHeaderByName('No. de Referencia') || findHeaderByName('Folio');
@@ -9670,17 +9682,24 @@
 
   // Qué se cobra de verdad según cómo se paga.
   // El efectivo NO lleva IVA: el precio de lista ya lo traía dentro.
+  // El efectivo se captura como PARTE DE LA VENTA sin IVA, no como una cantidad
+  // aparte. Es decir: de una venta de $20,000 sin IVA, si $10,000 se pagan en
+  // efectivo, esos $10,000 no llevan IVA y los otros $10,000 sí. Por eso el total
+  // a cobrar BAJA conforme sube el efectivo: ese es el descuento por pagar así.
   function cuentasDelPago(totalSinIVA) {
     var ef = toNum(pagoPedido.efectivo);
     var pl = toNum(pagoPedido.plataforma);
     var tr = toNum(pagoPedido.transferencia);
+    // El efectivo nunca puede ser más que la venta
+    if (ef > totalSinIVA) ef = totalSinIVA;
     var repartido = ef + pl + tr;
     // Lo que no se repartió se asume por transferencia
     var resto = Math.max(0, Math.round((totalSinIVA - repartido) * 100) / 100);
     tr += resto;
-    // Al efectivo se le quita el IVA que el precio traía dentro
-    var efSinIVA = Math.round((ef / 1.16) * 100) / 100;
-    var ivaNoCobrado = Math.round((ef - efSinIVA) * 100) / 100;
+    // El efectivo ya es la parte sin IVA: no se le quita nada
+    var efSinIVA = ef;
+    // Lo que se deja de cobrar por pagar en efectivo
+    var ivaNoCobrado = Math.round((ef * 0.16) * 100) / 100;
     // Lo demás sí paga IVA
     var conIVA = Math.round(((tr + pl) * 1.16) * 100) / 100;
     var comision = 0;
@@ -9718,8 +9737,14 @@
         esc(formatMoney(c.plataforma * 1.16)) + '</b></div>' : '') +
       '<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--line)">' +
         '<span class="k">Se cobra</span> <b>' + esc(formatMoney(c.aCobrar)) + '</b>' +
-        (c.ivaNoCobrado ? ' <span class="s" style="color:var(--muted)">· ' +
-          esc(formatMoney(c.ivaNoCobrado)) + ' de IVA que no se cobra</span>' : '') +
+        // Se dice explícito cuánto BAJA contra cobrarlo todo con IVA: sin esto se
+        // ve un número grande y parece que el efectivo está sumando.
+        (c.ivaNoCobrado
+          ? '<div class="s" style="color:var(--success);margin-top:3px">' +
+            'Con todo facturado serían ' + esc(formatMoney(totalSinIVA * 1.16)) +
+            '. Se cobra ' + esc(formatMoney(c.ivaNoCobrado)) + ' menos por pagar ' +
+            (c.todoEfectivo ? 'todo ' : 'parte ') + 'en efectivo.</div>'
+          : '') +
       '</div>';
   }
   // El total del pedido sin IVA, sumando los productos capturados
@@ -12189,7 +12214,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.31-279';
+    var mia = '2026.08.31-280';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
