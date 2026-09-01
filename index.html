@@ -299,9 +299,6 @@
   .est-tabla tbody tr:hover td.est-con { background:#f2efe8; }
   .aviso-caja { border:1px solid var(--amber); background:#fdf6e3; border-radius:10px;
     padding:12px 14px; font-size:13px; }
-  .lectura { border-left:3px solid var(--ink); background:var(--surface); border-radius:0 10px 10px 0;
-    padding:12px 16px; margin:0 0 14px; }
-  .lectura li { margin:3px 0; }
   .cuadre-lado { border:1px solid var(--line); border-left-width:4px; border-radius:0 10px 10px 0;
     padding:14px 16px; margin-bottom:14px; background:var(--surface); }
   .cuadre-lado.ok  { border-left-color:var(--ink); }
@@ -1005,7 +1002,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-306</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-307</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -5552,7 +5549,10 @@
         ? '<button type="button" id="estCruce">Cuadrar contra Ventas</button>' : '') +
       (estadoCual === 'flujo'
         ? '<button type="button" id="estCruceF">Cuadrar contra Ingresos y Egresos</button>' : '') +
-      '<button type="button" class="primary" id="estPdf">Reporte en PDF</button>' +
+      // La lectura de los números va en el PDF, no aquí: en pantalla empujaba la
+      // tabla fuera de la vista, que es lo que se viene a ver.
+      '<button type="button" class="primary" id="estPdf" ' +
+      'title="Trae la tabla más la lectura de los números">Reporte en PDF</button>' +
       '<button type="button" id="estCsv">CSV</button></div></div>';
 
     // El cuadre va arriba y solo cuando hay algo que decir: dinero capturado que
@@ -5575,12 +5575,6 @@
         ' >' + (a.grave ? '<b>Ojo con esto</b><div style="margin-top:4px">' : '<div>') +
         esc(a.texto) + '</div></div>';
     });
-    if ((d.lectura || []).length) {
-      h += '<div class="lectura"><div class="s" style="font-weight:700;margin-bottom:6px">' +
-        'LO QUE DICEN ESTOS NÚMEROS</div><ul style="margin:0;padding-left:18px">' +
-        d.lectura.map(function (l) { return '<li class="s">' + esc(l) + '</li>'; }).join('') +
-        '</ul></div>';
-    }
     h += '<div class="est-wrap"><table class="est-tabla"><thead><tr>' +
       '<th class="est-con">CONCEPTO</th>' +
       MES3.filter(function (_m, i) { return i + 1 >= d.desde && i + 1 <= d.hasta; })
@@ -12861,7 +12855,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.01-306';
+    var mia = '2026.09.01-307';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
