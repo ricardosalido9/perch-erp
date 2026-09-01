@@ -950,7 +950,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.31-278</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.08.31-279</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -8370,6 +8370,14 @@
                   '" title="Está en la fila ' + r._row + ' de la hoja">Editar</button>' +
                   (folioR ? '<button class="row-btn pdf-btn" data-folio="' + esc(folioR).replace(/"/g, '&quot;') +
                       '" title="Ver la cotización con el formato de Perch">PDF</button>' : '') +
+                  // Corregir el cliente también desde la tabla, no solo desde las
+                  // tarjetas: cambia el nombre en todos los renglones del folio.
+                  (folioR && (state.key === 'ventas_registro' || state.key === 'cotizaciones') &&
+                   !esSoloLectura(state.key)
+                    ? '<button class="row-btn fix-cli" data-folio="' +
+                      esc(folioR).replace(/"/g, '&quot;') +
+                      '" title="Cambia el cliente en todos los renglones de este folio">' +
+                      'Cliente</button>' : '') +
                   '</td>';
       }
       html += '</tr>';
@@ -8393,6 +8401,20 @@
     // al proveedor o dinero ya cobrado.
     var cCant = findHeaderByName('Cantidad');
     var esVentaOCot = (state.key === 'ventas_registro' || state.key === 'cotizaciones');
+    var cCliEd = findHeaderByName('Cliente');
+    var cRefEd = findHeaderByName('No. de Referencia') || findHeaderByName('Folio');
+    if (esVentaOCot && cCliEd && cRefEd &&
+        norm(record[cCliEd]) !== norm(orig[cCliEd] || '')) {
+      var folioEd = String(orig[cRefEd] || '').trim();
+      var cuantos = (state.rows || []).filter(function (x) {
+        return String(x[cRefEd] || '').trim() === folioEd;
+      }).length;
+      if (cuantos > 1) {
+        // Se corrige en todo el folio y en las demás hojas de una vez
+        cerrarEdicionYCorregirCliente(folioEd, record[cCliEd], cuantos);
+        return;
+      }
+    }
     var cambioCantidad = cCant && esVentaOCot &&
       toNum(record[cCant]) !== toNum(orig[cCant]);
     if (cambioCantidad) {
@@ -8408,6 +8430,21 @@
       return;
     }
     escribirEdicion(rowNum, record, btn);
+  }
+
+  // El cliente de una venta vive en varios renglones, uno por producto. Cambiar
+  // uno solo deja el folio con dos nombres y la tarjeta sigue mostrando el viejo.
+  // Por eso se manda al mismo flujo que el botón "Corregir el cliente".
+  function cerrarEdicionYCorregirCliente(folio, nombreNuevo, cuantos) {
+    editingRow = -1;
+    renderTable();
+    toast('Este folio tiene ' + cuantos + ' renglones: se corrige en todos.', 'ok');
+    abrirCorregirCliente(folio);
+    // Se precarga el nombre que ya había escrito
+    setTimeout(function () {
+      var el = document.getElementById('fcNuevo');
+      if (el) { el.value = nombreNuevo; el.focus(); }
+    }, 700);
   }
 
   function escribirEdicion(rowNum, record, btn) {
@@ -12152,7 +12189,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.08.31-278';
+    var mia = '2026.08.31-279';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
