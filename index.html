@@ -955,7 +955,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-288</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-289</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -12344,7 +12344,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.01-288';
+    var mia = '2026.09.01-289';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
@@ -12640,55 +12640,11 @@
       filters = []; renderFilterBar(); renderTable();
     }
   });
-  document.getElementById('tableWrap').addEventListener('change', function (e) {
-    var sel = e.target;
-    if (!sel.classList || !sel.classList.contains('cot-status')) return;
-    var folio = sel.getAttribute('data-folio');
-    var cRef = findHeaderByName('No. de Referencia') || findHeaderByName('Folio');
-    sel.disabled = true;
-    api('fill', { token: state.token, key: state.key,
-                  match: { col: cRef, value: folio }, set: { 'Status': sel.value } })
-      .then(function (out) {
-        toast('Status de ' + folio + ' cambiado a "' + sel.value + '".', 'ok');
-        loadArea();
-      })
-      .catch(function (err) { fail(err); sel.disabled = false; });
-  });
   document.getElementById('tableWrap').addEventListener('click', function (e) {
-    // Editar un producto dentro de la tarjeta de una venta o cotización
-    var cx = e.target.closest('[data-cxc]');
-    if (cx) {
-      var kx = cx.getAttribute('data-cxc');
-      cxcAbierta[kx] = !cxcAbierta[kx];
-      renderTable();
-      return;
-    }
-    var lleg = e.target.closest('.llegaron-btn');
-    if (lleg) { abrirEntrada(lleg.getAttribute('data-ped')); return; }
-    var addF = e.target.closest('.add-a-folio');
-    if (addF) { agregarAFolio(addF.getAttribute('data-folio')); return; }
-    var edA = e.target.closest('.ed-abrir');
-    if (edA) { filaEditando = parseInt(edA.getAttribute('data-row'), 10); renderTable(); return; }
-    var edN = e.target.closest('.ed-no');
-    if (edN) { filaEditando = -1; renderTable(); return; }
-    var edO = e.target.closest('.ed-ok');
-    if (edO) {
-      var filaEd = parseInt(edO.getAttribute('data-row'), 10);
-      var trEd = edO.closest('tr');
-      var origEd = (state.rows || []).filter(function (r) { return r._row === filaEd; })[0] || {};
-      var recEd = {};
-      state.headers.forEach(function (h2) { recEd[h2] = (origEd[h2] != null) ? origEd[h2] : ''; });
-      trEd.querySelectorAll('.ed-campo').forEach(function (inp) {
-        var col = inp.getAttribute('data-col');
-        if (col) recEd[col] = inp.value;
-      });
-      edO.disabled = true; edO.textContent = 'Guardando...';
-      sellarFecha(recEd);
-      api('update', { token: state.token, key: state.key, row: filaEd, record: recEd })
-        .then(function () { toast('Producto corregido.', 'ok'); filaEditando = -1; loadArea(); })
-        .catch(function (er) { fail(er); edO.disabled = false; edO.textContent = 'Guardar'; });
-      return;
-    }
+    // Este manejador es el de la tabla base: ordenar y editar renglón. Lo de las
+    // tarjetas (abrir CxC, entradas, editar producto) vive en el manejador de
+    // arriba. Estaba duplicado aquí: dos escuchas sobre el mismo tableWrap, así
+    // que cada clic en una tarjeta de CxC la abría y la volvía a cerrar.
     var t = e.target;
     var th = t.closest ? t.closest('th.sortable') : null;
     if (th) {
