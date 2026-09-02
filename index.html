@@ -1002,7 +1002,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-311</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-312</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -2204,8 +2204,6 @@
       return cRef && String(r[cRef] || '').trim() === folio;
     });
     if (!versionFilas.length) { toast('No encontré los renglones de ' + folio + '.', 'err'); return; }
-    var cCliV = findHeaderByName('Cliente');
-    var clienteActual = cCliV ? String(versionFilas[0][cCliV] || '').trim() : '';
 
     var h = '<div class="s" style="color:var(--slate);margin-bottom:12px">' +
       '<b>' + esc(folio) + ' se queda como está.</b> Esto crea una cotización nueva con su ' +
@@ -2242,21 +2240,6 @@
       '</div>' +
       listasDelCatalogo() +
       '<div id="vnNuevos" style="margin-top:10px"></div></div>' +
-      // Para quién es. El guardado ya mandaba el cliente nuevo al servidor, pero
-      // esta parte nunca se dibujó: la opción existía y no se veía, así que toda
-      // versión nueva nacía con el cliente de la anterior.
-      '<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">' +
-      '<div class="s" style="color:var(--slate);margin-bottom:8px"><b>¿Para quién es?</b></div>' +
-      '<label class="s" style="display:block;margin-bottom:4px;cursor:pointer">' +
-        '<input type="radio" name="vnQuien" value="mismo" checked style="margin-right:6px">' +
-        'El mismo cliente' + (clienteActual ? ': ' + esc(clienteActual) : '') + '</label>' +
-      '<label class="s" style="display:block;cursor:pointer">' +
-        '<input type="radio" name="vnQuien" value="otro" style="margin-right:6px">' +
-        'Otro cliente</label>' +
-      '<div id="vnOtroCli" style="display:none;margin-top:8px">' +
-        '<div class="fld" style="max-width:320px;margin:0"><label>Cliente</label>' +
-        '<input id="vnCliente" list="vnClientes" placeholder="nombre del cliente"></div>' +
-        datalistClientes('vnClientes') + '</div></div>' +
       '<div class="s" style="color:var(--muted);margin-top:10px">' + esc(folio) + ' no se toca: ' +
       'se queda tal como está, por si el cliente se decide por ella. Más adelante, cuando sepas ' +
       'cuál se quedó, marca la otra como Rechazada para que no cuenten las dos en la conversión. ' +
@@ -2296,15 +2279,6 @@
     if (quitar.length === versionFilas.length && !versionAgregados.length) {
       toast('No puedes quitar todos los productos sin agregar otro.', 'err'); return;
     }
-    // Para quién es la versión nueva. Se valida antes de apagar el botón: si se
-    // valida después, un nombre vacío deja el botón en "Creando…" para siempre.
-    var quien = document.querySelector('input[name="vnQuien"]:checked');
-    var clienteNuevo = '';
-    if (quien && quien.value === 'otro') {
-      var elc = document.getElementById('vnCliente');
-      clienteNuevo = elc ? elc.value.trim() : '';
-      if (!clienteNuevo) { toast('Escribe el nombre del otro cliente.', 'err'); return; }
-    }
     var btn = document.getElementById('aventaOk');
     btn.disabled = true; btn.textContent = 'Creando…';
     // Los productos nuevos van con los nombres de columna de la hoja
@@ -2319,6 +2293,14 @@
       if (cPre) rec[cPre] = x.precio;
       return rec;
     });
+    // Para quién es la versión nueva
+    var quien = document.querySelector('input[name="vnQuien"]:checked');
+    var clienteNuevo = '';
+    if (quien && quien.value === 'otro') {
+      var elc = document.getElementById('vnCliente');
+      clienteNuevo = elc ? elc.value.trim() : '';
+      if (!clienteNuevo) { toast('Escribe el nombre del otro cliente.', 'err'); return; }
+    }
     api('dup-cot', { token: state.token, folio: versionDe, quitar: quitar,
                      cambios: cambios, agregar: agregar, cliente: clienteNuevo })
       .then(function (d) {
@@ -2421,16 +2403,13 @@
         '<div class="fld" style="width:260px"><label>Cuenta</label>' +
           (bancoCuentas.length
             ? '<select id="bkCuenta">' + bancoCuentas.map(function (c) {
-                // Antes las cuentas sin número iban deshabilitadas y no se podían
-                // elegir. El número solo sirve para afinar el aviso de "ya
-                // capturado"; no hace falta para leer el archivo. Una tarjeta como
-                // AMEX no tiene por qué traerlo y quedaba fuera sin razón.
-                return '<option value="' + esc(c.numero || c.nombre) + '" data-num="' +
-                  (c.esBancaria ? '1' : '0') + '">' + esc(c.nombre) + '</option>';
+                return '<option value="' + esc(c.numero || c.nombre) + '"' +
+                  (c.esBancaria ? '' : ' disabled') + '>' + esc(c.nombre) +
+                  (c.esBancaria ? '' : ' — sin número de cuenta') + '</option>';
               }).join('') + '</select>' +
-              '<div class="s" style="color:var(--muted);margin-top:4px" id="bkCtaNota">' +
-                fmtNum(bancoCuentas.length) + ' cuentas' +
-                (bancoCuentasDe ? ' · de ' + esc(bancoCuentasDe) : '') + '</div>'
+              '<div class="s" style="color:var(--muted);margin-top:4px">' +
+                fmtNum(bancoCuentas.filter(function (c) { return c.esBancaria; }).length) +
+                ' cuentas' + (bancoCuentasDe ? ' · de ' + esc(bancoCuentasDe) : '') + '</div>'
             : '<input id="bkCuenta" placeholder="número de cuenta">' +
               '<div class="s" style="color:var(--amber);margin-top:4px">No se encontró la ' +
               'lista de cuentas en el catálogo</div>') + '</div>' +
@@ -2443,27 +2422,6 @@
       '<div id="bkAviso" style="margin-top:14px"></div></div>' +
       '<div id="bkResultado" style="margin-top:18px"></div>';
     document.getElementById('bkLeer').addEventListener('click', leerArchivoBanco);
-    var selCta = document.getElementById('bkCuenta');
-    if (selCta && selCta.tagName === 'SELECT') {
-      var notaCta = function () {
-        var op = selCta.options[selCta.selectedIndex];
-        var caja = document.getElementById('bkCtaNota');
-        if (!op || !caja) return;
-        if (op.getAttribute('data-num') === '1') {
-          caja.style.color = 'var(--muted)';
-          caja.innerHTML = fmtNum(bancoCuentas.length) + ' cuentas' +
-            (bancoCuentasDe ? ' · de ' + esc(bancoCuentasDe) : '');
-        } else {
-          caja.style.color = 'var(--amber)';
-          caja.innerHTML = 'Esta cuenta no trae número en el catálogo. El archivo se ' +
-            'lee igual, pero el aviso de "ya capturado" solo compara fecha y monto, no ' +
-            'la cuenta. Para que compare por cuenta, agrégale el número al nombre en la ' +
-            'columna <b>Cuenta</b> del catálogo.';
-        }
-      };
-      selCta.addEventListener('change', notaCta);
-      notaCta();
-    }
   }
 
   function leerArchivoBanco() {
@@ -2529,7 +2487,8 @@
         '<div class="s" style="color:#A13A2C">' + fmtNum(salen.length) + ' movimientos</div></div>' +
       '</div>' +
       '<div class="mes-chips" style="margin-bottom:14px">' +
-      '<span class="mes-chip on">' + fmtNum(d.movimientos) + ' movimientos en el PDF</span>' +
+      '<span class="mes-chip on">' + fmtNum(d.movimientos) + ' movimientos' +
+        (d.fuente && d.fuente !== 'BBVA' ? ' de ' + esc(d.fuente) : ' en el PDF') + '</span>' +
       '<span class="mes-chip">' + fmtNum(d.yaCapturados) + ' ya estaban capturados</span>' +
       '<span class="mes-chip">' + fmtNum(d.nuevos) + ' por capturar</span>' +
       (cu.capturadoSinBanco
@@ -3315,7 +3274,7 @@
     return n > 0 ? n : null;
   }
 
-  // versionAgregados se declara junto a versionDe y versionFilas, más arriba.
+  var versionAgregados = [];
   function pintarAgregadosVersion() {
     var el = document.getElementById('vnNuevos');
     if (!el) return;
@@ -3425,6 +3384,162 @@
       })
       .catch(fail)
       .then(function () { btn.disabled = false; btn.textContent = 'Cancelar el folio'; });
+  }
+
+  // ===== Leads en viñetas =====
+  // Estaban en filas: doce columnas apretadas donde no se distinguía lo urgente.
+  // Lo que importa de un lead es quién es, por dónde llegó y en qué va.
+  function renderLeads(rows) {
+    var cCli = findHeaderByName('Cliente') || findHeaderByName('Nombre');
+    if (!cCli) return null;
+    var cFec = findHeaderByName('Fecha') || findHeaderByName('Fecha de contacto');
+    var cVia = findHeaderByName('Forma de Contacto') || findHeaderByName('Cómo llegó') ||
+               findHeaderByName('Como llego') || findHeaderByName('Canal');
+    var cSt = findHeaderByName('Status') || findHeaderByName('Estatus');
+    var cTel = findHeaderByName('Teléfono') || findHeaderByName('Telefono');
+    var cMail = findHeaderByName('Correo') || findHeaderByName('Email');
+    var cDesp = findHeaderByName('Despacho');
+    var cTipo = findHeaderByName('Tipo de cliente') || findHeaderByName('TIPO CLIENTE');
+    var cNota = findHeaderByName('Notas') || findHeaderByName('Comentarios');
+    var cCiu = findHeaderByName('Ciudad');
+
+    // Lo más nuevo arriba
+    var lista = rows.slice().sort(function (a, b) {
+      return (parseDate(b[cFec]) || 0) - (parseDate(a[cFec]) || 0);
+    });
+
+    var h = '<div class="cot-grid">';
+    lista.forEach(function (r, i) {
+      var st = cSt ? String(r[cSt] || '').trim() : '';
+      var col = /gan|cerr|vend|client/i.test(st) ? 'var(--success)'
+              : (/perd|no interes|declin|rechaz/i.test(st) ? 'var(--danger)'
+              : (/segu|contact|proceso|abiert/i.test(st) ? 'var(--accent-ink)' : 'var(--muted)'));
+      var datos = [];
+      if (cTel && r[cTel]) datos.push(String(r[cTel]));
+      if (cMail && r[cMail]) datos.push(String(r[cMail]));
+      if (cCiu && r[cCiu]) datos.push(String(r[cCiu]));
+      h += '<div class="cot-card open"><div class="cot-head" style="cursor:default">' +
+        '<span class="cot-folio" style="font-size:15px">' +
+          esc(String(r[cCli] || 'Sin nombre')) + '</span>' +
+        (st ? '<span class="cot-st-pill" style="color:' + col + '">' + esc(st) + '</span>' : '') +
+        '<span class="cot-meta">' +
+          (cVia && r[cVia] ? esc(String(r[cVia])) : 'sin canal') +
+          (cFec && r[cFec] ? ' · ' + esc(formatDateCell(r[cFec])) : '') +
+          (cDesp && r[cDesp] ? ' · ' + esc(String(r[cDesp])) : '') +
+          (cTipo && r[cTipo] ? ' · ' + esc(String(r[cTipo])) : '') +
+        '</span></div>' +
+        (datos.length || (cNota && r[cNota])
+          ? '<div class="cot-body">' +
+            (datos.length ? '<div class="s" style="color:var(--slate)">' +
+              esc(datos.join('  ·  ')) + '</div>' : '') +
+            (cNota && r[cNota] ? '<div class="s" style="color:var(--muted);margin-top:4px;' +
+              'white-space:normal">' + esc(String(r[cNota]).slice(0, 220)) + '</div>' : '') +
+            '</div>' : '') +
+        '<div class="cot-acciones" style="padding:0 14px 12px">' +
+          '<button class="edit-btn" data-row="' + r._row + '">Editar</button>' +
+        '</div></div>';
+    });
+    return h + '</div>';
+  }
+
+  // ===== Colaboradores en viñetas =====
+  function renderColaboradores(rows) {
+    var cNom = findHeaderByName('Nombre') || findHeaderByName('Colaborador') ||
+               findHeaderByName('Nombre del colaborador');
+    if (!cNom) return null;
+    var cNum = findHeaderByName('No. Identificación') || findHeaderByName('No. Identificacion') ||
+               findHeaderByName('ID') || findHeaderByName('Número');
+    var cPue = findHeaderByName('Puesto');
+    var cArea = findHeaderByName('Área') || findHeaderByName('Area') ||
+                findHeaderByName('Departamento');
+    var cSt = findHeaderByName('Status') || findHeaderByName('Estatus') ||
+              findHeaderByName('Estado');
+    var cEnt = findHeaderByName('Fecha de entrada') || findHeaderByName('Fecha de Inicio') ||
+               findHeaderByName('Fecha de ingreso') || findHeaderByName('Fecha de alta') ||
+               findHeaderByName('Fecha entrada IMSS');
+    var cSal = findHeaderByName('Fecha de salida') || findHeaderByName('Fecha de baja');
+    var cTel = findHeaderByName('Teléfono') || findHeaderByName('Telefono');
+    var cMail = findHeaderByName('Correo') || findHeaderByName('Email');
+    var cSue = findHeaderByName('Sueldo') || findHeaderByName('Sueldo bruto');
+    var cJefe = findHeaderByName('Jefe directo') || findHeaderByName('Reporta a');
+
+    // Primero los activos, y dentro de cada grupo por área
+    // Activo o no: manda la columna Status si existe; si no, la fecha de salida.
+    // En esta hoja el status dice "ACTIVO" y "NO ACTIVO", así que el orden
+    // importa: "no activo" contiene "activo" y hay que descartarlo primero.
+    var esBaja = function (r) {
+      var st = cSt ? norm(r[cSt]) : '';
+      if (st) return /^(no activo|inactivo|baja|no|salio|salió)$/.test(st) ||
+                    /\bbaja\b|\bno activ/.test(st);
+      return !!(cSal && String(r[cSal] || '').trim());
+    };
+    var lista = rows.slice().sort(function (a, b) {
+      var aBaja = esBaja(a), bBaja = esBaja(b);
+      if (aBaja !== bBaja) return aBaja ? 1 : -1;
+      var aa = cArea ? String(a[cArea] || '') : '';
+      var bb = cArea ? String(b[cArea] || '') : '';
+      return aa.localeCompare(bb, 'es') ||
+             String(a[cNom] || '').localeCompare(String(b[cNom] || ''), 'es');
+    });
+
+    var h = '<div class="cot-grid">';
+    // Cuánto lleva cada quien, para poder decirlo en la tarjeta
+    var antiguedad = function (d) {
+      if (!d) return '';
+      var hoy = new Date();
+      var meses = (hoy.getFullYear() - d.getFullYear()) * 12 + (hoy.getMonth() - d.getMonth());
+      if (meses < 1) return 'recién entró';
+      if (meses < 12) return meses + (meses === 1 ? ' mes' : ' meses');
+      var a = Math.floor(meses / 12), m2 = meses % 12;
+      return a + (a === 1 ? ' año' : ' años') + (m2 ? ' y ' + m2 + (m2 === 1 ? ' mes' : ' meses') : '');
+    };
+    lista.forEach(function (r) {
+      var baja = esBaja(r);
+      var st = baja ? 'Baja' : 'Activo';
+      var col = baja ? 'var(--muted)' : 'var(--success)';
+      var contacto = [];
+      if (cTel && r[cTel]) contacto.push(String(r[cTel]));
+      if (cMail && r[cMail]) contacto.push(String(r[cMail]));
+      var dEnt = (cEnt && r[cEnt]) ? parseDate(r[cEnt]) : null;
+      var fEnt = dEnt ? new Date(Math.floor(dEnt / 10000),
+        Math.floor(dEnt / 100) % 100 - 1, dEnt % 100) : null;
+      // Las iniciales, para que cada tarjeta se distinga de un vistazo
+      var nom = String(r[cNom] || '').trim();
+      var ini = nom.split(/\s+/).filter(Boolean).slice(0, 2)
+        .map(function (p) { return p.charAt(0).toUpperCase(); }).join('');
+      h += '<div class="cot-card open"' + (baja ? ' style="opacity:.55"' : '') + '>' +
+        '<div class="cot-head" style="cursor:default;gap:12px">' +
+        '<span style="flex:none;width:38px;height:38px;border-radius:50%;display:flex;' +
+          'align-items:center;justify-content:center;font-weight:700;font-size:13px;' +
+          'background:' + (baja ? 'var(--paper)' : 'var(--accent-soft)') + ';color:' +
+          (baja ? 'var(--muted)' : 'var(--accent-ink)') + '">' + esc(ini || '?') + '</span>' +
+        '<div style="flex:1;min-width:0">' +
+          '<div class="cot-folio" style="font-size:15px">' + esc(nom) + '</div>' +
+          '<div class="cot-meta" style="margin:0">' +
+            (cPue && r[cPue] ? esc(String(r[cPue])) : 'sin puesto') +
+            (cArea && r[cArea] ? ' · ' + esc(String(r[cArea])) : '') +
+            (cNum && r[cNum] ? ' · núm. ' + esc(String(r[cNum])) : '') +
+          '</div>' +
+        '</div>' +
+        '<span class="cot-st-pill" style="color:' + col + '">' + esc(st) + '</span>' +
+        '</div>' +
+        '<div class="cot-body">' +
+          '<div class="s" style="color:var(--slate)">' +
+            (fEnt ? 'Entró el ' + esc(formatDateCell(r[cEnt])) +
+                    (!baja ? '  ·  lleva ' + antiguedad(fEnt) : '') : 'Sin fecha de entrada') +
+            (baja && cSal && r[cSal] ? '  ·  salió el ' + esc(formatDateCell(r[cSal])) : '') +
+            (cJefe && r[cJefe] ? '  ·  reporta a ' + esc(String(r[cJefe])) : '') +
+            (cSue && r[cSue] && !esSoloLectura(state.key)
+              ? '  ·  ' + esc(formatMoney(toNum(r[cSue]))) : '') +
+          '</div>' +
+          (contacto.length ? '<div class="s" style="color:var(--muted);margin-top:4px">' +
+            esc(contacto.join('  ·  ')) + '</div>' : '') +
+        '</div>' +
+        '<div class="cot-acciones" style="padding:0 14px 12px">' +
+          '<button class="edit-btn" data-row="' + r._row + '">Editar</button>' +
+        '</div></div>';
+    });
+    return h + '</div>';
   }
 
   function loadInvProv() {
@@ -4437,29 +4552,50 @@
       };
       var neto = t.netoMensual || 0, costo = t.costoMensual || 0;
       var carga = (neto && costo && costo > neto) ? Math.round(((costo - neto) / neto) * 100) : 0;
+      // Cuatro números, no nueve. Lo demás iba repetido: el neto, la carga
+      // social y el costo por persona son formas de ver el mismo costo, así que
+      // van como subtítulo de la tarjeta a la que pertenecen.
       var h = '<div class="kpi-grid" style="margin-bottom:18px">' +
-        kpi('Plantilla', fmtNum(t.activos), 'personas activas', true) +
+        kpi('Plantilla', fmtNum(t.activos), 'personas activas · ' +
+            fmtNum(t.altasAnio) + ' altas y ' + fmtNum(t.bajasAnio) + ' bajas en ' + d.anio, true) +
         kpi('Costo mensual', esc(fmtMoneyShort(costo)),
+            esc(fmtMoneyShort(neto)) + ' de neto' + (carga ? ' · ' + carga + '% de carga social' : '')) +
+        kpi('Por persona', esc(fmtMoneyShort(t.activos ? costo / t.activos : 0)),
             t.costoSegunNomina != null
               ? 'promedio de ' + fmtNum(t.mesesPagados) + ' meses pagados'
               : 'según la lista de colaboradores') +
-        kpi('Neto mensual', esc(fmtMoneyShort(neto)), 'lo que reciben') +
-        kpi('Costo por persona', esc(fmtMoneyShort(t.activos ? costo / t.activos : 0)), 'promedio') +
-        (carga ? kpi('Carga social', carga + '%', 'sobre el neto') : '') +
-        kpi('Altas ' + d.anio, fmtNum(t.altasAnio), 'entraron este año') +
-        kpi('Bajas ' + d.anio, fmtNum(t.bajasAnio), 'salieron este año') +
-        kpi('Rotación', fmtNum(t.rotacion) + '%', 'bajas sobre plantilla') +
-        (t.nominaPagada != null
-          ? kpi('Nómina pagada', esc(fmtMoneyShort(t.nominaPagada)), 'en lo que va del año') : '') +
+        kpi('Rotación', fmtNum(t.rotacion) + '%',
+            'bajas sobre plantilla' +
+            (t.nominaPagada != null ? ' · ' + esc(fmtMoneyShort(t.nominaPagada)) +
+             ' pagados en el año' : '')) +
         '</div>';
 
       // Gráficas
       var gr = [];
       if ((d.porArea || []).length) {
-        gr.push(gBarras('Costo mensual por área', d.porArea.map(function (a) {
-          return { etiqueta: a.area, valor: a.costo }; }), fmtMoneyShort));
-        gr.push(gBarras('Personas por área', d.porArea.map(function (a) {
-          return { etiqueta: a.area, valor: a.gente }; })));
+        // Antes eran dos gráficas separadas, costo y gente, con las mismas
+        // etiquetas. En una tabla se leen juntas y además se ve el costo por
+        // persona de cada área, que es lo que de verdad compara.
+        var totCosto = d.porArea.reduce(function (a, x) { return a + (x.costo || 0); }, 0) || 1;
+        gr.push('<div class="g-panel"><div class="g-titulo">Por área</div>' +
+          '<table class="mini-table"><thead><tr><th>Área</th>' +
+          '<th style="text-align:right">Gente</th>' +
+          '<th style="text-align:right">Costo</th>' +
+          '<th style="text-align:right">Por persona</th>' +
+          '<th style="width:70px">% del total</th></tr></thead><tbody>' +
+          d.porArea.slice().sort(function (a, b) { return (b.costo || 0) - (a.costo || 0); })
+            .map(function (a) {
+              var pct = ((a.costo || 0) / totCosto) * 100;
+              return '<tr><td>' + esc(a.area) + '</td>' +
+                '<td class="num">' + fmtNum(a.gente) + '</td>' +
+                '<td class="num">' + esc(formatMoney(a.costo)) + '</td>' +
+                '<td class="num">' + esc(fmtMoneyShort(a.gente ? a.costo / a.gente : 0)) + '</td>' +
+                '<td><div style="display:flex;align-items:center;gap:5px">' +
+                  '<div style="flex:1;height:7px;background:var(--paper);border-radius:4px">' +
+                    '<div style="width:' + pct.toFixed(0) + '%;height:7px;border-radius:4px;' +
+                    'background:var(--accent-ink)"></div></div>' +
+                  '<span class="s">' + pct.toFixed(0) + '%</span></div></td></tr>';
+            }).join('') + '</tbody></table></div>');
       }
       if (d.nomina && (d.nomina.porMes || []).length) {
         gr.push(gColumnas('Nómina pagada por mes', d.nomina.porMes.slice().reverse().map(function (m) {
@@ -5479,7 +5615,6 @@
 
   // ===== Calendario de logística =====
   var logMes = null, logAnio = null, logDiaAbierto = null;
-
   // ===== Estados financieros: se arman aquí, no se leen como tabla =====
   // La tabla cruda de "un renglón por año, mes y concepto" sirve para guardar y es
   // ilegible para leer. Esta pantalla la vuelve el estado de siempre: sangría por
@@ -6299,7 +6434,8 @@
       bs.textContent = (state.key === 'op_revisar') ? 'Volver a revisar' : 'Recalcular stock';
       document.getElementById('driveProvBtn').style.display = (state.key === 'proveedores') ? '' : 'none';
       var cvb = document.getElementById('catViewBtn');
-      cvb.style.display = ['inventario','cotizaciones','ventas_registro','prov_pedidos','fin_cxc','op_envios'].indexOf(state.key) !== -1 ? '' : 'none';
+      cvb.style.display = ['inventario','cotizaciones','ventas_registro','prov_pedidos',
+        'fin_cxc','op_envios','leads','rh_personal'].indexOf(state.key) !== -1 ? '' : 'none';
       cvb.textContent = catalogoAgrupado ? 'Ver como tabla' : 'Ver por tarjetas';
       if (!data.connected) {
         document.getElementById('tableWrap').innerHTML =
@@ -7872,6 +8008,8 @@
     var ticket = ops ? venta / ops : 0;
     var margen = venta ? (util / venta) : 0;
     var ventaP = suma(Vp, 'venta'), utilP = suma(Vp, 'util'), uniP = suma(Vp, 'u');
+    // Lo bruto y el descuento, para poder mostrar cuánto se está regalando
+    var brutaTotal = suma(V, 'bruta'), descTotal = suma(V, 'desc');
     var h = '';
 
     // --- Filtro de fechas ---
@@ -7895,10 +8033,18 @@
 
     // --- KPIs (Total con envío sin impuestos) ---
     h += '<div class="dash-section"><h3>Resumen comercial · Total con envío sin impuestos</h3><div class="kpi-grid">' +
-      '<div class="kpi dark"><div class="k">Ventas totales</div><div class="v" title="' + esc(formatMoney(venta)) + '">' +
+      // Se llama VENTAS NETAS a propósito: es lo mismo que en el estado de
+      // resultados —subtotal menos descuentos más envíos, sin IVA— para que los
+      // dos números cuadren y nadie tenga que preguntar cuál es cuál.
+      '<div class="kpi dark"><div class="k">Ventas netas</div><div class="v" title="' + esc(formatMoney(venta)) + '">' +
         esc(fmtMoneyShort(venta)) + '</div>' +
-        (cmpOn ? variacionHTML(venta, ventaP) : '<div class="s">' + fmtNum(ops) + ' registros</div>') +
+        (cmpOn ? variacionHTML(venta, ventaP) : '<div class="s">' + fmtNum(ops) + ' registros · sin IVA</div>') +
         (metasOn ? cumplimientoHTML(venta, metaV) : '') + '</div>' +
+      (descTotal > 0
+        ? '<div class="kpi"><div class="k">Descuento otorgado</div><div class="v" ' +
+          'title="' + esc(formatMoney(descTotal)) + '">' + esc(fmtMoneyShort(descTotal)) + '</div>' +
+          '<div class="s">' + (brutaTotal ? ((descTotal / brutaTotal) * 100).toFixed(1) + '% de lo bruto' : '') +
+          '</div></div>' : '') +
       '<div class="kpi"><div class="k">Unidades vendidas</div><div class="v">' + fmtNum(unidades) + '</div>' +
         (cmpOn ? variacionHTML(unidades, uniP) : '') + '</div>' +
       '<div class="kpi"><div class="k">Ticket promedio</div><div class="v" title="' + esc(formatMoney(ticket)) + '">' +
@@ -7917,6 +8063,53 @@
     }
 
     // --- Ventas por mes / categoría / vendedor ---
+    // Margen por categoría: cuánto se vendió, cuánto dejó y qué porcentaje es.
+    // Ordenado por porcentaje, no por pesos.
+    function margenPorCategoria(lineas) {
+      var g = {};
+      (lineas || []).forEach(function (l) {
+        if (l.util == null) return;                 // sin utilidad no se puede
+        var k = l.tipo || 'Sin categorizar';
+        if (!g[k]) g[k] = { venta: 0, util: 0, n: 0 };
+        g[k].venta += (l.venta || 0);
+        g[k].util += (l.util || 0);
+        g[k].n++;
+      });
+      var lista = Object.keys(g).map(function (k) {
+        var x = g[k];
+        return { tipo: k, venta: x.venta, util: x.util, n: x.n,
+                 pct: x.venta ? (x.util / x.venta) * 100 : null };
+      }).filter(function (x) { return x.venta > 0 && x.pct !== null; });
+      if (!lista.length) {
+        return '<div class="state" style="padding:20px 0">No hay utilidad capturada ' +
+               'para calcular el margen.</div>';
+      }
+      lista.sort(function (a, b) { return b.pct - a.pct; });
+      var max = Math.max.apply(null, lista.map(function (x) { return x.pct; }));
+      return '<table class="mini-table" style="table-layout:fixed;width:100%"><thead><tr>' +
+        '<th style="width:26%">Categoría</th>' +
+        '<th style="width:22%;text-align:right">Vendido</th>' +
+        '<th style="width:22%;text-align:right">Utilidad</th>' +
+        '<th style="width:30%;text-align:right">Margen</th></tr></thead><tbody>' +
+        lista.map(function (x) {
+          var ancho = max ? Math.max(3, (x.pct / max) * 100) : 0;
+          var col = x.pct >= 50 ? 'var(--success)' : (x.pct >= 30 ? 'var(--accent-ink)' : 'var(--amber)');
+          return '<tr><td>' + esc(x.tipo) + '</td>' +
+            '<td class="num" style="white-space:nowrap">' + esc(formatMoney(x.venta)) + '</td>' +
+            '<td class="num" style="white-space:nowrap">' + esc(formatMoney(x.util)) + '</td>' +
+            // El porcentaje va primero y la barra después: si algo se corta que
+            // sea la barra, no el número.
+            '<td><div style="display:flex;align-items:center;gap:8px;justify-content:flex-end">' +
+              '<b style="color:' + col + ';font-size:12.5px;flex:none;min-width:46px;' +
+                'text-align:right">' + x.pct.toFixed(1) + '%</b>' +
+              '<div style="flex:1;min-width:40px;height:8px;background:var(--paper);' +
+                'border-radius:4px;overflow:hidden">' +
+                '<div style="width:' + ancho.toFixed(0) + '%;height:8px;border-radius:4px;' +
+                'background:' + col + '"></div></div>' +
+            '</div></td></tr>';
+        }).join('') + '</tbody></table>';
+    }
+
     function barsX(dataC, dataP, campo, valfield, opts) {
       var oc = agruparSuma(dataC, campo, valfield);
       return cmpOn ? barsCompareHTML(oc, agruparSuma(dataP, campo, valfield), opts) : barsHTML(oc, opts);
@@ -7927,6 +8120,10 @@
                : chartHTML(porMesSuma(V, 'venta'), { money: true })) + '</div></div>' +
       '<div class="panel"><h4>Ventas por categoría de producto</h4><div class="panel-body">' +
         barsX(V, Vp, 'tipo', 'venta', { money: true, limit: 20 }) + '</div></div>' +
+      // En pesos gana el que más se vende; en porcentaje gana el que más deja por
+      // peso vendido. No son el mismo y la decisión de qué empujar sale del segundo.
+      '<div class="panel"><h4>Qué deja más, por categoría</h4>' +
+        '<div class="panel-body">' + margenPorCategoria(V) + '</div></div>' +
       '<div class="panel"><h4>Ventas por vendedor</h4><div class="panel-body">' +
         barsX(V, Vp, 'vend', 'venta', { money: true, limit: 20 }) + '</div></div>' +
       '</div></div>';
@@ -8002,6 +8199,10 @@
           (cmpOn ? variacionHTML(nQ, Qp.length) : '<div class="s">' + tasaLQ.toFixed(0) + '% de los leads</div>') + '</div>' +
         '<div class="kpi"><div class="k">Vendidas</div><div class="v" style="color:var(--success)">' + fmtNum(nGan) + '</div>' +
           '<div class="s">' + tasaQ.toFixed(0) + '% de las cerradas</div></div>' +
+        // Cuántas se rechazaron y cuánto dinero se fue con ellas
+        '<div class="kpi"><div class="k">Rechazadas</div><div class="v" style="color:var(--danger)">' +
+          fmtNum(nPer) + '</div><div class="s" title="' + esc(formatMoney(mto(Q, 'rechazada'))) +
+          '">' + esc(fmtMoneyShort(mto(Q, 'rechazada'))) + ' que no se cerraron</div></div>' +
         '<div class="kpi"><div class="k">En pipeline</div><div class="v" title="' + esc(formatMoney(mto(Q, 'abierta'))) + '">' +
           esc(fmtMoneyShort(mto(Q, 'abierta'))) + '</div><div class="s">' + fmtNum(nAb) + ' abiertas</div></div>' +
         '</div>';
@@ -8009,7 +8210,8 @@
       var etapasQ = [
         { k: 'Leads', v: L.length, c: 'var(--ink)' },
         { k: 'Cotizaciones', v: nQ, c: 'var(--primary-600)' },
-        { k: 'Vendidas', v: nGan, c: 'var(--success)' }
+        { k: 'Vendidas', v: nGan, c: 'var(--success)' },
+        { k: 'Rechazadas', v: nPer, c: 'var(--danger)' }
       ];
       var baseQ = Math.max(L.length, nQ) || 1;
       var embudoQ = '<div style="display:flex;flex-direction:column;gap:10px">';
@@ -8052,7 +8254,10 @@
     }
 
     // --- Funnel de ventas (bitácora de contactos · pestaña "Montse 2026") ---
-    var fn = d.funnel;
+    // Sale del dashboard a propósito: es un archivo histórico que ya no se
+    // captura, y repetía lo que el embudo comercial ya dice con datos vivos.
+    // El área sigue existiendo en el menú para consultarla.
+    var fn = null;
     if (fn && !fn.ok && fn.motivo) {
       h += '<div class="dash-section"><h3>Funnel de ventas</h3><div class="panel"><div class="panel-body">' +
         '<div class="dash-empty">No se pudo armar el embudo: ' + esc(fn.motivo) + '</div></div></div></div>';
@@ -8976,6 +9181,14 @@
     if ((state.key === 'cotizaciones' || state.key === 'ventas_registro') && catalogoAgrupado) {
       var hq = renderCotizaciones(rows);
       if (hq) { document.getElementById('tableWrap').innerHTML = hq; return; }
+    }
+    if (state.key === 'leads' && catalogoAgrupado) {
+      var hl = renderLeads(rows);
+      if (hl) { document.getElementById('tableWrap').innerHTML = hl; return; }
+    }
+    if (state.key === 'rh_personal' && catalogoAgrupado) {
+      var hc = renderColaboradores(rows);
+      if (hc) { document.getElementById('tableWrap').innerHTML = hc; return; }
     }
     if (state.key === 'op_envios' && catalogoAgrupado) {
       var he = renderEnvios(rows);
@@ -12918,7 +13131,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.01-311';
+    var mia = '2026.09.01-312';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
@@ -13214,11 +13427,55 @@
       filters = []; renderFilterBar(); renderTable();
     }
   });
+  document.getElementById('tableWrap').addEventListener('change', function (e) {
+    var sel = e.target;
+    if (!sel.classList || !sel.classList.contains('cot-status')) return;
+    var folio = sel.getAttribute('data-folio');
+    var cRef = findHeaderByName('No. de Referencia') || findHeaderByName('Folio');
+    sel.disabled = true;
+    api('fill', { token: state.token, key: state.key,
+                  match: { col: cRef, value: folio }, set: { 'Status': sel.value } })
+      .then(function (out) {
+        toast('Status de ' + folio + ' cambiado a "' + sel.value + '".', 'ok');
+        loadArea();
+      })
+      .catch(function (err) { fail(err); sel.disabled = false; });
+  });
   document.getElementById('tableWrap').addEventListener('click', function (e) {
-    // Este manejador es el de la tabla base: ordenar y editar renglón. Lo de las
-    // tarjetas (abrir CxC, entradas, editar producto) vive en el manejador de
-    // arriba. Estaba duplicado aquí: dos escuchas sobre el mismo tableWrap, así
-    // que cada clic en una tarjeta de CxC la abría y la volvía a cerrar.
+    // Editar un producto dentro de la tarjeta de una venta o cotización
+    var cx = e.target.closest('[data-cxc]');
+    if (cx) {
+      var kx = cx.getAttribute('data-cxc');
+      cxcAbierta[kx] = !cxcAbierta[kx];
+      renderTable();
+      return;
+    }
+    var lleg = e.target.closest('.llegaron-btn');
+    if (lleg) { abrirEntrada(lleg.getAttribute('data-ped')); return; }
+    var addF = e.target.closest('.add-a-folio');
+    if (addF) { agregarAFolio(addF.getAttribute('data-folio')); return; }
+    var edA = e.target.closest('.ed-abrir');
+    if (edA) { filaEditando = parseInt(edA.getAttribute('data-row'), 10); renderTable(); return; }
+    var edN = e.target.closest('.ed-no');
+    if (edN) { filaEditando = -1; renderTable(); return; }
+    var edO = e.target.closest('.ed-ok');
+    if (edO) {
+      var filaEd = parseInt(edO.getAttribute('data-row'), 10);
+      var trEd = edO.closest('tr');
+      var origEd = (state.rows || []).filter(function (r) { return r._row === filaEd; })[0] || {};
+      var recEd = {};
+      state.headers.forEach(function (h2) { recEd[h2] = (origEd[h2] != null) ? origEd[h2] : ''; });
+      trEd.querySelectorAll('.ed-campo').forEach(function (inp) {
+        var col = inp.getAttribute('data-col');
+        if (col) recEd[col] = inp.value;
+      });
+      edO.disabled = true; edO.textContent = 'Guardando...';
+      sellarFecha(recEd);
+      api('update', { token: state.token, key: state.key, row: filaEd, record: recEd })
+        .then(function () { toast('Producto corregido.', 'ok'); filaEditando = -1; loadArea(); })
+        .catch(function (er) { fail(er); edO.disabled = false; edO.textContent = 'Guardar'; });
+      return;
+    }
     var t = e.target;
     var th = t.closest ? t.closest('th.sortable') : null;
     if (th) {
