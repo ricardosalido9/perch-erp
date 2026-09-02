@@ -1007,7 +1007,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-316</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-318</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1278,6 +1278,7 @@
     fin_flujo:           'Flujo de efectivo: un renglón por año, mes y concepto.',
     fin_balance:         'Balance general: saldos por año, mes y concepto.',
     fac_comp_emitidos:   'Complementos de pago emitidos, como los descargó el SAT.',
+    fin_bancos:          'Cuánto hay en cada cuenta: arranque más entradas menos salidas.',
     rh_resumen:          'La plantilla de un vistazo: costo, altas, bajas y rotación.',
     rh_personal:         'Quién trabaja aquí, desde cuándo y bajo qué esquema.',
     rh_nomina:           'Lo que se paga cada periodo, con sus deducciones.',
@@ -1302,7 +1303,7 @@
     fin_cxc:             'Saldos por cobrar de cada pedido.',
     fin_ingresos:        'Cobros recibidos, ligados al folio del pedido.'
   };
-  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'fac_control', 'cfdi_control', 'cfdi_prov', 'prov_razon', 'rh_resumen', 'fin_gastos_op', 'fin_efectivo', 'fac_impuestos', 'fac_emitidos', 'log_calendario', 'fin_estados', 'fin_flujo', 'fin_balance',
+  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'fac_control', 'cfdi_control', 'cfdi_prov', 'prov_razon', 'rh_resumen', 'fin_gastos_op', 'fin_efectivo', 'fac_impuestos', 'fac_emitidos', 'log_calendario', 'fin_estados', 'fin_flujo', 'fin_balance', 'fin_bancos',
     // El stock sale de pedidos, entradas y salidas: se recalcula, no se edita
     'op_stock', 'op_revisar', 'prov_revision'];
   function esLector() {
@@ -6152,6 +6153,107 @@
       .then(function () { b.disabled = false; b.textContent = 'Cuadrar contra Ingresos y Egresos'; });
   }
 
+  // ===== Bancos y Cajas =====
+  // El saldo no se captura: se calcula desde el libro. Lo único capturado es el
+  // arranque, y la pantalla dice cuáles cuentas todavía no lo tienen.
+  var saldosAnio = new Date().getFullYear(), saldosDesde = 1, saldosHasta = 12;
+  function loadSaldos() {
+    document.getElementById('summary').innerHTML = '';
+    document.getElementById('summary').style.display = 'none';
+    mostrarAlta(false);
+    document.getElementById('count').textContent = '';
+    document.getElementById('tableWrap').innerHTML =
+      '<div class="state" style="padding:50px 0">Sumando los movimientos de cada cuenta…</div>';
+    api('saldos', { token: state.token, anio: saldosAnio,
+                    desde: saldosDesde, hasta: saldosHasta })
+      .then(pintarSaldos)
+      .catch(function (e) {
+        document.getElementById('tableWrap').innerHTML =
+          '<div class="state" style="color:var(--danger);padding:40px 0">' +
+          esc((e && e.message) || 'No se pudo calcular.') +
+          (e && e.pista ? '<div class="s" style="color:var(--slate);margin-top:10px;' +
+            'font-weight:400">' + esc(e.pista) + '</div>' : '') + '</div>';
+      });
+  }
+  function pintarSaldos(d) {
+    var t = d.totales || {};
+    var anios = [];
+    for (var a = new Date().getFullYear(); a >= 2024; a--) anios.push(a);
+    var h = '<div class="est-top"><div>' +
+      '<h3 class="sec-t" style="margin:0">Bancos y Cajas</h3>' +
+      '<div class="s" style="color:var(--muted)">' + esc(d.nota || '') + '</div></div>' +
+      '<div style="display:flex;gap:10px;align-items:flex-end">' +
+      '<div class="fld" style="width:100px;margin:0"><label>Año</label><select id="sdAnio">' +
+        anios.map(function (x) {
+          return '<option value="' + x + '"' + (x === d.anio ? ' selected' : '') + '>' + x + '</option>';
+        }).join('') + '</select></div>' +
+      '<div class="fld" style="width:110px;margin:0"><label>Hasta</label><select id="sdHasta">' +
+        MES_OPTS(d.hasta) + '</select></div></div></div>';
+
+    h += '<div class="kpi-grid" style="margin:12px 0 16px">' +
+      '<div class="kpi dark"><div class="k">Efectivo y bancos</div><div class="v">' +
+        esc(formatMoney(t.efectivo)) + '</div><div class="s">al cierre de ' +
+        esc(MESES_ES[d.hasta - 1]) + '</div></div>' +
+      '<div class="kpi"><div class="k">Se debe en tarjetas</div><div class="v">' +
+        esc(formatMoney(t.deudaTarjetas)) + '</div></div>' +
+      '<div class="kpi"><div class="k">Neto</div><div class="v">' +
+        esc(formatMoney(t.neto)) + '</div><div class="s">efectivo menos tarjetas</div></div>' +
+      '</div>';
+
+    if ((d.sinInicial || []).length) {
+      h += '<div class="aviso-caja" style="margin-bottom:14px"><b>' +
+        fmtNum(d.sinInicial.length) + (d.sinInicial.length === 1
+          ? ' cuenta no tiene saldo de arranque' : ' cuentas no tienen saldo de arranque') +
+        ': ' + esc(d.sinInicial.join(' · ')) + '</b>' +
+        '<div class="s" style="margin-top:4px">Su saldo empieza desde cero, así que el número ' +
+        'de abajo es lo que se movió en el periodo, no lo que hay. Se arregla con un renglón ' +
+        'por cuenta en <b>' + esc(d.dondeVaElInicial) + '</b>: Año, <b>Mes = 0</b>, Concepto con ' +
+        'el nombre exacto de la cuenta, y Monto con el saldo al 31 de diciembre.</div></div>';
+    }
+
+    var ct = d.cuadreTarjeta || {};
+    h += '<div class="cuadre-lado' + (ct.cuadra ? ' ok' : ' mal') + '" style="margin-bottom:16px">' +
+      '<div class="cuadre-cab"><b>Pagos de tarjeta</b><span class="s">' +
+      (ct.cuadra ? 'Cuadra: lo que salió del banco es lo que entró a las tarjetas.'
+                 : 'No cuadra por ' + esc(formatMoney(ct.diferencia)) +
+                   '. O falta subir un estado de cuenta, o un pago quedó a caballo entre dos meses.') +
+      '</span></div><div class="cuadre-nums">' +
+      '<div><div class="k">Salió del banco</div><div class="v">' +
+        esc(formatMoney(ct.salioDelBanco)) + '</div></div>' +
+      '<div><div class="k">Entró a las tarjetas</div><div class="v">' +
+        esc(formatMoney(ct.entroALaTarjeta)) + '</div></div>' +
+      '<div><div class="k">Diferencia</div><div class="v"' +
+        (ct.cuadra ? '' : ' style="color:var(--danger)"') + '>' +
+        esc(formatMoney(ct.diferencia)) + '</div></div></div></div>';
+
+    h += '<div class="est-wrap"><table class="est-tabla"><thead><tr>' +
+      '<th class="est-con">CUENTA</th><th>ARRANQUE</th><th>ENTRADAS</th><th>SALIDAS</th>' +
+      '<th>MOVS</th><th>SALDO</th></tr></thead><tbody>' +
+      (d.cuentas || []).map(function (c) {
+        return '<tr><td class="est-con">' + esc(c.cuenta) +
+            (c.esTarjeta ? ' <span class="s" style="color:var(--muted)">tarjeta</span>' : '') + '</td>' +
+          '<td' + (c.tieneInicial ? '' : ' style="color:var(--amber)"') + '>' +
+            esc(c.tieneInicial ? formatMoney(c.inicial) : 'sin capturar') + '</td>' +
+          '<td>' + esc(formatMoney(c.entradas)) + '</td>' +
+          '<td>' + esc(formatMoney(c.salidas)) + '</td>' +
+          '<td>' + fmtNum(c.movimientos) + '</td>' +
+          '<td class="est-tot' + (c.actual < 0 ? ' neg' : '') + '">' +
+            esc(formatMoney(c.actual)) + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+
+    if (d.sinCuenta) {
+      h += '<div class="s" style="color:var(--amber);margin-top:10px">' + fmtNum(d.sinCuenta) +
+        ' movimientos no traen cuenta y cayeron en "Sin cuenta".</div>';
+    }
+    document.getElementById('tableWrap').innerHTML = h;
+    document.getElementById('sdAnio').addEventListener('change', function () {
+      saldosAnio = +this.value; loadSaldos();
+    });
+    document.getElementById('sdHasta').addEventListener('change', function () {
+      saldosHasta = +this.value; loadSaldos();
+    });
+  }
+
   function loadLogistica() {
     var hoy = new Date();
     if (logMes === null) { logMes = hoy.getMonth() + 1; logAnio = hoy.getFullYear(); }
@@ -6374,6 +6476,7 @@
     if (state.key === 'fin_estados') return loadEstado('resultados');
     if (state.key === 'fin_flujo')   return loadEstado('flujo');
     if (state.key === 'fin_balance') return loadEstado('balance');
+    if (state.key === 'fin_bancos')  return loadSaldos();
     if (state.key === 'log_calendario') return loadLogistica();
     if (state.key === 'fin_banco') return loadSubirBanco();
     if (state.key === 'fac_emitidos') return loadEmitidos();
@@ -13184,7 +13287,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.01-316';
+    var mia = '2026.09.01-318';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
