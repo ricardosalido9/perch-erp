@@ -1002,7 +1002,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-310</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-311</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -5869,6 +5869,43 @@
           h += '</div>';
         });
 
+        // Mes a mes primero: localiza el problema antes de listar conceptos
+        if ((d.porMes || []).length) {
+          h += '<div class="s" style="margin:16px 0 6px"><b>Mes a mes</b> · si la diferencia se ' +
+            'junta en uno o dos meses es captura; si está repartida en todos, falta mapear.</div>' +
+            '<div class="est-wrap"><table class="est-tabla"><thead><tr>' +
+            '<th class="est-con">MES</th><th>ENTRADAS</th><th>INGRESOS</th><th>DIF.</th>' +
+            '<th>SALIDAS</th><th>EGRESOS</th><th>DIF.</th></tr></thead><tbody>' +
+            d.porMes.map(function (m) {
+              var d1 = Math.abs(m.difEntradas) > 1, d2 = Math.abs(m.difSalidas) > 1;
+              return '<tr><td class="est-con">' + esc(MESES_ES[m.mes - 1]) + '</td>' +
+                '<td>' + esc(formatMoney(m.flujoEntradas)) + '</td>' +
+                '<td>' + esc(formatMoney(m.ingresos)) + '</td>' +
+                '<td' + (d1 ? ' class="neg"' : '') + '>' +
+                  esc(d1 ? formatMoney(m.difEntradas) : '\u2013') + '</td>' +
+                '<td>' + esc(formatMoney(m.flujoSalidas)) + '</td>' +
+                '<td>' + esc(formatMoney(m.egresos)) + '</td>' +
+                '<td' + (d2 ? ' class="neg"' : '') + '>' +
+                  esc(d2 ? formatMoney(m.difSalidas) : '\u2013') + '</td></tr>';
+            }).join('') + '</tbody></table></div>';
+        }
+        // De dónde salió cada número, para compararlo contra la pestaña
+        if ((d.fuente || []).length) {
+          h += '<div class="s" style="margin:16px 0 6px"><b>De dónde salió cada suma</b> · ' +
+            'compáralo contra el total que ves en la pestaña.</div>' +
+            '<div class="est-wrap"><table class="est-tabla"><thead><tr>' +
+            '<th class="est-con">HOJA</th><th>SUMA</th><th>COLUMNA</th><th>AGRUPA POR</th>' +
+            '<th>RENGLONES</th><th>ENTRARON</th><th>OTRO AÑO</th><th>FUERA DEL RANGO</th>' +
+            '<th>SIN MONTO</th></tr></thead><tbody>' +
+            d.fuente.map(function (f) {
+              return '<tr><td class="est-con">' + esc(f.hoja) + '</td>' +
+                '<td>' + esc(formatMoney(f.suma)) + '</td>' +
+                '<td>' + esc(f.columnaMonto) + '</td><td>' + esc(f.columnaGrupo) + '</td>' +
+                '<td>' + fmtNum(f.renglones) + '</td><td>' + fmtNum(f.entraron) + '</td>' +
+                '<td>' + fmtNum(f.otroAnio) + '</td><td>' + fmtNum(f.fueraDeRango) + '</td>' +
+                '<td>' + fmtNum(f.sinMonto) + '</td></tr>';
+            }).join('') + '</tbody></table></div>';
+        }
         (d.negativos || []).forEach(function (n) {
           h += '<div class="aviso-caja" style="margin-top:12px"><b>' + esc(n.hoja) +
             ' trae ' + fmtNum(n.n) + (n.n === 1 ? ' renglón negativo' : ' renglones negativos') +
@@ -12881,7 +12918,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.01-310';
+    var mia = '2026.09.01-311';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
