@@ -1002,7 +1002,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-312</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-313</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1272,6 +1272,7 @@
     fin_estados:         'Estado de resultados: un renglón por año, mes y concepto.',
     fin_flujo:           'Flujo de efectivo: un renglón por año, mes y concepto.',
     fin_balance:         'Balance general: saldos por año, mes y concepto.',
+    fac_comp_emitidos:   'Complementos de pago emitidos, como los descargó el SAT.',
     rh_resumen:          'La plantilla de un vistazo: costo, altas, bajas y rotación.',
     rh_personal:         'Quién trabaja aquí, desde cuándo y bajo qué esquema.',
     rh_nomina:           'Lo que se paga cada periodo, con sus deducciones.',
@@ -5867,7 +5868,7 @@
              esc(formatMoney(t.ventas)) + '</div></div>',
            '<div class="sum-card"><div class="k">Canceladas</div><div class="v">' +
              esc(formatMoney(t.canceladas)) + '</div></div>',
-           '<div class="sum-card"><div class="k">Dice el estado</div><div class="v">' +
+           '<div class="sum-card"><div class="k">Dice el estado (ventas netas)</div><div class="v">' +
              esc(formatMoney(t.estado)) + '</div></div>',
            '<div class="sum-card"><div class="k">Diferencia</div><div class="v"' +
              (Math.abs(t.diferencia) > 1 ? ' style="color:var(--danger)"' : '') + '>' +
@@ -13131,7 +13132,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.01-312';
+    var mia = '2026.09.01-313';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
