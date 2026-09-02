@@ -1002,7 +1002,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-313</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-314</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -2400,17 +2400,29 @@
       'del mes o el detalle de movimientos del mes en curso. Se leen los movimientos y se ' +
       'propone la captura; <b>nada se escribe hasta que lo apruebes</b>. Lo que ya esté ' +
       'capturado se reconoce y no se repite.</div>' +
+      // Primero de dónde viene el archivo y luego a qué cuenta se liga. Son dos
+      // preguntas distintas: el origen dice qué lector correr, la cuenta dice a
+      // dónde van los movimientos cuando se aprueben. Antes se preguntaba solo la
+      // cuenta y el origen se adivinaba del texto del PDF.
       '<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">' +
-        '<div class="fld" style="width:260px"><label>Cuenta</label>' +
+        '<div class="fld" style="width:200px"><label>De dónde es el archivo</label>' +
+          '<select id="bkFuente">' +
+          [['auto','Que lo detecte solo'],['bbva','BBVA'],['paypal','PayPal'],
+           ['amex','American Express']].map(function (o) {
+            return '<option value="' + o[0] + '">' + o[1] + '</option>';
+          }).join('') + '</select></div>' +
+        '<div class="fld" style="width:260px"><label>Se liga a la cuenta</label>' +
           (bancoCuentas.length
             ? '<select id="bkCuenta">' + bancoCuentas.map(function (c) {
-                return '<option value="' + esc(c.numero || c.nombre) + '"' +
-                  (c.esBancaria ? '' : ' disabled') + '>' + esc(c.nombre) +
-                  (c.esBancaria ? '' : ' — sin número de cuenta') + '</option>';
+                // El número de cuenta solo afina el aviso de "ya capturado"; no
+                // hace falta para leer. Una tarjeta como AMEX no tiene por qué
+                // traerlo y salía en gris, imposible de escoger.
+                return '<option value="' + esc(c.numero || c.nombre) + '" data-num="' +
+                  (c.esBancaria ? '1' : '0') + '">' + esc(c.nombre) + '</option>';
               }).join('') + '</select>' +
-              '<div class="s" style="color:var(--muted);margin-top:4px">' +
-                fmtNum(bancoCuentas.filter(function (c) { return c.esBancaria; }).length) +
-                ' cuentas' + (bancoCuentasDe ? ' · de ' + esc(bancoCuentasDe) : '') + '</div>'
+              '<div class="s" style="color:var(--muted);margin-top:4px" id="bkCtaNota">' +
+                fmtNum(bancoCuentas.length) + ' cuentas' +
+                (bancoCuentasDe ? ' · de ' + esc(bancoCuentasDe) : '') + '</div>'
             : '<input id="bkCuenta" placeholder="número de cuenta">' +
               '<div class="s" style="color:var(--amber);margin-top:4px">No se encontró la ' +
               'lista de cuentas en el catálogo</div>') + '</div>' +
@@ -2423,6 +2435,27 @@
       '<div id="bkAviso" style="margin-top:14px"></div></div>' +
       '<div id="bkResultado" style="margin-top:18px"></div>';
     document.getElementById('bkLeer').addEventListener('click', leerArchivoBanco);
+    var selCta = document.getElementById('bkCuenta');
+    if (selCta && selCta.tagName === 'SELECT') {
+      var notaCta = function () {
+        var op = selCta.options[selCta.selectedIndex];
+        var caja = document.getElementById('bkCtaNota');
+        if (!op || !caja) return;
+        if (op.getAttribute('data-num') === '1') {
+          caja.style.color = 'var(--muted)';
+          caja.innerHTML = fmtNum(bancoCuentas.length) + ' cuentas' +
+            (bancoCuentasDe ? ' · de ' + esc(bancoCuentasDe) : '');
+        } else {
+          caja.style.color = 'var(--amber)';
+          caja.innerHTML = 'Esta cuenta no trae número en el catálogo. El archivo se lee ' +
+            'igual, pero el aviso de "ya capturado" solo compara fecha y monto, no la ' +
+            'cuenta. Para que compare por cuenta, agrégale el número al nombre en la ' +
+            'columna <b>Cuenta</b> del catálogo.';
+        }
+      };
+      selCta.addEventListener('change', notaCta);
+      notaCta();
+    }
   }
 
   function leerArchivoBanco() {
@@ -2437,8 +2470,10 @@
     var lector = new FileReader();
     lector.onload = function () {
       var b64 = String(lector.result || '').split(',')[1] || '';
+      var elF = document.getElementById('bkFuente');
       api('banco-import', { token: state.token, pdf: b64,
           cuenta: document.getElementById('bkCuenta').value,
+          fuente: elF ? elF.value : 'auto',
           anio: +document.getElementById('bkAnio').value })
         .then(function (d) {
           // De lo más nuevo a lo más viejo, igual que las demás pantallas
@@ -13132,7 +13167,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.01-313';
+    var mia = '2026.09.01-314';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
@@ -13428,55 +13463,11 @@
       filters = []; renderFilterBar(); renderTable();
     }
   });
-  document.getElementById('tableWrap').addEventListener('change', function (e) {
-    var sel = e.target;
-    if (!sel.classList || !sel.classList.contains('cot-status')) return;
-    var folio = sel.getAttribute('data-folio');
-    var cRef = findHeaderByName('No. de Referencia') || findHeaderByName('Folio');
-    sel.disabled = true;
-    api('fill', { token: state.token, key: state.key,
-                  match: { col: cRef, value: folio }, set: { 'Status': sel.value } })
-      .then(function (out) {
-        toast('Status de ' + folio + ' cambiado a "' + sel.value + '".', 'ok');
-        loadArea();
-      })
-      .catch(function (err) { fail(err); sel.disabled = false; });
-  });
   document.getElementById('tableWrap').addEventListener('click', function (e) {
-    // Editar un producto dentro de la tarjeta de una venta o cotización
-    var cx = e.target.closest('[data-cxc]');
-    if (cx) {
-      var kx = cx.getAttribute('data-cxc');
-      cxcAbierta[kx] = !cxcAbierta[kx];
-      renderTable();
-      return;
-    }
-    var lleg = e.target.closest('.llegaron-btn');
-    if (lleg) { abrirEntrada(lleg.getAttribute('data-ped')); return; }
-    var addF = e.target.closest('.add-a-folio');
-    if (addF) { agregarAFolio(addF.getAttribute('data-folio')); return; }
-    var edA = e.target.closest('.ed-abrir');
-    if (edA) { filaEditando = parseInt(edA.getAttribute('data-row'), 10); renderTable(); return; }
-    var edN = e.target.closest('.ed-no');
-    if (edN) { filaEditando = -1; renderTable(); return; }
-    var edO = e.target.closest('.ed-ok');
-    if (edO) {
-      var filaEd = parseInt(edO.getAttribute('data-row'), 10);
-      var trEd = edO.closest('tr');
-      var origEd = (state.rows || []).filter(function (r) { return r._row === filaEd; })[0] || {};
-      var recEd = {};
-      state.headers.forEach(function (h2) { recEd[h2] = (origEd[h2] != null) ? origEd[h2] : ''; });
-      trEd.querySelectorAll('.ed-campo').forEach(function (inp) {
-        var col = inp.getAttribute('data-col');
-        if (col) recEd[col] = inp.value;
-      });
-      edO.disabled = true; edO.textContent = 'Guardando...';
-      sellarFecha(recEd);
-      api('update', { token: state.token, key: state.key, row: filaEd, record: recEd })
-        .then(function () { toast('Producto corregido.', 'ok'); filaEditando = -1; loadArea(); })
-        .catch(function (er) { fail(er); edO.disabled = false; edO.textContent = 'Guardar'; });
-      return;
-    }
+    // Este manejador es el de la tabla base: ordenar y editar renglón. Lo de las
+    // tarjetas (abrir CxC, entradas, editar producto) vive en el manejador de
+    // arriba. Estaba duplicado aquí: dos escuchas sobre el mismo tableWrap, así
+    // que cada clic en una tarjeta de CxC la abría y la volvía a cerrar.
     var t = e.target;
     var th = t.closest ? t.closest('th.sortable') : null;
     if (th) {
