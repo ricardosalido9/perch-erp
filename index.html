@@ -1007,7 +1007,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-318</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.02-320</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1279,6 +1279,7 @@
     fin_balance:         'Balance general: saldos por año, mes y concepto.',
     fac_comp_emitidos:   'Complementos de pago emitidos, como los descargó el SAT.',
     fin_bancos:          'Cuánto hay en cada cuenta: arranque más entradas menos salidas.',
+    ventas_folios:       'Cada venta y si ya se le pidió al proveedor, pieza por pieza.',
     rh_resumen:          'La plantilla de un vistazo: costo, altas, bajas y rotación.',
     rh_personal:         'Quién trabaja aquí, desde cuándo y bajo qué esquema.',
     rh_nomina:           'Lo que se paga cada periodo, con sus deducciones.',
@@ -1303,7 +1304,7 @@
     fin_cxc:             'Saldos por cobrar de cada pedido.',
     fin_ingresos:        'Cobros recibidos, ligados al folio del pedido.'
   };
-  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'fac_control', 'cfdi_control', 'cfdi_prov', 'prov_razon', 'rh_resumen', 'fin_gastos_op', 'fin_efectivo', 'fac_impuestos', 'fac_emitidos', 'log_calendario', 'fin_estados', 'fin_flujo', 'fin_balance', 'fin_bancos',
+  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'fac_control', 'cfdi_control', 'cfdi_prov', 'prov_razon', 'rh_resumen', 'fin_gastos_op', 'fin_efectivo', 'fac_impuestos', 'fac_emitidos', 'log_calendario', 'fin_estados', 'fin_flujo', 'fin_balance', 'fin_bancos', 'ventas_folios',
     // El stock sale de pedidos, entradas y salidas: se recalcula, no se edita
     'op_stock', 'op_revisar', 'prov_revision'];
   function esLector() {
@@ -3682,7 +3683,10 @@
               esc(p.proveedor).replace(/"/g, '&quot;') + '">Estado de cuenta en PDF</button>' +
               '<button type="button" class="pdf-relacion" data-prov="' +
               esc(p.proveedor).replace(/"/g, '&quot;') + '">Relación de pedidos</button>' +
-              '<span class="s" style="color:var(--muted)">Para mandárselo al proveedor</span></div>' +
+              '<button type="button" class="pdf-entregas" data-prov="' +
+              esc(p.proveedor).replace(/"/g, '&quot;') + '">Relación para el proveedor</button>' +
+              '<span class="s" style="color:var(--muted)">La de pedidos lleva costos y es ' +
+              'interna. La otra es la que se le manda a él.</span></div>' +
             '</div>';
         }
         h += '</div>';
@@ -3717,6 +3721,36 @@
           }).then(function () {
             b.disabled = false; b.textContent = 'Estado de cuenta en PDF';
           });
+        });
+      });
+      // La relación que se le manda al proveedor: sin costos, con tela y fechas
+      document.querySelectorAll('#tableWrap .pdf-entregas').forEach(function (b) {
+        b.addEventListener('click', function (e) {
+          e.stopPropagation();
+          var prov = b.getAttribute('data-prov');
+          b.disabled = true; b.textContent = 'Armando...';
+          api('entregas-pdf', { token: state.token, proveedor: prov,
+                                hechoPor: (state.usuario || '') })
+            .then(function (o) {
+              if (!o.pdf) throw new Error('El servidor no devolvió el PDF.');
+              bajarPdf(o.pdf, o.nombre || ('Relacion de entregas - ' + prov + '.pdf'));
+              var msg = 'Relación lista: ' + fmtNum(o.renglones) + ' renglones.';
+              if (o.sinFecha) msg += ' ' + fmtNum(o.sinFecha) + ' sin fecha de entrega.';
+              toast(msg, o.sinFecha ? 'warn' : 'ok');
+              if ((o.faltan || []).length) {
+                avisoFijo('<b>El PDF salió, pero faltan columnas en Pedidos a proveedores:</b>' +
+                  '<div style="margin-top:6px">' + esc(o.faltan.join(' · ')) + '</div>' +
+                  '<div class="s" style="margin-top:6px;color:var(--slate)">Esas columnas ' +
+                  'salen vacías en la relación. Agrégalas a la hoja y se llenan solas.</div>');
+              }
+            })
+            .catch(function (err) {
+              avisoFijo('<b>No se pudo armar la relación.</b><div style="margin-top:6px">' +
+                esc((err && err.message) || '') +
+                (err && err.pista ? '<div class="s" style="margin-top:6px;color:var(--slate)">' +
+                  esc(err.pista) + '</div>' : '') + '</div>');
+            })
+            .then(function () { b.disabled = false; b.textContent = 'Relación para el proveedor'; });
         });
       });
       document.querySelectorAll('#tableWrap .pdf-relacion').forEach(function (b) {
@@ -6254,6 +6288,93 @@
     });
   }
 
+  // ===== Ventas por folio, con su proveedor =====
+  var vfAnio = new Date().getFullYear(), vfSoloFaltan = false;
+  function loadVentasFolios() {
+    document.getElementById('summary').innerHTML = '';
+    document.getElementById('summary').style.display = 'none';
+    mostrarAlta(false);
+    document.getElementById('count').textContent = '';
+    document.getElementById('tableWrap').innerHTML =
+      '<div class="state" style="padding:50px 0">Cruzando ventas contra pedidos…</div>';
+    api('ventas-folios', { token: state.token, anio: vfAnio, soloSinProveedor: vfSoloFaltan })
+      .then(pintarVentasFolios)
+      .catch(function (e) {
+        document.getElementById('tableWrap').innerHTML =
+          '<div class="state" style="color:var(--danger);padding:40px 0">' +
+          esc((e && e.message) || 'No se pudo armar.') + '</div>';
+      });
+  }
+  function pintarVentasFolios(d) {
+    var r = d.resumen || {};
+    var anios = [];
+    for (var a = new Date().getFullYear(); a >= 2024; a--) anios.push(a);
+    var h = '<div class="est-top"><div>' +
+      '<h3 class="sec-t" style="margin:0">Ventas por folio</h3>' +
+      '<div class="s" style="color:var(--muted)">' + esc(d.nota || '') + '</div></div>' +
+      '<div style="display:flex;gap:12px;align-items:flex-end">' +
+      '<div class="fld" style="width:100px;margin:0"><label>Año</label><select id="vfAnio">' +
+        anios.map(function (x) {
+          return '<option value="' + x + '"' + (x === d.anio ? ' selected' : '') + '>' + x + '</option>';
+        }).join('') + '</select></div>' +
+      '<label class="s" style="display:flex;align-items:center;gap:6px;padding-bottom:8px;cursor:pointer">' +
+        '<input type="checkbox" id="vfFaltan"' + (vfSoloFaltan ? ' checked' : '') + '>' +
+        'Solo las que falta pedir</label></div></div>';
+
+    h += '<div class="kpi-grid" style="margin:12px 0 16px">' +
+      '<div class="kpi dark"><div class="k">Ventas</div><div class="v">' + fmtNum(r.total) + '</div></div>' +
+      '<div class="kpi"><div class="k">Sin pedir</div><div class="v"' +
+        (r.sinPedir ? ' style="color:var(--danger)"' : '') + '>' + fmtNum(r.sinPedir) + '</div></div>' +
+      '<div class="kpi"><div class="k">A medias</div><div class="v"' +
+        (r.aMedias ? ' style="color:var(--amber)"' : '') + '>' + fmtNum(r.aMedias) + '</div></div>' +
+      '<div class="kpi"><div class="k">Piezas sin pedir</div><div class="v">' +
+        fmtNum(r.piezasSinPedir) + '</div></div></div>';
+
+    h += '<div class="est-wrap"><table class="est-tabla"><thead><tr>' +
+      '<th class="est-con">FOLIO</th><th style="text-align:left">CLIENTE</th>' +
+      '<th>FECHA</th><th>PZS</th><th>PEDIDAS</th>' +
+      '<th style="text-align:left">PROVEEDOR</th>' +
+      '<th style="text-align:left">QUÉ FALTA PEDIR</th></tr></thead><tbody>';
+    (d.folios || []).forEach(function (f) {
+      var col = f.estado === 'sin pedir' ? 'var(--danger)'
+              : (f.estado === 'a medias' ? 'var(--amber)' : 'var(--success)');
+      h += '<tr><td class="est-con"><b>' + esc(f.folio) + '</b>' +
+        '<div class="s" style="color:' + col + '">' + esc(f.estado) + '</div></td>' +
+        '<td style="text-align:left">' + esc(f.cliente || '—') + '</td>' +
+        '<td>' + esc(f.fecha ? fmtFechaNum(f.fecha) : '—') + '</td>' +
+        '<td>' + fmtNum(f.piezas) + '</td>' +
+        '<td' + (f.pedidas < f.piezas ? ' class="neg"' : '') + '>' + fmtNum(f.pedidas) + '</td>' +
+        '<td style="text-align:left;white-space:normal;min-width:150px">' +
+          (f.proveedores.length ? esc(f.proveedores.join(' · '))
+            : '<span style="color:var(--danger)">sin asignar</span>') +
+          (f.pedidos.length ? '<div class="s" style="color:var(--muted)">' +
+            esc(f.pedidos.join(' · ')) + '</div>' : '') + '</td>' +
+        '<td style="text-align:left;white-space:normal;min-width:220px;color:var(--slate)">' +
+          (f.faltan.length ? f.faltan.map(function (x) {
+              return esc(fmtNum(x.piezas) + ' ' + x.item + (x.material ? ' · ' + x.material : ''));
+            }).join('<br>') : '') + '</td></tr>';
+    });
+    h += '</tbody></table></div>';
+    if (d.sinFolioEnPedidos) {
+      h += '<div class="s" style="color:var(--amber);margin-top:10px">' +
+        fmtNum(d.sinFolioEnPedidos) + ' renglones pedidos no traen folio de cliente, así que no ' +
+        'se le pueden asignar a ninguna venta. Suelen ser los de stock o exhibición.</div>';
+    }
+    document.getElementById('tableWrap').innerHTML = h;
+    document.getElementById('vfAnio').addEventListener('change', function () {
+      vfAnio = +this.value; loadVentasFolios();
+    });
+    document.getElementById('vfFaltan').addEventListener('change', function () {
+      vfSoloFaltan = this.checked; loadVentasFolios();
+    });
+  }
+  // 20260914 -> 14/09/2026
+  function fmtFechaNum(n) {
+    var s = String(n);
+    if (s.length !== 8) return s;
+    return s.slice(6, 8) + '/' + s.slice(4, 6) + '/' + s.slice(0, 4);
+  }
+
   function loadLogistica() {
     var hoy = new Date();
     if (logMes === null) { logMes = hoy.getMonth() + 1; logAnio = hoy.getFullYear(); }
@@ -6477,6 +6598,7 @@
     if (state.key === 'fin_flujo')   return loadEstado('flujo');
     if (state.key === 'fin_balance') return loadEstado('balance');
     if (state.key === 'fin_bancos')  return loadSaldos();
+    if (state.key === 'ventas_folios') return loadVentasFolios();
     if (state.key === 'log_calendario') return loadLogistica();
     if (state.key === 'fin_banco') return loadSubirBanco();
     if (state.key === 'fac_emitidos') return loadEmitidos();
@@ -13287,7 +13409,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.01-318';
+    var mia = '2026.09.02-320';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
