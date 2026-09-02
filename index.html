@@ -299,6 +299,11 @@
   .est-tabla tbody tr:hover td.est-con { background:#f2efe8; }
   .aviso-caja { border:1px solid var(--amber); background:#fdf6e3; border-radius:10px;
     padding:12px 14px; font-size:13px; }
+  /* La nota de un lead es lo que se viene a leer: completa y legible, no
+     recortada a 220 caracteres dentro de una celda. */
+  .lead-nota { margin-top:8px; padding:8px 10px; border-left:2px solid var(--line);
+    background:var(--surface-2, #faf6ef); border-radius:0 6px 6px 0; font-size:12.5px;
+    color:var(--slate); white-space:pre-wrap; line-height:1.45; }
   .cuadre-lado { border:1px solid var(--line); border-left-width:4px; border-radius:0 10px 10px 0;
     padding:14px 16px; margin-bottom:14px; background:var(--surface); }
   .cuadre-lado.ok  { border-left-color:var(--ink); }
@@ -1002,7 +1007,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-314</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-315</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -2205,6 +2210,8 @@
       return cRef && String(r[cRef] || '').trim() === folio;
     });
     if (!versionFilas.length) { toast('No encontré los renglones de ' + folio + '.', 'err'); return; }
+    var cCliV = findHeaderByName('Cliente');
+    var clienteActual = cCliV ? String(versionFilas[0][cCliV] || '').trim() : '';
 
     var h = '<div class="s" style="color:var(--slate);margin-bottom:12px">' +
       '<b>' + esc(folio) + ' se queda como está.</b> Esto crea una cotización nueva con su ' +
@@ -2241,6 +2248,21 @@
       '</div>' +
       listasDelCatalogo() +
       '<div id="vnNuevos" style="margin-top:10px"></div></div>' +
+      // Para quién es. El guardado ya mandaba el cliente nuevo al servidor, pero
+      // esta parte nunca se dibujó: la opción existía y no se veía, así que toda
+      // versión nueva nacía con el cliente de la anterior.
+      '<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">' +
+      '<div class="s" style="color:var(--slate);margin-bottom:8px"><b>¿Para quién es?</b></div>' +
+      '<label class="s" style="display:block;margin-bottom:4px;cursor:pointer">' +
+        '<input type="radio" name="vnQuien" value="mismo" checked style="margin-right:6px">' +
+        'El mismo cliente' + (clienteActual ? ': ' + esc(clienteActual) : '') + '</label>' +
+      '<label class="s" style="display:block;cursor:pointer">' +
+        '<input type="radio" name="vnQuien" value="otro" style="margin-right:6px">' +
+        'Otro cliente</label>' +
+      '<div id="vnOtroCli" style="display:none;margin-top:8px">' +
+        '<div class="fld" style="max-width:320px;margin:0"><label>Cliente</label>' +
+        '<input id="vnCliente" list="vnClientes" placeholder="nombre del cliente"></div>' +
+        datalistClientes('vnClientes') + '</div></div>' +
       '<div class="s" style="color:var(--muted);margin-top:10px">' + esc(folio) + ' no se toca: ' +
       'se queda tal como está, por si el cliente se decide por ella. Más adelante, cuando sepas ' +
       'cuál se quedó, marca la otra como Rechazada para que no cuenten las dos en la conversión. ' +
@@ -2280,6 +2302,13 @@
     if (quitar.length === versionFilas.length && !versionAgregados.length) {
       toast('No puedes quitar todos los productos sin agregar otro.', 'err'); return;
     }
+    var quien = document.querySelector('input[name="vnQuien"]:checked');
+    var clienteNuevo = '';
+    if (quien && quien.value === 'otro') {
+      var elc = document.getElementById('vnCliente');
+      clienteNuevo = elc ? elc.value.trim() : '';
+      if (!clienteNuevo) { toast('Escribe el nombre del otro cliente.', 'err'); return; }
+    }
     var btn = document.getElementById('aventaOk');
     btn.disabled = true; btn.textContent = 'Creando…';
     // Los productos nuevos van con los nombres de columna de la hoja
@@ -2294,14 +2323,6 @@
       if (cPre) rec[cPre] = x.precio;
       return rec;
     });
-    // Para quién es la versión nueva
-    var quien = document.querySelector('input[name="vnQuien"]:checked');
-    var clienteNuevo = '';
-    if (quien && quien.value === 'otro') {
-      var elc = document.getElementById('vnCliente');
-      clienteNuevo = elc ? elc.value.trim() : '';
-      if (!clienteNuevo) { toast('Escribe el nombre del otro cliente.', 'err'); return; }
-    }
     api('dup-cot', { token: state.token, folio: versionDe, quitar: quitar,
                      cambios: cambios, agregar: agregar, cliente: clienteNuevo })
       .then(function (d) {
@@ -3426,11 +3447,14 @@
   // Estaban en filas: doce columnas apretadas donde no se distinguía lo urgente.
   // Lo que importa de un lead es quién es, por dónde llegó y en qué va.
   function renderLeads(rows) {
-    var cCli = findHeaderByName('Cliente') || findHeaderByName('Nombre');
+    var cCli = findHeaderByName('Contacto') || findHeaderByName('Cliente') ||
+               findHeaderByName('Nombre') || findHeaderByName('Nombre/Razón Social') ||
+               findHeaderByName('Prospecto') || (visibleHeaders() || [])[0];
     if (!cCli) return null;
     var cFec = findHeaderByName('Fecha') || findHeaderByName('Fecha de contacto');
-    var cVia = findHeaderByName('Forma de Contacto') || findHeaderByName('Cómo llegó') ||
-               findHeaderByName('Como llego') || findHeaderByName('Canal');
+    var cVia = findHeaderByName('Cómo llegó') || findHeaderByName('Como llego') ||
+               findHeaderByName('Forma de Contacto') || findHeaderByName('Canal') ||
+               findHeaderByName('Medio') || findHeaderByName('Origen');
     var cSt = findHeaderByName('Status') || findHeaderByName('Estatus');
     var cTel = findHeaderByName('Teléfono') || findHeaderByName('Telefono');
     var cMail = findHeaderByName('Correo') || findHeaderByName('Email');
@@ -3468,8 +3492,8 @@
           ? '<div class="cot-body">' +
             (datos.length ? '<div class="s" style="color:var(--slate)">' +
               esc(datos.join('  ·  ')) + '</div>' : '') +
-            (cNota && r[cNota] ? '<div class="s" style="color:var(--muted);margin-top:4px;' +
-              'white-space:normal">' + esc(String(r[cNota]).slice(0, 220)) + '</div>' : '') +
+            (cNota && r[cNota] ? '<div class="lead-nota">' +
+              esc(String(r[cNota])) + '</div>' : '') +
             '</div>' : '') +
         '<div class="cot-acciones" style="padding:0 14px 12px">' +
           '<button class="edit-btn" data-row="' + r._row + '">Editar</button>' +
@@ -3481,8 +3505,13 @@
   // ===== Colaboradores en viñetas =====
   function renderColaboradores(rows) {
     var cNom = findHeaderByName('Nombre') || findHeaderByName('Colaborador') ||
-               findHeaderByName('Nombre del colaborador');
+               findHeaderByName('Nombre del colaborador') ||
+               findHeaderByName('Nombre completo') || (visibleHeaders() || [])[0];
     if (!cNom) return null;
+    // Un renglón sin nombre no es una persona. El servidor ya los filtra, pero
+    // esto cubre las hojas que todavía no declaran su columna obligatoria.
+    rows = rows.filter(function (r) { return String(r[cNom] || '').trim() !== ''; });
+    if (!rows.length) return null;
     var cNum = findHeaderByName('No. Identificación') || findHeaderByName('No. Identificacion') ||
                findHeaderByName('ID') || findHeaderByName('Número');
     var cPue = findHeaderByName('Puesto');
@@ -4608,35 +4637,6 @@
 
       // Gráficas
       var gr = [];
-      if ((d.porArea || []).length) {
-        // Antes eran dos gráficas separadas, costo y gente, con las mismas
-        // etiquetas. En una tabla se leen juntas y además se ve el costo por
-        // persona de cada área, que es lo que de verdad compara.
-        var totCosto = d.porArea.reduce(function (a, x) { return a + (x.costo || 0); }, 0) || 1;
-        gr.push('<div class="g-panel"><div class="g-titulo">Por área</div>' +
-          '<table class="mini-table"><thead><tr><th>Área</th>' +
-          '<th style="text-align:right">Gente</th>' +
-          '<th style="text-align:right">Costo</th>' +
-          '<th style="text-align:right">Por persona</th>' +
-          '<th style="width:70px">% del total</th></tr></thead><tbody>' +
-          d.porArea.slice().sort(function (a, b) { return (b.costo || 0) - (a.costo || 0); })
-            .map(function (a) {
-              var pct = ((a.costo || 0) / totCosto) * 100;
-              return '<tr><td>' + esc(a.area) + '</td>' +
-                '<td class="num">' + fmtNum(a.gente) + '</td>' +
-                '<td class="num">' + esc(formatMoney(a.costo)) + '</td>' +
-                '<td class="num">' + esc(fmtMoneyShort(a.gente ? a.costo / a.gente : 0)) + '</td>' +
-                '<td><div style="display:flex;align-items:center;gap:5px">' +
-                  '<div style="flex:1;height:7px;background:var(--paper);border-radius:4px">' +
-                    '<div style="width:' + pct.toFixed(0) + '%;height:7px;border-radius:4px;' +
-                    'background:var(--accent-ink)"></div></div>' +
-                  '<span class="s">' + pct.toFixed(0) + '%</span></div></td></tr>';
-            }).join('') + '</tbody></table></div>');
-      }
-      if (d.nomina && (d.nomina.porMes || []).length) {
-        gr.push(gColumnas('Nómina pagada por mes', d.nomina.porMes.slice().reverse().map(function (m) {
-          return { etiqueta: nombreDeMesNumero(m.mes).slice(0, 3), valor: m.monto }; }), fmtMoneyShort));
-      }
       if ((d.movimientos || []).length) {
         var movs = d.movimientos.slice().reverse();
         gr.push('<div class="g-panel"><div class="g-titulo">Altas y bajas por mes</div>' +
@@ -4686,17 +4686,28 @@
 
       // Detalle por área
       if ((d.porArea || []).length) {
-        h += '<h3 class="sec-t">El detalle por área</h3>' +
+        // Una sola tabla por área, con la barra dentro. Antes había dos con las
+        // mismas columnas, una arriba entre las gráficas y otra aquí abajo.
+        var maxA = Math.max.apply(null, d.porArea.map(function (a) { return a.costo || 0; })) || 1;
+        h += '<h3 class="sec-t">Por área</h3>' +
           '<table class="mini-table"><thead><tr><th>Área</th>' +
+          '<th style="width:120px">Peso</th>' +
           '<th style="text-align:right">Personas</th><th style="text-align:right">Costo mensual</th>' +
-          '<th style="text-align:right">Por persona</th><th style="text-align:right">% del total</th>' +
+          '<th style="text-align:right">Por persona</th>' +
           '<th>Puestos</th></tr></thead><tbody>' +
-          d.porArea.map(function (a) {
+          d.porArea.slice().sort(function (a, b) { return (b.costo || 0) - (a.costo || 0); })
+          .map(function (a) {
+            var pct = costo ? (a.costo / costo) * 100 : 0;
             return '<tr><td><b>' + esc(a.area) + '</b></td>' +
+              '<td><div style="display:flex;align-items:center;gap:6px">' +
+                '<div style="flex:1;height:8px;background:var(--paper);border-radius:4px">' +
+                  '<div style="width:' + Math.round((a.costo / maxA) * 100) + '%;height:8px;' +
+                  'border-radius:4px;background:var(--accent-ink)"></div></div>' +
+                '<span class="s" style="min-width:26px;text-align:right">' +
+                  pct.toFixed(0) + '%</span></div></td>' +
               '<td class="num">' + fmtNum(a.gente) + '</td>' +
               '<td class="num">' + esc(formatMoney(a.costo)) + '</td>' +
               '<td class="num s">' + esc(formatMoney(a.gente ? a.costo / a.gente : 0)) + '</td>' +
-              '<td class="num s">' + (costo ? Math.round((a.costo / costo) * 100) : 0) + '%</td>' +
               '<td class="s">' + esc(a.puestos.map(function (p) {
                 return p.puesto + (p.n > 1 ? ' x' + p.n : ''); }).join(' · ')) + '</td></tr>';
           }).join('') + '</tbody></table>';
@@ -4708,21 +4719,27 @@
             fmtNum(d.nomina.sinTimbrar) + ' pagos sin timbrar por ' +
             esc(formatMoney(d.nomina.montoSinTimbrar)) + '</span>' : '') + '</h3>' +
           '<table class="mini-table"><thead><tr><th>Mes</th>' +
+          '<th style="width:120px">Peso</th>' +
           '<th style="text-align:right">Bruto</th><th style="text-align:right">Neto</th>' +
           '<th style="text-align:right">Personas</th><th style="text-align:right">Periodos</th>' +
           '<th style="text-align:right">Por persona</th></tr></thead><tbody>' +
           d.nomina.porMes.map(function (m) {
+            var maxM = Math.max.apply(null, d.nomina.porMes.map(function (x) {
+              return x.monto || 0; })) || 1;
             return '<tr><td>' + esc(nombreDeMesNumero(m.mes)) + '</td>' +
+              '<td><div style="height:8px;background:var(--paper);border-radius:4px">' +
+                '<div style="width:' + Math.round((m.monto / maxM) * 100) + '%;height:8px;' +
+                'border-radius:4px;background:var(--accent-ink)"></div></div></td>' +
               '<td class="num">' + esc(formatMoney(m.monto)) + '</td>' +
               '<td class="num s">' + esc(formatMoney(m.neto || 0)) + '</td>' +
               '<td class="num">' + fmtNum(m.personas) + '</td>' +
               '<td class="num">' + fmtNum(m.semanas) + '</td>' +
               '<td class="num s">' + esc(formatMoney(m.personas ? m.monto / m.personas : 0)) + '</td></tr>';
           }).join('') +
-          '<tr style="border-top:2px solid var(--line);font-weight:600"><td>Total</td>' +
+          '<tr style="border-top:2px solid var(--line);font-weight:600"><td>Total</td><td></td>' +
           '<td class="num">' + esc(formatMoney(d.nomina.total)) + '</td>' +
           '<td class="num">' + esc(formatMoney(d.nomina.totalNeto || 0)) + '</td>' +
-          '<td></td><td></td><td></td></tr></tbody></table>';
+          '<td></td><td></td><td></td><td></td></tr></tbody></table>';
       }
       // Aniversarios
       if ((d.aniversarios || []).length) {
@@ -13167,7 +13184,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.01-314';
+    var mia = '2026.09.01-315';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
@@ -13310,7 +13327,7 @@
   });
   document.getElementById('catViewBtn').addEventListener('click', function () {
     catalogoAgrupado = !catalogoAgrupado;
-    this.textContent = catalogoAgrupado ? 'Ver como tabla' : 'Ver por producto';
+    this.textContent = catalogoAgrupado ? 'Ver como tabla' : 'Ver por tarjetas';
     renderTable();
   });
   document.getElementById('tableWrap').addEventListener('change', function (e) {
