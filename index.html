@@ -955,7 +955,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-288</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-290</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -3327,6 +3327,121 @@
       .then(function () { btn.disabled = false; btn.textContent = 'Cancelar el folio'; });
   }
 
+  // ===== Leads en viñetas =====
+  // Estaban en filas: doce columnas apretadas donde no se distinguía lo urgente.
+  // Lo que importa de un lead es quién es, por dónde llegó y en qué va.
+  function renderLeads(rows) {
+    var cCli = findHeaderByName('Cliente') || findHeaderByName('Nombre');
+    if (!cCli) return null;
+    var cFec = findHeaderByName('Fecha') || findHeaderByName('Fecha de contacto');
+    var cVia = findHeaderByName('Forma de Contacto') || findHeaderByName('Cómo llegó') ||
+               findHeaderByName('Como llego') || findHeaderByName('Canal');
+    var cSt = findHeaderByName('Status') || findHeaderByName('Estatus');
+    var cTel = findHeaderByName('Teléfono') || findHeaderByName('Telefono');
+    var cMail = findHeaderByName('Correo') || findHeaderByName('Email');
+    var cDesp = findHeaderByName('Despacho');
+    var cTipo = findHeaderByName('Tipo de cliente') || findHeaderByName('TIPO CLIENTE');
+    var cNota = findHeaderByName('Notas') || findHeaderByName('Comentarios');
+    var cCiu = findHeaderByName('Ciudad');
+
+    // Lo más nuevo arriba
+    var lista = rows.slice().sort(function (a, b) {
+      return (parseDate(b[cFec]) || 0) - (parseDate(a[cFec]) || 0);
+    });
+
+    var h = '<div class="cot-grid">';
+    lista.forEach(function (r, i) {
+      var st = cSt ? String(r[cSt] || '').trim() : '';
+      var col = /gan|cerr|vend|client/i.test(st) ? 'var(--success)'
+              : (/perd|no interes|declin|rechaz/i.test(st) ? 'var(--danger)'
+              : (/segu|contact|proceso|abiert/i.test(st) ? 'var(--accent-ink)' : 'var(--muted)'));
+      var datos = [];
+      if (cTel && r[cTel]) datos.push(String(r[cTel]));
+      if (cMail && r[cMail]) datos.push(String(r[cMail]));
+      if (cCiu && r[cCiu]) datos.push(String(r[cCiu]));
+      h += '<div class="cot-card open"><div class="cot-head" style="cursor:default">' +
+        '<span class="cot-folio" style="font-size:15px">' +
+          esc(String(r[cCli] || 'Sin nombre')) + '</span>' +
+        (st ? '<span class="cot-st-pill" style="color:' + col + '">' + esc(st) + '</span>' : '') +
+        '<span class="cot-meta">' +
+          (cVia && r[cVia] ? esc(String(r[cVia])) : 'sin canal') +
+          (cFec && r[cFec] ? ' · ' + esc(formatDateCell(r[cFec])) : '') +
+          (cDesp && r[cDesp] ? ' · ' + esc(String(r[cDesp])) : '') +
+          (cTipo && r[cTipo] ? ' · ' + esc(String(r[cTipo])) : '') +
+        '</span></div>' +
+        (datos.length || (cNota && r[cNota])
+          ? '<div class="cot-body">' +
+            (datos.length ? '<div class="s" style="color:var(--slate)">' +
+              esc(datos.join('  ·  ')) + '</div>' : '') +
+            (cNota && r[cNota] ? '<div class="s" style="color:var(--muted);margin-top:4px;' +
+              'white-space:normal">' + esc(String(r[cNota]).slice(0, 220)) + '</div>' : '') +
+            '</div>' : '') +
+        '<div class="cot-acciones" style="padding:0 14px 12px">' +
+          '<button class="edit-btn" data-row="' + r._row + '">Editar</button>' +
+        '</div></div>';
+    });
+    return h + '</div>';
+  }
+
+  // ===== Colaboradores en viñetas =====
+  function renderColaboradores(rows) {
+    var cNom = findHeaderByName('Nombre');
+    if (!cNom) return null;
+    var cPue = findHeaderByName('Puesto');
+    var cArea = findHeaderByName('Área') || findHeaderByName('Area');
+    var cSt = findHeaderByName('Status') || findHeaderByName('Estatus');
+    var cEnt = findHeaderByName('Fecha de entrada') || findHeaderByName('Fecha de Inicio');
+    var cSal = findHeaderByName('Fecha de salida');
+    var cTel = findHeaderByName('Teléfono') || findHeaderByName('Telefono');
+    var cMail = findHeaderByName('Correo') || findHeaderByName('Email');
+    var cSue = findHeaderByName('Sueldo') || findHeaderByName('Sueldo bruto');
+    var cJefe = findHeaderByName('Jefe directo') || findHeaderByName('Reporta a');
+
+    // Primero los activos, y dentro de cada grupo por área
+    var lista = rows.slice().sort(function (a, b) {
+      var aBaja = cSal && String(a[cSal] || '').trim();
+      var bBaja = cSal && String(b[cSal] || '').trim();
+      if (!!aBaja !== !!bBaja) return aBaja ? 1 : -1;
+      var aa = cArea ? String(a[cArea] || '') : '';
+      var bb = cArea ? String(b[cArea] || '') : '';
+      return aa.localeCompare(bb, 'es') ||
+             String(a[cNom] || '').localeCompare(String(b[cNom] || ''), 'es');
+    });
+
+    var h = '<div class="cot-grid">';
+    lista.forEach(function (r) {
+      var baja = cSal && String(r[cSal] || '').trim();
+      var st = baja ? 'Baja' : (cSt ? String(r[cSt] || 'Activo').trim() : 'Activo');
+      var col = baja ? 'var(--muted)' : 'var(--success)';
+      var contacto = [];
+      if (cTel && r[cTel]) contacto.push(String(r[cTel]));
+      if (cMail && r[cMail]) contacto.push(String(r[cMail]));
+      h += '<div class="cot-card open"' + (baja ? ' style="opacity:.6"' : '') + '>' +
+        '<div class="cot-head" style="cursor:default">' +
+        '<span class="cot-folio" style="font-size:15px">' + esc(String(r[cNom] || '')) + '</span>' +
+        '<span class="cot-st-pill" style="color:' + col + '">' + esc(st) + '</span>' +
+        '<span class="cot-meta">' +
+          (cPue && r[cPue] ? esc(String(r[cPue])) : 'sin puesto') +
+          (cArea && r[cArea] ? ' · ' + esc(String(r[cArea])) : '') +
+          (cJefe && r[cJefe] ? ' · reporta a ' + esc(String(r[cJefe])) : '') +
+        '</span></div>' +
+        '<div class="cot-body">' +
+          '<div class="s" style="color:var(--slate)">' +
+            (cEnt && r[cEnt] ? 'Entró el ' + esc(formatDateCell(r[cEnt])) : '') +
+            (baja ? '  ·  salió el ' + esc(formatDateCell(r[cSal])) : '') +
+            (cSue && r[cSue] && !esSoloLectura(state.key)
+              ? '  ·  ' + esc(formatMoney(toNum(r[cSue]))) : '') +
+          '</div>' +
+          (contacto.length ? '<div class="s" style="color:var(--muted);margin-top:4px">' +
+            esc(contacto.join('  ·  ')) + '</div>' : '') +
+        '</div>' +
+        '<div class="cot-acciones" style="padding:0 14px 12px">' +
+          '<button class="edit-btn" data-row="' + r._row + '">Editar</button>' +
+        '</div></div>';
+    });
+    return h + '</div>';
+  }
+
   function loadInvProv() {
     document.getElementById('tableWrap').innerHTML =
       '<div class="state" style="padding:50px 0">Revisando lo que tiene cada proveedor…</div>';
@@ -4337,29 +4452,50 @@
       };
       var neto = t.netoMensual || 0, costo = t.costoMensual || 0;
       var carga = (neto && costo && costo > neto) ? Math.round(((costo - neto) / neto) * 100) : 0;
+      // Cuatro números, no nueve. Lo demás iba repetido: el neto, la carga
+      // social y el costo por persona son formas de ver el mismo costo, así que
+      // van como subtítulo de la tarjeta a la que pertenecen.
       var h = '<div class="kpi-grid" style="margin-bottom:18px">' +
-        kpi('Plantilla', fmtNum(t.activos), 'personas activas', true) +
+        kpi('Plantilla', fmtNum(t.activos), 'personas activas · ' +
+            fmtNum(t.altasAnio) + ' altas y ' + fmtNum(t.bajasAnio) + ' bajas en ' + d.anio, true) +
         kpi('Costo mensual', esc(fmtMoneyShort(costo)),
+            esc(fmtMoneyShort(neto)) + ' de neto' + (carga ? ' · ' + carga + '% de carga social' : '')) +
+        kpi('Por persona', esc(fmtMoneyShort(t.activos ? costo / t.activos : 0)),
             t.costoSegunNomina != null
               ? 'promedio de ' + fmtNum(t.mesesPagados) + ' meses pagados'
               : 'según la lista de colaboradores') +
-        kpi('Neto mensual', esc(fmtMoneyShort(neto)), 'lo que reciben') +
-        kpi('Costo por persona', esc(fmtMoneyShort(t.activos ? costo / t.activos : 0)), 'promedio') +
-        (carga ? kpi('Carga social', carga + '%', 'sobre el neto') : '') +
-        kpi('Altas ' + d.anio, fmtNum(t.altasAnio), 'entraron este año') +
-        kpi('Bajas ' + d.anio, fmtNum(t.bajasAnio), 'salieron este año') +
-        kpi('Rotación', fmtNum(t.rotacion) + '%', 'bajas sobre plantilla') +
-        (t.nominaPagada != null
-          ? kpi('Nómina pagada', esc(fmtMoneyShort(t.nominaPagada)), 'en lo que va del año') : '') +
+        kpi('Rotación', fmtNum(t.rotacion) + '%',
+            'bajas sobre plantilla' +
+            (t.nominaPagada != null ? ' · ' + esc(fmtMoneyShort(t.nominaPagada)) +
+             ' pagados en el año' : '')) +
         '</div>';
 
       // Gráficas
       var gr = [];
       if ((d.porArea || []).length) {
-        gr.push(gBarras('Costo mensual por área', d.porArea.map(function (a) {
-          return { etiqueta: a.area, valor: a.costo }; }), fmtMoneyShort));
-        gr.push(gBarras('Personas por área', d.porArea.map(function (a) {
-          return { etiqueta: a.area, valor: a.gente }; })));
+        // Antes eran dos gráficas separadas, costo y gente, con las mismas
+        // etiquetas. En una tabla se leen juntas y además se ve el costo por
+        // persona de cada área, que es lo que de verdad compara.
+        var totCosto = d.porArea.reduce(function (a, x) { return a + (x.costo || 0); }, 0) || 1;
+        gr.push('<div class="g-panel"><div class="g-titulo">Por área</div>' +
+          '<table class="mini-table"><thead><tr><th>Área</th>' +
+          '<th style="text-align:right">Gente</th>' +
+          '<th style="text-align:right">Costo</th>' +
+          '<th style="text-align:right">Por persona</th>' +
+          '<th style="width:70px">% del total</th></tr></thead><tbody>' +
+          d.porArea.slice().sort(function (a, b) { return (b.costo || 0) - (a.costo || 0); })
+            .map(function (a) {
+              var pct = ((a.costo || 0) / totCosto) * 100;
+              return '<tr><td>' + esc(a.area) + '</td>' +
+                '<td class="num">' + fmtNum(a.gente) + '</td>' +
+                '<td class="num">' + esc(formatMoney(a.costo)) + '</td>' +
+                '<td class="num">' + esc(fmtMoneyShort(a.gente ? a.costo / a.gente : 0)) + '</td>' +
+                '<td><div style="display:flex;align-items:center;gap:5px">' +
+                  '<div style="flex:1;height:7px;background:var(--paper);border-radius:4px">' +
+                    '<div style="width:' + pct.toFixed(0) + '%;height:7px;border-radius:4px;' +
+                    'background:var(--accent-ink)"></div></div>' +
+                  '<span class="s">' + pct.toFixed(0) + '%</span></div></td></tr>';
+            }).join('') + '</tbody></table></div>');
       }
       if (d.nomina && (d.nomina.porMes || []).length) {
         gr.push(gColumnas('Nómina pagada por mes', d.nomina.porMes.slice().reverse().map(function (m) {
@@ -7284,6 +7420,8 @@
     var ticket = ops ? venta / ops : 0;
     var margen = venta ? (util / venta) : 0;
     var ventaP = suma(Vp, 'venta'), utilP = suma(Vp, 'util'), uniP = suma(Vp, 'u');
+    // Lo bruto y el descuento, para poder mostrar cuánto se está regalando
+    var brutaTotal = suma(V, 'bruta'), descTotal = suma(V, 'desc');
     var h = '';
 
     // --- Filtro de fechas ---
@@ -7307,10 +7445,18 @@
 
     // --- KPIs (Total con envío sin impuestos) ---
     h += '<div class="dash-section"><h3>Resumen comercial · Total con envío sin impuestos</h3><div class="kpi-grid">' +
-      '<div class="kpi dark"><div class="k">Ventas totales</div><div class="v" title="' + esc(formatMoney(venta)) + '">' +
+      // Se llama VENTAS NETAS a propósito: es lo mismo que en el estado de
+      // resultados —subtotal menos descuentos más envíos, sin IVA— para que los
+      // dos números cuadren y nadie tenga que preguntar cuál es cuál.
+      '<div class="kpi dark"><div class="k">Ventas netas</div><div class="v" title="' + esc(formatMoney(venta)) + '">' +
         esc(fmtMoneyShort(venta)) + '</div>' +
-        (cmpOn ? variacionHTML(venta, ventaP) : '<div class="s">' + fmtNum(ops) + ' registros</div>') +
+        (cmpOn ? variacionHTML(venta, ventaP) : '<div class="s">' + fmtNum(ops) + ' registros · sin IVA</div>') +
         (metasOn ? cumplimientoHTML(venta, metaV) : '') + '</div>' +
+      (descTotal > 0
+        ? '<div class="kpi"><div class="k">Descuento otorgado</div><div class="v" ' +
+          'title="' + esc(formatMoney(descTotal)) + '">' + esc(fmtMoneyShort(descTotal)) + '</div>' +
+          '<div class="s">' + (brutaTotal ? ((descTotal / brutaTotal) * 100).toFixed(1) + '% de lo bruto' : '') +
+          '</div></div>' : '') +
       '<div class="kpi"><div class="k">Unidades vendidas</div><div class="v">' + fmtNum(unidades) + '</div>' +
         (cmpOn ? variacionHTML(unidades, uniP) : '') + '</div>' +
       '<div class="kpi"><div class="k">Ticket promedio</div><div class="v" title="' + esc(formatMoney(ticket)) + '">' +
@@ -8441,6 +8587,14 @@
     if ((state.key === 'cotizaciones' || state.key === 'ventas_registro') && catalogoAgrupado) {
       var hq = renderCotizaciones(rows);
       if (hq) { document.getElementById('tableWrap').innerHTML = hq; return; }
+    }
+    if (state.key === 'leads' && catalogoAgrupado) {
+      var hl = renderLeads(rows);
+      if (hl) { document.getElementById('tableWrap').innerHTML = hl; return; }
+    }
+    if (state.key === 'rh_personal' && catalogoAgrupado) {
+      var hc = renderColaboradores(rows);
+      if (hc) { document.getElementById('tableWrap').innerHTML = hc; return; }
     }
     if (state.key === 'op_envios' && catalogoAgrupado) {
       var he = renderEnvios(rows);
@@ -12379,7 +12533,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.01-288';
+    var mia = '2026.09.01-290';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
