@@ -262,53 +262,6 @@
     letter-spacing:.5px; background:transparent; position:static; text-align:left; }
   .mini-table td.num { text-align:right; font-variant-numeric:tabular-nums; }
   .dash-empty { color:var(--muted); font-size:13px; padding:8px 0; }
-
-  /* Estados financieros. La tabla es ancha a fuerza: doce meses más totales. Se
-     deja rodar en horizontal con la columna del concepto fija, que es la única
-     que hay que seguir viendo mientras se recorre el año. */
-  .est-top { display:flex; justify-content:space-between; align-items:flex-end; gap:16px;
-    flex-wrap:wrap; margin-bottom:14px; }
-  .est-wrap { overflow-x:auto; border:1px solid var(--line); border-radius:10px;
-    background:var(--surface); }
-  .est-tabla { border-collapse:collapse; font-size:12.5px; white-space:nowrap; min-width:100%; }
-  .est-tabla th { background:var(--ink); color:#fff; font-weight:600; font-size:10.5px;
-    text-transform:uppercase; letter-spacing:.6px; padding:9px 12px; text-align:right;
-    position:sticky; top:0; z-index:2; }
-  .est-tabla th.est-con { text-align:left; }
-  .est-tabla td { padding:6px 12px; text-align:right; font-variant-numeric:tabular-nums;
-    border-bottom:1px solid var(--line); }
-  .est-tabla td.est-con { text-align:left; white-space:nowrap; }
-  .est-tabla .est-con { position:sticky; left:0; background:var(--surface); z-index:1;
-    min-width:270px; box-shadow:1px 0 0 var(--line); }
-  .est-tabla th.est-con { background:var(--ink); z-index:3; }
-  .est-tabla td.neg { color:var(--danger); }
-  .est-tabla td.est-ant { color:var(--muted); }
-  .est-tabla td.est-var { font-weight:600; }
-  /* Nivel 0 son los renglones de resultado: se separan del bloque de arriba */
-  .est-tabla tr.est-n0 td { font-weight:700; border-top:1px solid var(--slate);
-    background:var(--surface-2, #faf6ef); }
-  .est-tabla tr.est-n0 td.est-con { background:var(--surface-2, #faf6ef); }
-  .est-tabla tr.est-n1 td { font-weight:600; }
-  .est-tabla tr.est-n2 td.est-con { padding-left:30px; color:var(--slate); font-weight:400; }
-  .est-tabla tr.est-n3 td { font-weight:400; }
-  .est-tabla tr.est-n3 td.est-con { padding-left:52px; color:var(--muted); }
-  .est-tabla tr.est-margen td { font-weight:600; color:var(--slate); border-top:none;
-    background:transparent; font-size:12px; }
-  .est-tabla tr.est-margen td.est-con { background:var(--surface); padding-left:30px; }
-  .est-tabla tbody tr:hover td { background:#f2efe8; }
-  .est-tabla tbody tr:hover td.est-con { background:#f2efe8; }
-  .aviso-caja { border:1px solid var(--amber); background:#fdf6e3; border-radius:10px;
-    padding:12px 14px; font-size:13px; }
-  .cuadre-lado { border:1px solid var(--line); border-left-width:4px; border-radius:0 10px 10px 0;
-    padding:14px 16px; margin-bottom:14px; background:var(--surface); }
-  .cuadre-lado.ok  { border-left-color:var(--ink); }
-  .cuadre-lado.mal { border-left-color:var(--danger); }
-  .cuadre-cab { display:flex; gap:12px; align-items:baseline; flex-wrap:wrap; margin-bottom:10px; }
-  .cuadre-cab b { font-size:15px; }
-  .cuadre-cab .s { color:var(--slate); }
-  .cuadre-nums { display:flex; gap:34px; flex-wrap:wrap; }
-  .cuadre-nums .k { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; }
-  .cuadre-nums .v { font-size:19px; font-weight:700; font-variant-numeric:tabular-nums; }
   input[type=text], input[type=search] { font:inherit; color:var(--ink); background:var(--surface);
     border:1px solid var(--line); border-radius:8px; padding:8px 10px; }
   input:focus { outline:2px solid var(--ink); outline-offset:1px; border-color:var(--ink); }
@@ -1002,7 +955,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-311</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.01-288</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1236,14 +1189,7 @@
       body: JSON.stringify(payload)
     });
     const data = await res.json().catch(function(){ return {}; });
-    // Los handlers mandan "pista": una frase que dice qué hacer con el error.
-    // Se estaba tirando aquí, así que el usuario solo veía la parte seca del
-    // mensaje. Hay 17 pistas escritas en el servidor y ninguna se veía.
-    if (!res.ok) {
-      const err = new Error(data.error || ('Error ' + res.status));
-      if (data.pista) err.pista = data.pista;
-      throw err;
-    }
+    if (!res.ok) throw new Error(data.error || ('Error ' + res.status));
     return data;
   }
 
@@ -1269,9 +1215,7 @@
     fin_banco:           'Sube el estado de cuenta del banco y captura lo que falta, sin duplicar.',
     fac_emitidos:        'Facturas en parcialidades sin complemento, y qué entró al banco sin papel.',
     fin_gastos_op:       'Gastos de operación por categoría: renta, servicios, sueldos, marketing.',
-    fin_estados:         'Estado de resultados: un renglón por año, mes y concepto.',
-    fin_flujo:           'Flujo de efectivo: un renglón por año, mes y concepto.',
-    fin_balance:         'Balance general: saldos por año, mes y concepto.',
+    fin_estados:         'Estado de resultados por mes.',
     rh_resumen:          'La plantilla de un vistazo: costo, altas, bajas y rotación.',
     rh_personal:         'Quién trabaja aquí, desde cuándo y bajo qué esquema.',
     rh_nomina:           'Lo que se paga cada periodo, con sus deducciones.',
@@ -1296,7 +1240,7 @@
     fin_cxc:             'Saldos por cobrar de cada pedido.',
     fin_ingresos:        'Cobros recibidos, ligados al folio del pedido.'
   };
-  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'fac_control', 'cfdi_control', 'cfdi_prov', 'prov_razon', 'rh_resumen', 'fin_gastos_op', 'fin_efectivo', 'fac_impuestos', 'fac_emitidos', 'log_calendario', 'fin_estados', 'fin_flujo', 'fin_balance',
+  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'fac_control', 'cfdi_control', 'cfdi_prov', 'prov_razon', 'rh_resumen', 'fin_gastos_op', 'fin_efectivo', 'fac_impuestos', 'fac_emitidos', 'log_calendario',
     // El stock sale de pedidos, entradas y salidas: se recalcula, no se edita
     'op_stock', 'op_revisar', 'prov_revision'];
   function esLector() {
@@ -2204,8 +2148,6 @@
       return cRef && String(r[cRef] || '').trim() === folio;
     });
     if (!versionFilas.length) { toast('No encontré los renglones de ' + folio + '.', 'err'); return; }
-    var cCliV = findHeaderByName('Cliente');
-    var clienteActual = cCliV ? String(versionFilas[0][cCliV] || '').trim() : '';
 
     var h = '<div class="s" style="color:var(--slate);margin-bottom:12px">' +
       '<b>' + esc(folio) + ' se queda como está.</b> Esto crea una cotización nueva con su ' +
@@ -2242,21 +2184,6 @@
       '</div>' +
       listasDelCatalogo() +
       '<div id="vnNuevos" style="margin-top:10px"></div></div>' +
-      // Para quién es. El guardado ya mandaba el cliente nuevo al servidor, pero
-      // esta parte nunca se dibujó: la opción existía y no se veía, así que toda
-      // versión nueva nacía con el cliente de la anterior.
-      '<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">' +
-      '<div class="s" style="color:var(--slate);margin-bottom:8px"><b>¿Para quién es?</b></div>' +
-      '<label class="s" style="display:block;margin-bottom:4px;cursor:pointer">' +
-        '<input type="radio" name="vnQuien" value="mismo" checked style="margin-right:6px">' +
-        'El mismo cliente' + (clienteActual ? ': ' + esc(clienteActual) : '') + '</label>' +
-      '<label class="s" style="display:block;cursor:pointer">' +
-        '<input type="radio" name="vnQuien" value="otro" style="margin-right:6px">' +
-        'Otro cliente</label>' +
-      '<div id="vnOtroCli" style="display:none;margin-top:8px">' +
-        '<div class="fld" style="max-width:320px;margin:0"><label>Cliente</label>' +
-        '<input id="vnCliente" list="vnClientes" placeholder="nombre del cliente"></div>' +
-        datalistClientes('vnClientes') + '</div></div>' +
       '<div class="s" style="color:var(--muted);margin-top:10px">' + esc(folio) + ' no se toca: ' +
       'se queda tal como está, por si el cliente se decide por ella. Más adelante, cuando sepas ' +
       'cuál se quedó, marca la otra como Rechazada para que no cuenten las dos en la conversión. ' +
@@ -2296,15 +2223,6 @@
     if (quitar.length === versionFilas.length && !versionAgregados.length) {
       toast('No puedes quitar todos los productos sin agregar otro.', 'err'); return;
     }
-    // Para quién es la versión nueva. Se valida antes de apagar el botón: si se
-    // valida después, un nombre vacío deja el botón en "Creando…" para siempre.
-    var quien = document.querySelector('input[name="vnQuien"]:checked');
-    var clienteNuevo = '';
-    if (quien && quien.value === 'otro') {
-      var elc = document.getElementById('vnCliente');
-      clienteNuevo = elc ? elc.value.trim() : '';
-      if (!clienteNuevo) { toast('Escribe el nombre del otro cliente.', 'err'); return; }
-    }
     var btn = document.getElementById('aventaOk');
     btn.disabled = true; btn.textContent = 'Creando…';
     // Los productos nuevos van con los nombres de columna de la hoja
@@ -2319,6 +2237,14 @@
       if (cPre) rec[cPre] = x.precio;
       return rec;
     });
+    // Para quién es la versión nueva
+    var quien = document.querySelector('input[name="vnQuien"]:checked');
+    var clienteNuevo = '';
+    if (quien && quien.value === 'otro') {
+      var elc = document.getElementById('vnCliente');
+      clienteNuevo = elc ? elc.value.trim() : '';
+      if (!clienteNuevo) { toast('Escribe el nombre del otro cliente.', 'err'); return; }
+    }
     api('dup-cot', { token: state.token, folio: versionDe, quitar: quitar,
                      cambios: cambios, agregar: agregar, cliente: clienteNuevo })
       .then(function (d) {
@@ -2421,16 +2347,13 @@
         '<div class="fld" style="width:260px"><label>Cuenta</label>' +
           (bancoCuentas.length
             ? '<select id="bkCuenta">' + bancoCuentas.map(function (c) {
-                // Antes las cuentas sin número iban deshabilitadas y no se podían
-                // elegir. El número solo sirve para afinar el aviso de "ya
-                // capturado"; no hace falta para leer el archivo. Una tarjeta como
-                // AMEX no tiene por qué traerlo y quedaba fuera sin razón.
-                return '<option value="' + esc(c.numero || c.nombre) + '" data-num="' +
-                  (c.esBancaria ? '1' : '0') + '">' + esc(c.nombre) + '</option>';
+                return '<option value="' + esc(c.numero || c.nombre) + '"' +
+                  (c.esBancaria ? '' : ' disabled') + '>' + esc(c.nombre) +
+                  (c.esBancaria ? '' : ' — sin número de cuenta') + '</option>';
               }).join('') + '</select>' +
-              '<div class="s" style="color:var(--muted);margin-top:4px" id="bkCtaNota">' +
-                fmtNum(bancoCuentas.length) + ' cuentas' +
-                (bancoCuentasDe ? ' · de ' + esc(bancoCuentasDe) : '') + '</div>'
+              '<div class="s" style="color:var(--muted);margin-top:4px">' +
+                fmtNum(bancoCuentas.filter(function (c) { return c.esBancaria; }).length) +
+                ' cuentas' + (bancoCuentasDe ? ' · de ' + esc(bancoCuentasDe) : '') + '</div>'
             : '<input id="bkCuenta" placeholder="número de cuenta">' +
               '<div class="s" style="color:var(--amber);margin-top:4px">No se encontró la ' +
               'lista de cuentas en el catálogo</div>') + '</div>' +
@@ -2443,27 +2366,6 @@
       '<div id="bkAviso" style="margin-top:14px"></div></div>' +
       '<div id="bkResultado" style="margin-top:18px"></div>';
     document.getElementById('bkLeer').addEventListener('click', leerArchivoBanco);
-    var selCta = document.getElementById('bkCuenta');
-    if (selCta && selCta.tagName === 'SELECT') {
-      var notaCta = function () {
-        var op = selCta.options[selCta.selectedIndex];
-        var caja = document.getElementById('bkCtaNota');
-        if (!op || !caja) return;
-        if (op.getAttribute('data-num') === '1') {
-          caja.style.color = 'var(--muted)';
-          caja.innerHTML = fmtNum(bancoCuentas.length) + ' cuentas' +
-            (bancoCuentasDe ? ' · de ' + esc(bancoCuentasDe) : '');
-        } else {
-          caja.style.color = 'var(--amber)';
-          caja.innerHTML = 'Esta cuenta no trae número en el catálogo. El archivo se ' +
-            'lee igual, pero el aviso de "ya capturado" solo compara fecha y monto, no ' +
-            'la cuenta. Para que compare por cuenta, agrégale el número al nombre en la ' +
-            'columna <b>Cuenta</b> del catálogo.';
-        }
-      };
-      selCta.addEventListener('change', notaCta);
-      notaCta();
-    }
   }
 
   function leerArchivoBanco() {
@@ -2495,9 +2397,7 @@
         .catch(function (e) {
           document.getElementById('bkAviso').innerHTML =
             '<div class="state" style="color:var(--danger)">' +
-            esc((e && e.message) || 'No se pudo leer.') +
-            (e && e.pista ? '<div class="s" style="color:var(--slate);margin-top:8px;' +
-              'font-weight:400">' + esc(e.pista) + '</div>' : '') + '</div>';
+            esc((e && e.message) || 'No se pudo leer.') + '</div>';
         })
         .then(function () { btn.disabled = false; btn.textContent = 'Leer el archivo'; });
     };
@@ -3315,7 +3215,7 @@
     return n > 0 ? n : null;
   }
 
-  // versionAgregados se declara junto a versionDe y versionFilas, más arriba.
+  var versionAgregados = [];
   function pintarAgregadosVersion() {
     var el = document.getElementById('vnNuevos');
     if (!el) return;
@@ -5479,491 +5379,6 @@
 
   // ===== Calendario de logística =====
   var logMes = null, logAnio = null, logDiaAbierto = null;
-
-  // ===== Estados financieros: se arman aquí, no se leen como tabla =====
-  // La tabla cruda de "un renglón por año, mes y concepto" sirve para guardar y es
-  // ilegible para leer. Esta pantalla la vuelve el estado de siempre: sangría por
-  // nivel, subtotales en negrita, los doce meses, el total y el año anterior.
-  var estadoCual = 'resultados', estadoAnio = new Date().getFullYear();
-  var estadoDesde = 1, estadoHasta = 12, estadoVista = 'importes', estadoVacios = false;
-  var estadoUlt = null, estadoCruce = null, estadoPdf = null, cruceAgrupar = 'auto';
-  function loadEstado(cual) {
-    estadoCual = cual;
-    document.getElementById('summary').innerHTML = '';
-    document.getElementById('summary').style.display = 'none';
-    mostrarAlta(false);
-    document.getElementById('count').textContent = '';
-    document.getElementById('tableWrap').innerHTML =
-      '<div class="state" style="padding:50px 0">Armando el estado…</div>';
-    api('estados', { token: state.token, estado: cual, anio: estadoAnio,
-                     desde: estadoDesde, hasta: estadoHasta })
-      .then(function (d) { estadoUlt = d; pintarEstado(d); })
-      .catch(function (e) {
-        document.getElementById('tableWrap').innerHTML =
-          '<div class="state" style="color:var(--danger);padding:40px 0">' +
-          esc((e && e.message) || 'No se pudo armar.') +
-          (e && e.pista ? '<div class="s" style="color:var(--slate);margin-top:10px;font-weight:400">' +
-            esc(e.pista) + '</div>' : '') + '</div>';
-      });
-  }
-  function MES_OPTS(sel) {
-    return MESES_ES.map(function (m, i) {
-      return '<option value="' + (i+1) + '"' + ((i+1) === sel ? ' selected' : '') +
-             '>' + esc(m) + '</option>';
-    }).join('');
-  }
-  function fmtEstado(v, esMargen) {
-    if (v === null || v === undefined) return '';
-    if (esMargen) return (v * 100).toFixed(1).replace('-', '\u2212') + '%';
-    if (!v) return '\u2013';
-    var t = formatMoney(Math.abs(v));
-    return v < 0 ? '(' + t + ')' : t;
-  }
-  function pintarEstado(d) {
-    var MES3 = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
-    var anios = [];
-    for (var a = new Date().getFullYear(); a >= 2024; a--) anios.push(a);
-    var h = '<div class="est-top">' +
-      '<div><h3 class="sec-t" style="margin:0">' + esc(d.titulo) + '</h3>' +
-      '<div class="s" style="color:var(--muted)">Se arma solo desde ' + esc(d.hoja) +
-      ', con la estructura de ' + esc(d.estructura) + '. Nada de esta pantalla se captura.</div></div>' +
-      '<div style="display:flex;gap:10px;align-items:flex-end">' +
-      '<div class="fld" style="width:100px;margin:0"><label>Año</label><select id="estAnio">' +
-        anios.map(function (x) {
-          return '<option value="' + x + '"' + (x === d.anio ? ' selected' : '') + '>' + x + '</option>';
-        }).join('') + '</select></div>' +
-      // Rango de meses: el ERP se ve de enero a julio, el estado también
-      '<div class="fld" style="width:110px;margin:0"><label>Desde</label><select id="estDesde">' +
-        MES_OPTS(d.desde) + '</select></div>' +
-      '<div class="fld" style="width:110px;margin:0"><label>Hasta</label><select id="estHasta">' +
-        MES_OPTS(d.hasta) + '</select></div>' +
-      '<div class="fld" style="width:150px;margin:0"><label>Ver</label><select id="estVista">' +
-        [['importes','Importes'],['vertical','Análisis vertical'],
-         ['horizontal','Análisis horizontal']].map(function (o) {
-          return '<option value="' + o[0] + '"' + (estadoVista === o[0] ? ' selected' : '') +
-                 '>' + o[1] + '</option>'; }).join('') + '</select></div>' +
-      '<label class="s" style="display:flex;align-items:center;gap:6px;padding-bottom:8px;cursor:pointer">' +
-        '<input type="checkbox" id="estVacios"' + (estadoVacios ? ' checked' : '') + '>' +
-        'Mostrar los renglones vacíos</label>' +
-      (estadoCual === 'resultados'
-        ? '<button type="button" id="estCruce">Cuadrar contra Ventas</button>' : '') +
-      (estadoCual === 'flujo'
-        ? '<button type="button" id="estCruceF">Cuadrar contra Ingresos y Egresos</button>' : '') +
-      // La lectura de los números va en el PDF, no aquí: en pantalla empujaba la
-      // tabla fuera de la vista, que es lo que se viene a ver.
-      '<button type="button" class="primary" id="estPdf" ' +
-      'title="Trae la tabla más la lectura de los números">Reporte en PDF</button>' +
-      '<button type="button" id="estCsv">CSV</button></div></div>';
-
-    // El cuadre va arriba y solo cuando hay algo que decir: dinero capturado que
-    // ningún renglón del estado está recogiendo porque el concepto no existe.
-    var hu = (d.cuadre && d.cuadre.huerfanos) || [];
-    if (hu.length) {
-      h += '<div class="aviso-caja" style="margin:12px 0">' +
-        '<b>Hay ' + fmtNum(hu.length) + (hu.length === 1 ? ' concepto' : ' conceptos') +
-        ' capturados que no existen en la estructura, así que su dinero no entra al estado:</b>' +
-        '<div class="s" style="margin-top:6px">' +
-        hu.slice(0, 8).map(function (x) {
-          return esc(x.concepto) + ' \u00b7 ' + esc(formatMoney(x.monto));
-        }).join('<br>') + '</div>' +
-        '<div class="s" style="margin-top:6px;color:var(--slate)">Agrégalos en ' +
-        esc(d.estructura) + ' o corrige cómo están escritos en ' + esc(d.hoja) + '.</div></div>';
-    }
-
-    (d.avisos || []).forEach(function (a) {
-      h += '<div class="aviso-caja"' + (a.grave ? ' style="border-color:var(--danger);background:#fdf0ee"' : '') +
-        ' >' + (a.grave ? '<b>Ojo con esto</b><div style="margin-top:4px">' : '<div>') +
-        esc(a.texto) + '</div></div>';
-    });
-    h += '<div class="est-wrap"><table class="est-tabla"><thead><tr>' +
-      '<th class="est-con">CONCEPTO</th>' +
-      MES3.filter(function (_m, i) { return i + 1 >= d.desde && i + 1 <= d.hasta; })
-          .map(function (m) { return '<th>' + m + '</th>'; }).join('') +
-      '<th class="est-tot">TOTAL</th><th class="est-tot">' + (d.anio - 1) + '</th>' +
-      '<th class="est-tot">VAR.</th></tr></thead><tbody>';
-
-    // El renglón base del análisis vertical: todo se mide contra él
-    var base = (d.filas || []).filter(function (x) { return x.concepto === d.base; })[0];
-    var pct = function (v, b) {
-      if (v === null || v === undefined || !b) return '';
-      return (v / b * 100).toFixed(1) + '%';
-    };
-    var mostradas = 0;
-    (d.filas || []).forEach(function (f) {
-      // Un renglón vacío todo el rango no aporta nada y sí estorba
-      if (f.vacio && !estadoVacios) return;
-      mostradas++;
-      var esM = f.tipo === 'margen';
-      var cls = 'est-n' + f.nivel + (esM ? ' est-margen' : '');
-      var vr = '';
-      if (esM) {
-        if (f.total !== null && f.anterior !== null && f.anterior !== undefined) {
-          var pp = (f.total - f.anterior) * 100;
-          vr = (pp > 0 ? '+' : '') + pp.toFixed(1) + ' pp';
-        }
-      } else if (f.anterior) {
-        var v = (f.total - f.anterior) / Math.abs(f.anterior) * 100;
-        vr = (v > 0 ? '+' : '') + v.toFixed(1) + '%';
-      }
-      var celdas = '';
-      f.meses.forEach(function (x, i) {
-        if (x === null && (i + 1 < d.desde || i + 1 > d.hasta)) return;
-        var txtc, neg = false;
-        if (estadoVista === 'vertical') {
-          txtc = esM ? fmtEstado(x, true) : pct(x, base ? base.meses[i] : 0);
-        } else if (estadoVista === 'horizontal') {
-          // Contra el mismo mes del año pasado, no contra el mes anterior: así
-          // no se confunde la estacionalidad con un cambio de verdad.
-          var a = f.anteriorMeses ? f.anteriorMeses[i] : null;
-          if (!a || x === null) txtc = '';
-          else {
-            var vv = (x - a) / Math.abs(a) * 100;
-            neg = vv < 0;
-            txtc = (vv > 0 ? '+' : '') + vv.toFixed(0) + '%';
-          }
-        } else {
-          txtc = fmtEstado(x, esM); neg = x < 0;
-        }
-        celdas += '<td' + (neg ? ' class="neg"' : '') + '>' + esc(txtc) + '</td>';
-      });
-      var tTot = estadoVista === 'vertical'
-        ? (esM ? fmtEstado(f.total, true) : pct(f.total, base ? base.total : 0))
-        : fmtEstado(f.total, esM);
-      var tAnt = estadoVista === 'vertical'
-        ? (esM ? fmtEstado(f.anterior, true) : pct(f.anterior, base ? base.anterior : 0))
-        : fmtEstado(f.anterior, esM);
-      h += '<tr class="' + cls + '"><td class="est-con">' + esc(f.concepto) + '</td>' + celdas +
-        '<td class="est-tot' + (f.total < 0 ? ' neg' : '') + '">' + esc(tTot) + '</td>' +
-        '<td class="est-tot est-ant">' + esc(tAnt) + '</td>' +
-        '<td class="est-tot est-var' + (vr.indexOf('-') === 0 ? ' neg' : '') + '">' + esc(vr) + '</td></tr>';
-    });
-    var escondidas = (d.filas || []).length - mostradas;
-    h += '</tbody></table></div>';
-    h += '<div class="s" style="color:var(--muted);margin-top:10px">' +
-         fmtNum(d.cuadre ? d.cuadre.renglones : 0) + ' renglones capturados de ' +
-         esc(MESES_ES[d.desde - 1]) + ' a ' + esc(MESES_ES[d.hasta - 1]) + ' de ' + esc(String(d.anio)) +
-         '. La columna del año anterior toma los mismos meses.' +
-         (escondidas ? ' ' + fmtNum(escondidas) + ' renglones sin nada en el rango están escondidos.' : '') +
-         (estadoVista === 'vertical' ? ' El análisis vertical va sobre ' + esc(d.base) + '.' : '') +
-         (estadoVista === 'horizontal' ? ' El análisis horizontal compara cada mes contra el mismo mes del año pasado.' : '') +
-         '</div><div id="estCruceCaja" style="margin-top:16px"></div>';
-
-    document.getElementById('tableWrap').innerHTML = h;
-    var fuente = document.getElementById('areaFuente');
-    if (fuente) fuente.innerHTML = '';
-    var recargar = function () { loadEstado(estadoCual); };
-    document.getElementById('estAnio').addEventListener('change', function () {
-      estadoAnio = +this.value; recargar();
-    });
-    document.getElementById('estDesde').addEventListener('change', function () {
-      estadoDesde = +this.value;
-      if (estadoHasta < estadoDesde) estadoHasta = estadoDesde;
-      recargar();
-    });
-    document.getElementById('estHasta').addEventListener('change', function () {
-      estadoHasta = +this.value;
-      if (estadoDesde > estadoHasta) estadoDesde = estadoHasta;
-      recargar();
-    });
-    // La vista y los vacíos no cambian los números: se repinta con lo que ya está
-    document.getElementById('estVista').addEventListener('change', function () {
-      estadoVista = this.value; pintarEstado(estadoUlt);
-    });
-    document.getElementById('estVacios').addEventListener('change', function () {
-      estadoVacios = this.checked; pintarEstado(estadoUlt);
-    });
-    var bc = document.getElementById('estCruce');
-    if (bc) bc.addEventListener('click', pintarCruceVentas);
-    document.getElementById('estCsv').addEventListener('click', function () { bajarCsvEstado(d); });
-    document.getElementById('estPdf').addEventListener('click', function () {
-      var b = this;
-      if (estadoPdf && estadoPdf.clave === estadoCual + estadoAnio + estadoDesde + estadoHasta) {
-        bajarPdf(estadoPdf.pdf, estadoPdf.nombre); return;
-      }
-      b.disabled = true; b.textContent = 'Armando…';
-      api('estado-pdf', { token: state.token, estado: estadoCual, anio: estadoAnio,
-                          desde: estadoDesde, hasta: estadoHasta, vacios: estadoVacios })
-        .then(function (o) {
-          estadoPdf = { pdf: o.pdf, nombre: o.nombre,
-                        clave: estadoCual + estadoAnio + estadoDesde + estadoHasta };
-          bajarPdf(o.pdf, o.nombre);
-        })
-        .catch(fail)
-        .then(function () { b.disabled = false; b.textContent = 'Reporte en PDF'; });
-    });
-    var bcf = document.getElementById('estCruceF');
-    if (bcf) bcf.addEventListener('click', pintarCruceFlujo);
-  }
-  // Se baja como CSV para poder pegarlo en una presentación o mandarlo por correo
-  function bajarCsvEstado(d) {
-    var MES3 = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
-    var lineas = [[d.titulo + ' ' + d.anio].concat(MES3).concat(['TOTAL', String(d.anio - 1)])];
-    (d.filas || []).forEach(function (f) {
-      lineas.push([f.concepto].concat(f.meses.map(function (x) {
-        return (x === null || x === undefined) ? '' : x;
-      })).concat([f.total === null ? '' : f.total, f.anterior === null ? '' : f.anterior]));
-    });
-    var csv = lineas.map(function (r) {
-      return r.map(function (c) { return '"' + String(c).replace(/"/g, '""') + '"'; }).join(',');
-    }).join('\n');
-    var a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }));
-    a.download = d.titulo + ' ' + d.anio + '.csv';
-    a.click();
-  }
-
-  // Cuadre contra VENTAS: lo que dice el estado contra lo que el ERP sabe folio
-  // por folio. La gracia es que VENTAS sí sabe cuál está cancelado, y el Excel
-  // del que salió el estado a veces no las descuenta.
-  function pintarCruceVentas() {
-    var caja = document.getElementById('estCruceCaja');
-    if (!caja) return;
-    var b = document.getElementById('estCruce');
-    b.disabled = true; b.textContent = 'Cuadrando…';
-    caja.innerHTML = '<div class="state" style="padding:20px 0">Leyendo VENTAS folio por folio…</div>';
-    api('cruce-ventas', { token: state.token, anio: estadoAnio })
-      .then(function (d) {
-        estadoCruce = d;
-        var t = d.totales || {};
-        var h = '<h3 class="sec-t">Estado de resultados contra VENTAS · ' + esc(String(d.anio)) + '</h3>' +
-          '<div class="s" style="color:var(--muted);margin-bottom:10px">' + esc(d.nota || '') + '</div>' +
-          '<div class="kpi-grid" style="margin-bottom:12px">' +
-          ['<div class="sum-card"><div class="k">Ventas vivas</div><div class="v">' +
-             esc(formatMoney(t.ventas)) + '</div></div>',
-           '<div class="sum-card"><div class="k">Canceladas</div><div class="v">' +
-             esc(formatMoney(t.canceladas)) + '</div></div>',
-           '<div class="sum-card"><div class="k">Dice el estado</div><div class="v">' +
-             esc(formatMoney(t.estado)) + '</div></div>',
-           '<div class="sum-card"><div class="k">Diferencia</div><div class="v"' +
-             (Math.abs(t.diferencia) > 1 ? ' style="color:var(--danger)"' : '') + '>' +
-             esc(formatMoney(t.diferencia)) + '</div></div>'].join('') + '</div>';
-        h += '<div class="est-wrap"><table class="est-tabla"><thead><tr>' +
-          '<th class="est-con">MES</th><th>VENTAS VIVAS</th><th>CANCELADAS</th>' +
-          '<th>DICE EL ESTADO</th><th>DIFERENCIA</th><th class="est-con2">QUÉ PASÓ</th>' +
-          '</tr></thead><tbody>';
-        (d.meses || []).forEach(function (m) {
-          var mala = Math.abs(m.diferencia) > 1;
-          h += '<tr><td class="est-con">' + esc(MESES_ES[m.mes - 1]) + '</td>' +
-            '<td>' + esc(formatMoney(m.ventas)) + '</td>' +
-            '<td' + (m.canceladas ? ' class="neg"' : '') + '>' +
-              esc(m.canceladas ? formatMoney(m.canceladas) + ' (' + fmtNum(m.nCanceladas) + ')' : '\u2013') +
-            '</td>' +
-            '<td>' + esc(formatMoney(m.estado)) + '</td>' +
-            '<td' + (mala ? ' class="neg"' : '') + '>' + esc(formatMoney(m.diferencia)) + '</td>' +
-            '<td style="text-align:left;white-space:normal;min-width:260px' +
-              (mala ? ';color:var(--danger)' : ';color:var(--muted)') + '">' +
-              esc(m.porQue || '') + '</td></tr>';
-        });
-        h += '</tbody></table></div>';
-        if ((d.canceladas || []).length) {
-          h += '<div class="s" style="margin-top:12px"><b>Los folios cancelados del año</b> ' +
-               '(los de más monto primero):</div>' +
-               '<table class="mini-table" style="margin-top:6px"><tbody>' +
-               d.canceladas.map(function (x) {
-                 return '<tr><td>' + esc(x.folio || 'sin folio') + '</td><td>' +
-                   esc(MESES_ES[x.mes - 1]) + '</td><td class="num">' +
-                   esc(formatMoney(x.monto)) + '</td></tr>';
-               }).join('') + '</tbody></table>';
-        }
-        if (d.sinFecha) {
-          h += '<div class="s" style="color:var(--amber);margin-top:10px">' +
-               fmtNum(d.sinFecha) + ' renglones de VENTAS no tienen fecha legible y quedaron ' +
-               'fuera de esta comparación.</div>';
-        }
-        caja.innerHTML = h;
-      })
-      .catch(function (e) {
-        caja.innerHTML = '<div class="state" style="color:var(--danger)">' +
-          esc((e && e.message) || 'No se pudo cuadrar.') +
-          (e && e.pista ? '<div class="s" style="color:var(--slate);margin-top:8px;font-weight:400">' +
-            esc(e.pista) + '</div>' : '') + '</div>';
-      })
-      .then(function () { b.disabled = false; b.textContent = 'Cuadrar contra Ventas'; });
-  }
-
-  // Cuadre del flujo contra INGRESOS y EGRESOS.
-  // Primero la pregunta grande: ¿el total del flujo es el total de la hoja? El
-  // detalle por concepto solo aparece si no cuadra, y solo del lado que falla.
-  function pintarCruceFlujo() {
-    var caja = document.getElementById('estCruceCaja');
-    if (!caja) return;
-    var b = document.getElementById('estCruceF');
-    b.disabled = true; b.textContent = 'Cuadrando…';
-    caja.innerHTML = '<div class="state" style="padding:20px 0">Sumando INGRESOS y EGRESOS del periodo…</div>';
-    api('cruce-flujo', { token: state.token, anio: estadoAnio,
-                         desde: estadoDesde, hasta: estadoHasta, agrupar: cruceAgrupar })
-      .then(function (d) {
-        var h = '<div class="est-top"><div>' +
-          '<h3 class="sec-t" style="margin:0">Flujo contra Ingresos y Egresos · ' +
-          esc(MESES_ES[d.desde - 1]) + ' a ' + esc(MESES_ES[d.hasta - 1]) + ' ' +
-          esc(String(d.anio)) + '</h3>' +
-          '<div class="s" style="color:var(--muted)">Las hojas se agrupan por ' +
-          esc((d.agrupadoPor && (d.agrupadoPor.salida || d.agrupadoPor.entrada)) || '—') +
-          (d.hayMapeo ? ', y cada renglón junta las que dice su columna "Sale de".'
-                      : '. La columna "Sale de" está vacía: solo empareja lo que se llame igual.') +
-          '</div></div>' +
-          '<div class="fld" style="width:190px;margin:0"><label>Agrupar la hoja por</label>' +
-          '<select id="cfAgrupar">' +
-          [['auto','Como esté (subcategoría)'],['subcategoria','Subcategoría'],
-           ['categoria','Categoría'],['concepto','Concepto']].map(function (o) {
-            return '<option value="' + o[0] + '"' + (cruceAgrupar === o[0] ? ' selected' : '') +
-                   '>' + o[1] + '</option>'; }).join('') + '</select></div></div>';
-
-        (d.lados || []).forEach(function (x) {
-          h += '<div class="cuadre-lado' + (x.cuadra ? ' ok' : ' mal') + '">' +
-            '<div class="cuadre-cab"><b>' + esc(x.lado) + '</b>' +
-            '<span class="s">' + esc(x.resumen) + '</span></div>' +
-            '<div class="cuadre-nums">' +
-              '<div><div class="k">Dice el flujo</div><div class="v">' +
-                esc(formatMoney(x.flujo)) + '</div></div>' +
-              '<div><div class="k">Suma ' + esc(x.hoja) + '</div><div class="v">' +
-                esc(formatMoney(x.banco)) + '</div>' +
-                '<div class="k">' + fmtNum(x.movimientos) + ' movimientos</div></div>' +
-              '<div><div class="k">Diferencia</div><div class="v"' +
-                (x.cuadra ? '' : ' style="color:var(--danger)"') + '>' +
-                esc(formatMoney(x.diferencia)) + '</div>' +
-                (x.porcentaje !== null && !x.cuadra
-                  ? '<div class="k">' + esc(x.porcentaje.toFixed(1)) + '% de la hoja</div>' : '') +
-              '</div></div>';
-
-          // Primero lo que falta mapear: no es una diferencia, es que nadie
-          // dijo a dónde va. Mientras eso esté pendiente, el detalle de abajo
-          // no se puede leer.
-          var falta = (d.porMapear || {})[x.lado] || [];
-          if (falta.length) {
-            h += '<div class="s" style="margin:10px 0 6px"><b>Falta decir a dónde van</b> · ' +
-              'esto no es una diferencia todavía: son renglones que nadie reclama. ' +
-              'Se resuelven en la columna <b>Sale de</b> de EF Conceptos.</div>' +
-              '<div class="est-wrap"><table class="est-tabla"><thead><tr>' +
-              '<th class="est-con">RENGLÓN</th><th>MONTO</th><th>DÓNDE ESTÁ</th>' +
-              '<th style="text-align:left">QUÉ HACER</th></tr></thead><tbody>' +
-              falta.map(function (f) {
-                return '<tr><td class="est-con">' + esc(f.concepto) + '</td>' +
-                  '<td>' + esc(formatMoney(f.monto)) + '</td>' +
-                  '<td>' + (f.donde === 'flujo' ? 'En el flujo' : 'En ' + esc(x.hoja)) + '</td>' +
-                  '<td style="text-align:left;white-space:normal;min-width:280px;color:var(--slate)">' +
-                    esc(f.porQue) + '</td></tr>';
-              }).join('') + '</tbody></table></div>';
-          }
-          var lista = (d.revisar || {})[x.lado] || [];
-          if (!x.cuadra && lista.length) {
-            h += '<div class="s" style="margin:10px 0 6px"><b>Conceptos que hay que revisar</b> ' +
-              '· del que más explica al que menos. La columna EXPLICA dice cuánto de la ' +
-              'diferencia queda cubierto al llegar a ese renglón.</div>' +
-              '<div class="est-wrap"><table class="est-tabla"><thead><tr>' +
-              '<th class="est-con">RENGLÓN DEL FLUJO</th><th>EN EL FLUJO</th><th>EN ' + esc(x.hoja) + '</th>' +
-              '<th>DIFERENCIA</th><th>EXPLICA</th>' +
-              '<th style="text-align:left">QUÉ PASA · DE DÓNDE SALE</th></tr></thead><tbody>' +
-              lista.map(function (f) {
-                return '<tr><td class="est-con">' + esc(f.concepto) + '</td>' +
-                  '<td>' + esc(f.flujo ? formatMoney(f.flujo) : '\u2013') + '</td>' +
-                  '<td>' + esc(f.banco ? formatMoney(f.banco) : '\u2013') + '</td>' +
-                  '<td class="neg">' + esc(formatMoney(f.diferencia)) + '</td>' +
-                  '<td>' + esc(f.explicado === null ? '' : f.explicado.toFixed(0) + '%') + '</td>' +
-                  '<td style="text-align:left;white-space:normal;min-width:240px;color:var(--slate)">' +
-                    esc(f.porQue) +
-                    (f.sale ? '<div style="color:var(--muted);margin-top:2px">Sale de: ' +
-                      esc(f.sale) + '</div>' : '') + '</td></tr>';
-              }).join('') + '</tbody></table></div>';
-          }
-          h += '</div>';
-        });
-
-        // Mes a mes primero: localiza el problema antes de listar conceptos
-        if ((d.porMes || []).length) {
-          h += '<div class="s" style="margin:16px 0 6px"><b>Mes a mes</b> · si la diferencia se ' +
-            'junta en uno o dos meses es captura; si está repartida en todos, falta mapear.</div>' +
-            '<div class="est-wrap"><table class="est-tabla"><thead><tr>' +
-            '<th class="est-con">MES</th><th>ENTRADAS</th><th>INGRESOS</th><th>DIF.</th>' +
-            '<th>SALIDAS</th><th>EGRESOS</th><th>DIF.</th></tr></thead><tbody>' +
-            d.porMes.map(function (m) {
-              var d1 = Math.abs(m.difEntradas) > 1, d2 = Math.abs(m.difSalidas) > 1;
-              return '<tr><td class="est-con">' + esc(MESES_ES[m.mes - 1]) + '</td>' +
-                '<td>' + esc(formatMoney(m.flujoEntradas)) + '</td>' +
-                '<td>' + esc(formatMoney(m.ingresos)) + '</td>' +
-                '<td' + (d1 ? ' class="neg"' : '') + '>' +
-                  esc(d1 ? formatMoney(m.difEntradas) : '\u2013') + '</td>' +
-                '<td>' + esc(formatMoney(m.flujoSalidas)) + '</td>' +
-                '<td>' + esc(formatMoney(m.egresos)) + '</td>' +
-                '<td' + (d2 ? ' class="neg"' : '') + '>' +
-                  esc(d2 ? formatMoney(m.difSalidas) : '\u2013') + '</td></tr>';
-            }).join('') + '</tbody></table></div>';
-        }
-        // De dónde salió cada número, para compararlo contra la pestaña
-        if ((d.fuente || []).length) {
-          h += '<div class="s" style="margin:16px 0 6px"><b>De dónde salió cada suma</b> · ' +
-            'compáralo contra el total que ves en la pestaña.</div>' +
-            '<div class="est-wrap"><table class="est-tabla"><thead><tr>' +
-            '<th class="est-con">HOJA</th><th>SUMA</th><th>COLUMNA</th><th>AGRUPA POR</th>' +
-            '<th>RENGLONES</th><th>ENTRARON</th><th>OTRO AÑO</th><th>FUERA DEL RANGO</th>' +
-            '<th>SIN MONTO</th></tr></thead><tbody>' +
-            d.fuente.map(function (f) {
-              return '<tr><td class="est-con">' + esc(f.hoja) + '</td>' +
-                '<td>' + esc(formatMoney(f.suma)) + '</td>' +
-                '<td>' + esc(f.columnaMonto) + '</td><td>' + esc(f.columnaGrupo) + '</td>' +
-                '<td>' + fmtNum(f.renglones) + '</td><td>' + fmtNum(f.entraron) + '</td>' +
-                '<td>' + fmtNum(f.otroAnio) + '</td><td>' + fmtNum(f.fueraDeRango) + '</td>' +
-                '<td>' + fmtNum(f.sinMonto) + '</td></tr>';
-            }).join('') + '</tbody></table></div>';
-        }
-        (d.negativos || []).forEach(function (n) {
-          h += '<div class="aviso-caja" style="margin-top:12px"><b>' + esc(n.hoja) +
-            ' trae ' + fmtNum(n.n) + (n.n === 1 ? ' renglón negativo' : ' renglones negativos') +
-            ' por ' + esc(formatMoney(n.monto)) + '</b>' +
-            '<div class="s" style="margin-top:4px">Se restan, igual que en tu hoja. Si el total ' +
-            'de aquí no coincide con el que ves en la pestaña, revisa primero estos.' +
-            (n.volteado ? ' Esta hoja guarda los montos en negativo, así que el lado completo ' +
-              'se volteó para poder compararlo contra el flujo.' : '') + '</div>' +
-            (n.ejemplos.length ? '<div class="s" style="margin-top:6px;color:var(--slate)">' +
-              n.ejemplos.map(function (e) {
-                return esc(e.fecha) + ' · ' + esc(e.concepto || 'sin concepto') + ' · ' +
-                  esc(formatMoney(e.monto));
-              }).join('<br>') + '</div>' : '') + '</div>';
-        });
-        if ((d.sinLado || []).length) {
-          var totSL = d.sinLado.reduce(function (a, x) { return a + x.monto; }, 0);
-          h += '<div class="aviso-caja" style="margin-top:12px;border-color:var(--danger);' +
-            'background:#fdf0ee"><b>Hay ' + esc(formatMoney(totSL)) + ' capturado en el flujo ' +
-            'que ningún renglón del estado recoge</b>' +
-            '<div class="s" style="margin-top:4px">Estos conceptos están en EF Datos pero no en ' +
-            'EF Conceptos, así que no entran al estado ni a este cuadre. Casi siempre es toda ' +
-            'la diferencia. Agrégalos a la estructura o corrige cómo están escritos.</div>' +
-            '<div class="s" style="margin-top:6px;color:var(--slate)">' +
-            d.sinLado.map(function (x) {
-              return esc(x.concepto) + ' · ' + esc(formatMoney(x.monto));
-            }).join('<br>') + '</div></div>';
-        }
-        (d.noRepartido || []).forEach(function (x) {
-          h += '<div class="aviso-caja" style="margin-top:12px"><b>' + esc(x.lado) + ': ' +
-            esc(formatMoney(x.monto)) + ' del total no se pudo repartir por concepto.</b>' +
-            '<div class="s" style="margin-top:4px">El total de arriba está bien —sale del mismo ' +
-            'cálculo que la pantalla del flujo— pero el detalle de abajo no va a sumar exacto.</div></div>';
-        });
-        if (d.sinEstructura) {
-          h += '<div class="aviso-caja" style="margin-top:12px">No se pudo leer EF Conceptos, ' +
-            'así que todo se contó como entrada. El cuadre de Salidas no sirve hasta que ' +
-            'esa pestaña se lea.</div>';
-        }
-        h += '<div class="s" style="color:var(--muted);margin-top:12px">' + esc(d.nota || '') + '</div>';
-        if (d.sinFecha) {
-          h += '<div class="s" style="color:var(--amber);margin-top:6px">' + fmtNum(d.sinFecha) +
-            ' movimientos sin fecha legible quedaron fuera.</div>';
-        }
-        caja.innerHTML = h;
-        var sa = document.getElementById('cfAgrupar');
-        if (sa) sa.addEventListener('change', function () {
-          cruceAgrupar = this.value; pintarCruceFlujo();
-        });
-      })
-      .catch(function (e) {
-        caja.innerHTML = '<div class="state" style="color:var(--danger)">' +
-          esc((e && e.message) || 'No se pudo cuadrar.') +
-          (e && e.pista ? '<div class="s" style="color:var(--slate);margin-top:8px;font-weight:400">' +
-            esc(e.pista) + '</div>' : '') + '</div>';
-      })
-      .then(function () { b.disabled = false; b.textContent = 'Cuadrar contra Ingresos y Egresos'; });
-  }
-
   function loadLogistica() {
     var hoy = new Date();
     if (logMes === null) { logMes = hoy.getMonth() + 1; logAnio = hoy.getFullYear(); }
@@ -6183,9 +5598,6 @@
   }
 
   function loadArea() {
-    if (state.key === 'fin_estados') return loadEstado('resultados');
-    if (state.key === 'fin_flujo')   return loadEstado('flujo');
-    if (state.key === 'fin_balance') return loadEstado('balance');
     if (state.key === 'log_calendario') return loadLogistica();
     if (state.key === 'fin_banco') return loadSubirBanco();
     if (state.key === 'fac_emitidos') return loadEmitidos();
@@ -7917,6 +7329,47 @@
     }
 
     // --- Ventas por mes / categoría / vendedor ---
+    // Margen por categoría: cuánto se vendió, cuánto dejó y qué porcentaje es.
+    // Ordenado por porcentaje, no por pesos.
+    function margenPorCategoria(lineas) {
+      var g = {};
+      (lineas || []).forEach(function (l) {
+        if (l.util == null) return;                 // sin utilidad no se puede
+        var k = l.tipo || 'Sin categorizar';
+        if (!g[k]) g[k] = { venta: 0, util: 0, n: 0 };
+        g[k].venta += (l.venta || 0);
+        g[k].util += (l.util || 0);
+        g[k].n++;
+      });
+      var lista = Object.keys(g).map(function (k) {
+        var x = g[k];
+        return { tipo: k, venta: x.venta, util: x.util, n: x.n,
+                 pct: x.venta ? (x.util / x.venta) * 100 : null };
+      }).filter(function (x) { return x.venta > 0 && x.pct !== null; });
+      if (!lista.length) {
+        return '<div class="state" style="padding:20px 0">No hay utilidad capturada ' +
+               'para calcular el margen.</div>';
+      }
+      lista.sort(function (a, b) { return b.pct - a.pct; });
+      var max = Math.max.apply(null, lista.map(function (x) { return x.pct; }));
+      return '<table class="mini-table"><thead><tr><th>Categoría</th>' +
+        '<th style="text-align:right">Vendido</th><th style="text-align:right">Utilidad</th>' +
+        '<th style="width:120px">Margen</th></tr></thead><tbody>' +
+        lista.map(function (x) {
+          var ancho = max ? Math.max(3, (x.pct / max) * 100) : 0;
+          var col = x.pct >= 50 ? 'var(--success)' : (x.pct >= 30 ? 'var(--accent-ink)' : 'var(--amber)');
+          return '<tr><td>' + esc(x.tipo) + '</td>' +
+            '<td class="num">' + esc(formatMoney(x.venta)) + '</td>' +
+            '<td class="num">' + esc(formatMoney(x.util)) + '</td>' +
+            '<td><div style="display:flex;align-items:center;gap:6px">' +
+              '<div style="flex:1;height:8px;background:var(--paper);border-radius:4px">' +
+                '<div style="width:' + ancho.toFixed(0) + '%;height:8px;border-radius:4px;' +
+                'background:' + col + '"></div></div>' +
+              '<b style="color:' + col + ';font-size:12px">' + x.pct.toFixed(1) + '%</b>' +
+            '</div></td></tr>';
+        }).join('') + '</tbody></table>';
+    }
+
     function barsX(dataC, dataP, campo, valfield, opts) {
       var oc = agruparSuma(dataC, campo, valfield);
       return cmpOn ? barsCompareHTML(oc, agruparSuma(dataP, campo, valfield), opts) : barsHTML(oc, opts);
@@ -7927,6 +7380,10 @@
                : chartHTML(porMesSuma(V, 'venta'), { money: true })) + '</div></div>' +
       '<div class="panel"><h4>Ventas por categoría de producto</h4><div class="panel-body">' +
         barsX(V, Vp, 'tipo', 'venta', { money: true, limit: 20 }) + '</div></div>' +
+      // En pesos gana el que más se vende; en porcentaje gana el que más deja por
+      // peso vendido. No son el mismo y la decisión de qué empujar sale del segundo.
+      '<div class="panel"><h4>Qué deja más, por categoría</h4>' +
+        '<div class="panel-body">' + margenPorCategoria(V) + '</div></div>' +
       '<div class="panel"><h4>Ventas por vendedor</h4><div class="panel-body">' +
         barsX(V, Vp, 'vend', 'venta', { money: true, limit: 20 }) + '</div></div>' +
       '</div></div>';
@@ -8002,6 +7459,10 @@
           (cmpOn ? variacionHTML(nQ, Qp.length) : '<div class="s">' + tasaLQ.toFixed(0) + '% de los leads</div>') + '</div>' +
         '<div class="kpi"><div class="k">Vendidas</div><div class="v" style="color:var(--success)">' + fmtNum(nGan) + '</div>' +
           '<div class="s">' + tasaQ.toFixed(0) + '% de las cerradas</div></div>' +
+        // Cuántas se rechazaron y cuánto dinero se fue con ellas
+        '<div class="kpi"><div class="k">Rechazadas</div><div class="v" style="color:var(--danger)">' +
+          fmtNum(nPer) + '</div><div class="s" title="' + esc(formatMoney(mto(Q, 'rechazada'))) +
+          '">' + esc(fmtMoneyShort(mto(Q, 'rechazada'))) + ' que no se cerraron</div></div>' +
         '<div class="kpi"><div class="k">En pipeline</div><div class="v" title="' + esc(formatMoney(mto(Q, 'abierta'))) + '">' +
           esc(fmtMoneyShort(mto(Q, 'abierta'))) + '</div><div class="s">' + fmtNum(nAb) + ' abiertas</div></div>' +
         '</div>';
@@ -8009,7 +7470,8 @@
       var etapasQ = [
         { k: 'Leads', v: L.length, c: 'var(--ink)' },
         { k: 'Cotizaciones', v: nQ, c: 'var(--primary-600)' },
-        { k: 'Vendidas', v: nGan, c: 'var(--success)' }
+        { k: 'Vendidas', v: nGan, c: 'var(--success)' },
+        { k: 'Rechazadas', v: nPer, c: 'var(--danger)' }
       ];
       var baseQ = Math.max(L.length, nQ) || 1;
       var embudoQ = '<div style="display:flex;flex-direction:column;gap:10px">';
@@ -8052,7 +7514,10 @@
     }
 
     // --- Funnel de ventas (bitácora de contactos · pestaña "Montse 2026") ---
-    var fn = d.funnel;
+    // Sale del dashboard a propósito: es un archivo histórico que ya no se
+    // captura, y repetía lo que el embudo comercial ya dice con datos vivos.
+    // El área sigue existiendo en el menú para consultarla.
+    var fn = null;
     if (fn && !fn.ok && fn.motivo) {
       h += '<div class="dash-section"><h3>Funnel de ventas</h3><div class="panel"><div class="panel-body">' +
         '<div class="dash-empty">No se pudo armar el embudo: ' + esc(fn.motivo) + '</div></div></div></div>';
@@ -12813,11 +12278,7 @@
     });
   }
 
-  function fail(err) {
-    var m = (err && err.message) || 'Ocurrió un error.';
-    if (err && err.pista) m += ' ' + err.pista;
-    toast(m, 'err');
-  }
+  function fail(err) { toast((err && err.message) || 'Ocurrió un error.', 'err'); }
 
   // Aviso que se queda en pantalla hasta que el usuario lo cierra
   function avisoFijo(html) {
@@ -12918,7 +12379,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.01-311';
+    var mia = '2026.09.01-288';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
@@ -13214,11 +12675,55 @@
       filters = []; renderFilterBar(); renderTable();
     }
   });
+  document.getElementById('tableWrap').addEventListener('change', function (e) {
+    var sel = e.target;
+    if (!sel.classList || !sel.classList.contains('cot-status')) return;
+    var folio = sel.getAttribute('data-folio');
+    var cRef = findHeaderByName('No. de Referencia') || findHeaderByName('Folio');
+    sel.disabled = true;
+    api('fill', { token: state.token, key: state.key,
+                  match: { col: cRef, value: folio }, set: { 'Status': sel.value } })
+      .then(function (out) {
+        toast('Status de ' + folio + ' cambiado a "' + sel.value + '".', 'ok');
+        loadArea();
+      })
+      .catch(function (err) { fail(err); sel.disabled = false; });
+  });
   document.getElementById('tableWrap').addEventListener('click', function (e) {
-    // Este manejador es el de la tabla base: ordenar y editar renglón. Lo de las
-    // tarjetas (abrir CxC, entradas, editar producto) vive en el manejador de
-    // arriba. Estaba duplicado aquí: dos escuchas sobre el mismo tableWrap, así
-    // que cada clic en una tarjeta de CxC la abría y la volvía a cerrar.
+    // Editar un producto dentro de la tarjeta de una venta o cotización
+    var cx = e.target.closest('[data-cxc]');
+    if (cx) {
+      var kx = cx.getAttribute('data-cxc');
+      cxcAbierta[kx] = !cxcAbierta[kx];
+      renderTable();
+      return;
+    }
+    var lleg = e.target.closest('.llegaron-btn');
+    if (lleg) { abrirEntrada(lleg.getAttribute('data-ped')); return; }
+    var addF = e.target.closest('.add-a-folio');
+    if (addF) { agregarAFolio(addF.getAttribute('data-folio')); return; }
+    var edA = e.target.closest('.ed-abrir');
+    if (edA) { filaEditando = parseInt(edA.getAttribute('data-row'), 10); renderTable(); return; }
+    var edN = e.target.closest('.ed-no');
+    if (edN) { filaEditando = -1; renderTable(); return; }
+    var edO = e.target.closest('.ed-ok');
+    if (edO) {
+      var filaEd = parseInt(edO.getAttribute('data-row'), 10);
+      var trEd = edO.closest('tr');
+      var origEd = (state.rows || []).filter(function (r) { return r._row === filaEd; })[0] || {};
+      var recEd = {};
+      state.headers.forEach(function (h2) { recEd[h2] = (origEd[h2] != null) ? origEd[h2] : ''; });
+      trEd.querySelectorAll('.ed-campo').forEach(function (inp) {
+        var col = inp.getAttribute('data-col');
+        if (col) recEd[col] = inp.value;
+      });
+      edO.disabled = true; edO.textContent = 'Guardando...';
+      sellarFecha(recEd);
+      api('update', { token: state.token, key: state.key, row: filaEd, record: recEd })
+        .then(function () { toast('Producto corregido.', 'ok'); filaEditando = -1; loadArea(); })
+        .catch(function (er) { fail(er); edO.disabled = false; edO.textContent = 'Guardar'; });
+      return;
+    }
     var t = e.target;
     var th = t.closest ? t.closest('th.sortable') : null;
     if (th) {
