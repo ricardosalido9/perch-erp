@@ -1007,7 +1007,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.03-325</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.03-326</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -6422,6 +6422,169 @@
     return s.slice(6, 8) + '/' + s.slice(4, 6) + '/' + s.slice(0, 4);
   }
 
+  // ===== Cliente y fecha de entrega, mueble por mueble =====
+  //
+  // No toca el alta de pedidos: las dos columnas ya existen por renglón y aquí
+  // solo se editan las dos, de todos los muebles del pedido, en una sola pasada.
+  // Es lo que pedía Nico —cada item con su folio y su fecha— sin rehacer el
+  // formulario que ya funciona.
+  var asigPedido = null, asigLineas = [];
+  // "14 de septiembre de 2026" -> "2026-09-14", que es lo que quiere un input date
+  function aIsoFecha(v) {
+    var s2 = String(v || '').trim();
+    if (!s2) return '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s2)) return s2;
+    var m = s2.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (m) return m[3] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2);
+    var mm = s2.toLowerCase().replace(/,/g, ' ')
+      .match(/(\d{1,2})\s*(?:de\s*)?\/?\s*([a-záéíóú]+)\s*(?:de\s*)?\/?\s*(\d{4})/);
+    if (mm) {
+      var i2 = MESES_ES.map(function (x) { return norm(x).slice(0, 3); })
+        .indexOf(norm(mm[2]).slice(0, 3));
+      if (i2 >= 0) return mm[3] + '-' + ('0' + (i2 + 1)).slice(-2) + '-' + ('0' + mm[1]).slice(-2);
+    }
+    return '';
+  }
+  function abrirAsignar(pedido) {
+    asigPedido = pedido;
+    var cPed = findHeaderByName('Pedido Proveedor');
+    var cIt = findHeaderByName('Producto');
+    var cMat = findHeaderByName('Material'), cCant = findHeaderByName('Cantidad');
+    var cFol = findHeaderByName('Folio cliente');
+    var cEst = findHeaderByName('Fecha Estimada de Entrega');
+    var cTela = findHeaderByName('Tela');
+    if (!cFol && !cEst) {
+      avisoFijo('<b>Pedidos a proveedores no tiene las columnas que hacen falta.</b>' +
+        '<div class="s" style="margin-top:6px">Se necesitan <b>Folio cliente</b> y ' +
+        '<b>Fecha Estimada de Entrega</b>. Agrégalas a la hoja y esto funciona solo.</div>');
+      return;
+    }
+    asigLineas = (state.rows || []).filter(function (r) {
+      return String(r[cPed] || '').trim() === pedido;
+    }).map(function (r) {
+      return { fila: r._row, producto: r[cIt], material: r[cMat], cantidad: r[cCant],
+               tela: cTela ? r[cTela] : '',
+               folio: cFol ? String(r[cFol] || '').trim() : '',
+               fecha: cEst ? String(r[cEst] || '').trim() : '' };
+    });
+    if (!asigLineas.length) { toast('No encontré los muebles de ' + pedido + '.', 'err'); return; }
+
+    // Los folios salen del mismo endpoint que usa "Ya llegaron": las ventas que
+    // pidieron estos productos y siguen esperando pieza.
+    var opciones = '<option value=""></option>' +
+      ['Stock', 'Exhibición'].map(function (x) {
+        return '<option value="' + x + '">' + x + '</option>';
+      }).join('');
+
+    var h = '<div class="s" style="color:var(--slate);margin-bottom:10px">' +
+      'Cada mueble puede ir a un folio distinto y con su propia fecha. Lo que dejes ' +
+      'en blanco se queda como está.</div>' +
+      '<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px">' +
+        '<div class="fld" style="width:230px;margin:0"><label>Poner a todos</label>' +
+          '<select id="asigTodosFolio">' + opciones + '</select></div>' +
+        '<div class="fld" style="width:170px;margin:0"><label>Fecha para todos</label>' +
+          '<input type="date" id="asigTodosFecha"></div>' +
+        '<button type="button" id="asigAplicar">Aplicar a todos</button></div>' +
+      '<div class="est-wrap"><table class="est-tabla"><thead><tr>' +
+      '<th class="est-con">MUEBLE</th><th>CANT.</th>' +
+      '<th style="text-align:left">TELA</th>' +
+      '<th style="text-align:left">FOLIO / DESTINO</th>' +
+      '<th style="text-align:left">ENTREGA</th></tr></thead><tbody>' +
+      asigLineas.map(function (l, i) {
+        return '<tr><td class="est-con">' + esc(l.producto || '') +
+            (l.material ? '<div class="s" style="color:var(--muted)">' + esc(l.material) + '</div>' : '') +
+          '</td><td>' + esc(String(l.cantidad || '')) + '</td>' +
+          '<td style="text-align:left;color:var(--slate)">' + esc(l.tela || '—') + '</td>' +
+          '<td style="text-align:left"><select class="asig-folio" data-i="' + i + '" ' +
+            'style="min-width:200px">' + opciones + '</select></td>' +
+          '<td style="text-align:left"><input type="date" class="asig-fecha" data-i="' + i +
+            '" value="' + esc(aIsoFecha(l.fecha)) + '"></td></tr>';
+      }).join('') + '</tbody></table></div>';
+
+    document.getElementById('aventaTitulo').textContent = 'Cliente y fecha · ' + pedido;
+    document.getElementById('aventaCuerpo').innerHTML = h;
+    document.getElementById('aventaOk').textContent = 'Guardar';
+    modalModo = 'asignar';
+    document.getElementById('aventaModal').classList.add('on');
+    // Se traen las ventas que esperan estos muebles y se agregan a los desplegables
+    api('pendientes', { token: state.token,
+        productos: asigLineas.map(function (l) {
+          return { producto: l.producto, material: l.material }; }) })
+      .then(function (d) {
+        var vistos = {}, extra = '';
+        (d.pendientes || []).forEach(function (p) {
+          if (!p.folio || vistos[p.folio]) return;
+          vistos[p.folio] = 1;
+          extra += '<option value="' + esc(p.folio).replace(/"/g, '&quot;') + '">' +
+            esc(p.folio + (p.cliente ? ' · ' + p.cliente : '')) + '</option>';
+        });
+        if (!extra) return;
+        document.querySelectorAll('.asig-folio, #asigTodosFolio').forEach(function (sel) {
+          var actual = sel.value;
+          sel.innerHTML += extra;
+          if (actual) sel.value = actual;
+        });
+        preseleccionarAsignar();
+      })
+      .catch(function () {})
+      .then(function () { preseleccionarAsignar(); });
+    document.getElementById('asigAplicar').addEventListener('click', function () {
+      var f = document.getElementById('asigTodosFolio').value;
+      var d = document.getElementById('asigTodosFecha').value;
+      if (f) document.querySelectorAll('.asig-folio').forEach(function (s2) { s2.value = f; });
+      if (d) document.querySelectorAll('.asig-fecha').forEach(function (s2) { s2.value = d; });
+    });
+  }
+  // Si el renglón ya traía folio, ese queda elegido. Si el folio no está en la
+  // lista de pendientes —porque ya se surtió— se agrega para no perderlo.
+  function preseleccionarAsignar() {
+    asigLineas.forEach(function (l, i) {
+      var sel = document.querySelector('.asig-folio[data-i="' + i + '"]');
+      if (!sel || !l.folio) return;
+      var hay = Array.prototype.slice.call(sel.options).filter(function (o) {
+        return norm(o.value) === norm(l.folio); })[0];
+      if (!hay) {
+        sel.innerHTML += '<option value="' + esc(l.folio).replace(/"/g, '&quot;') + '">' +
+          esc(l.folio) + '</option>';
+      }
+      sel.value = l.folio;
+    });
+  }
+  function guardarAsignar() {
+    var cFol = findHeaderByName('Folio cliente');
+    var cEst = findHeaderByName('Fecha Estimada de Entrega');
+    var cambios = [];
+    asigLineas.forEach(function (l, i) {
+      var sel = document.querySelector('.asig-folio[data-i="' + i + '"]');
+      var inp = document.querySelector('.asig-fecha[data-i="' + i + '"]');
+      var folio = sel ? String(sel.value || '').trim() : '';
+      var fecha = inp && inp.value ? isoToLargo(inp.value) : '';
+      // Lo vacío no borra lo que ya había: se deja como estaba
+      var nuevoFolio = folio || l.folio;
+      var nuevaFecha = fecha || l.fecha;
+      if (norm(nuevoFolio) === norm(l.folio) && norm(nuevaFecha) === norm(l.fecha)) return;
+      var orig = (state.rows || []).filter(function (r) { return r._row === l.fila; })[0] || {};
+      var rec = {};
+      state.headers.forEach(function (h2) { rec[h2] = (orig[h2] != null) ? orig[h2] : ''; });
+      if (cFol) rec[cFol] = nuevoFolio;
+      if (cEst) rec[cEst] = nuevaFecha;
+      cambios.push({ fila: l.fila, rec: rec });
+    });
+    if (!cambios.length) { toast('No cambiaste nada.', 'err'); return; }
+    var btn = document.getElementById('aventaOk');
+    btn.disabled = true; btn.textContent = 'Guardando…';
+    Promise.all(cambios.map(function (c) {
+      return api('update', { token: state.token, key: state.key, row: c.fila, record: c.rec });
+    })).then(function () {
+      toast('Listo: ' + fmtNum(cambios.length) +
+        (cambios.length === 1 ? ' mueble actualizado.' : ' muebles actualizados.'), 'ok');
+      cerrarMandarAVenta();
+      loadArea();
+    }).catch(fail).then(function () {
+      btn.disabled = false; btn.textContent = 'Guardar';
+    });
+  }
+
   function loadLogistica() {
     var hoy = new Date();
     if (logMes === null) { logMes = hoy.getMonth() + 1; logAnio = hoy.getFullYear(); }
@@ -9362,6 +9525,8 @@
               esc(k).replace(/"/g, '&quot;') + '">Ya llegaron</button>' +
             '<button type="button" class="aventa-btn" data-ped="' +
             esc(k).replace(/"/g, '&quot;') + '">Mandar a venta</button>' +
+            '<button type="button" class="asignar-btn" data-ped="' +
+            esc(k).replace(/"/g, '&quot;') + '">Cliente y fecha por mueble</button>' +
             '<button type="button" class="oc-btn" data-ped="' +
             esc(k).replace(/"/g, '&quot;') + '">Orden de compra (PDF)</button>' +
             '<span class="s" style="color:var(--muted)">Asigna piezas de este pedido a folios de venta</span>' +
@@ -13530,7 +13695,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.03-325';
+    var mia = '2026.09.03-326';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
@@ -13597,6 +13762,7 @@
       case 'quincena':        if (quincenaDatos) guardarQuincena(); return;
       case 'reporteNomina':   generarReporteNomina(); return;
       case 'versionNueva':    guardarVersionNueva(); return;
+      case 'asignar':         guardarAsignar(); return;
       case 'pedirPago':       guardarPedirPago(); return;
       case 'cierre':
         if (cierrePdf) { bajarPdf(cierrePdf.pdf, cierrePdf.nombre); return; }
@@ -13734,6 +13900,8 @@
       selectArea('cotizaciones', 'Cotizaciones', true);
       return;
     }
+    var asg = e.target.closest('.asignar-btn');
+    if (asg) { abrirAsignar(asg.getAttribute('data-ped')); return; }
     var pn = e.target.closest('.pdf-btn-nuevo');
     if (pn) {
       generarPdfCotizacion(pn.getAttribute('data-folio'), state.key === 'ventas_registro', false, 'nuevo');
