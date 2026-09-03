@@ -1007,7 +1007,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.03-326</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.03-327</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -10637,22 +10637,31 @@
   function onCascadeChange(level) {
     setTimeout(avisarSiYaTiene, 60);
     var c = cascadeLU(); if (!c) return;
-    if (level === 0) {
-      // Al elegir Producto, se llenan TODOS los ejes (Material, Material Extra…) de forma independiente.
-      var prod = cascElem(0) ? cascElem(0).value : '';
-      for (var d = 1; d < c.levels.length; d++) {
-        var sel = cascElem(d);
-        var opts = cascDistinctByProduct(c, prod, d);
-        if (sel) { fillOptions(sel, opts); sel.value = ''; showFld(sel, opts.length > 0); }
-      }
+    // Al elegir un nivel se vuelven a llenar TODOS los de abajo, filtrando por lo
+    // que ya se eligió arriba. Antes solo se rehacían al tocar el nivel 0, así que
+    // una cascada de tres o más niveles —proveedor, pedido, mueble— no se estrechaba
+    // y salían pedidos de otros proveedores.
+    for (var d = level + 1; d < c.levels.length; d++) {
+      var sel = cascElem(d);
+      var opts = cascDistinct(c, d);
+      if (sel) { fillOptions(sel, opts); sel.value = ''; showFld(sel, opts.length > 0); }
     }
     resolveCascadeFills();
   }
-  // Valores distintos del eje `d` entre las variantes de un producto (independiente de otros ejes).
-  function cascDistinctByProduct(c, prod, d) {
+  // Valores distintos del nivel `d`, entre los renglones que cumplen con todo lo
+  // que ya se eligió en los niveles de arriba.
+  function cascDistinct(c, d) {
+    var elegidos = [];
+    for (var k = 0; k < d; k++) {
+      var el = cascElem(k);
+      elegidos[k] = el ? el.value : '';
+    }
     var seen = {}, out = [];
     c.rows.forEach(function (r) {
-      if (norm(valorNivel(r, c.levels[0])) !== norm(prod || '')) return;
+      for (var k2 = 0; k2 < d; k2++) {
+        if (!elegidos[k2]) continue;
+        if (norm(valorNivel(r, c.levels[k2])) !== norm(elegidos[k2])) return;
+      }
       var v = valorNivel(r, c.levels[d]);
       var etiqueta = v || VACIO;
       if (!seen[norm(etiqueta)]) { seen[norm(etiqueta)] = 1; out.push(etiqueta); }
@@ -10660,6 +10669,8 @@
     out.sort(function (a, b) { return a.localeCompare(b, 'es'); });
     return out;
   }
+  // Se conserva el nombre viejo por si algo más lo llama
+  function cascDistinctByProduct(c, prod, d) { return cascDistinct(c, d); }
   // "NA" en pantalla es una celda vacía en el catálogo
   function sinNA(v) {
     var t = String(v == null ? '' : v).trim();
@@ -13695,7 +13706,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.03-326';
+    var mia = '2026.09.03-327';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
