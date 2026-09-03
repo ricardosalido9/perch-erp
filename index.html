@@ -1007,7 +1007,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.03-324</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.03-325</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -6361,7 +6361,8 @@
       '<th>FECHA</th><th>PZS</th><th>PEDIDAS</th>' +
       '<th style="text-align:left">PROVEEDOR</th>' +
       '<th style="text-align:left">ENVÍO</th>' +
-      '<th style="text-align:left">QUÉ FALTA PEDIR</th></tr></thead><tbody>';
+      '<th style="text-align:left">QUÉ FALTA PEDIR</th>' +
+      '<th style="text-align:left">MUEBLES · TELA Y ESPECIFICACIONES</th></tr></thead><tbody>';
     (d.folios || []).forEach(function (f) {
       var col = f.estado === 'sin pedir' ? 'var(--danger)'
               : (f.estado === 'a medias' ? 'var(--amber)' : 'var(--success)');
@@ -6387,7 +6388,18 @@
         '<td style="text-align:left;white-space:normal;min-width:220px;color:var(--slate)">' +
           (f.faltan.length ? f.faltan.map(function (x) {
               return esc(fmtNum(x.piezas) + ' ' + x.item + (x.material ? ' · ' + x.material : ''));
-            }).join('<br>') : '') + '</td></tr>';
+            }).join('<br>') : '') + '</td>' +
+        // Lo que define si el mueble se puede producir: sin tela definida, no se
+        // puede empezar aunque el pedido esté puesto.
+        '<td style="text-align:left;white-space:normal;min-width:260px;color:var(--slate)">' +
+          (f.detalle || []).map(function (x) {
+            return '<div style="margin-bottom:3px">' +
+              esc(fmtNum(x.cantidad) + ' ' + x.producto + (x.material ? ' · ' + x.material : '')) +
+              (x.tela ? '<div style="color:var(--ink)">Tela: ' + esc(x.tela) + '</div>'
+                      : '<div style="color:var(--amber)">Tela por definir</div>') +
+              (x.especificaciones ? '<div>' + esc(x.especificaciones) + '</div>' : '') +
+              '</div>';
+          }).join('') + '</td></tr>';
     });
     h += '</tbody></table></div>';
     if (d.sinFolioEnPedidos) {
@@ -9662,10 +9674,22 @@
   // El cliente de una venta vive en varios renglones, uno por producto. Cambiar
   // uno solo deja el folio con dos nombres y la tarjeta sigue mostrando el viejo.
   // Por eso se manda al mismo flujo que el botón "Corregir el cliente".
+  // Cambiar el cliente de un renglón cambia el folio entero, y eso se hace desde
+  // otra ventana. El problema: al abrirla se descartaba lo que la persona acababa
+  // de escribir, así que si no completaba esa segunda ventana el nombre se perdía
+  // y parecía que el ERP no guardaba. Ahora se avisa antes y se explica.
   function cerrarEdicionYCorregirCliente(folio, nombreNuevo, cuantos) {
     editingRow = -1;
     renderTable();
-    toast('Este folio tiene ' + cuantos + ' renglones: se corrige en todos.', 'ok');
+    avisoFijo('<b>El folio ' + esc(folio) + ' tiene ' + fmtNum(cuantos) +
+      ' renglones, así que el cliente se cambia en todos a la vez.</b>' +
+      '<div style="margin-top:6px">Se abrió la ventana para hacerlo, con <b>' +
+      esc(nombreNuevo) + '</b> ya escrito. <b>El cambio no se guarda hasta que ' +
+      'le des a "Cambiar el cliente" ahí.</b></div>' +
+      '<div class="s" style="margin-top:6px;color:var(--slate)">Se hace así porque ' +
+      'el nombre también vive en Cotizaciones, Cuentas por Cobrar y el expediente ' +
+      'del cliente: cambiarlo en un solo renglón dejaría las hojas diciendo cosas ' +
+      'distintas.</div>');
     abrirCorregirCliente(folio);
     // Se precarga el nombre que ya había escrito
     setTimeout(function () {
@@ -13506,7 +13530,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.03-324';
+    var mia = '2026.09.03-325';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
