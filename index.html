@@ -1007,7 +1007,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.03-323</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.03-324</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1294,7 +1294,9 @@
     op_stock:            'Lo disponible por producto y material, con lo que está por llegar.',
     op_revisar:          'Renglones que no cuadran y hay que corregir en Pedidos.',
     prov_pedidos:        'Pedidos a proveedores. La fecha y el status se ponen solos; el costo lo propone el catálogo.',
-    prov_entradas:       'Lo que ya llegó de cada pedido de proveedor.',
+    prov_entradas:       'Lo que ya llegó de cada pedido. Para registrar una entrada usa ' +
+                         '"Ya llegaron" en Pedidos a proveedores: ahí sale el proveedor, su ' +
+                         'pedido y lo que falta de cada mueble, y el stock se recalcula solo.',
     prov_salidas:        'A qué pedido de cliente, stock o showroom se asignó cada pieza.',
     prov_envios:         'Envíos y entregas, con el costo real del flete.',
     fin_ingresos:        'Cobros registrados. De aquí sale lo pagado de cada pedido.',
@@ -9794,6 +9796,14 @@
 
   // Si la hoja usa otro nombre para el mismo dato, aquí se reconoce igual
   var ALIAS_CAMPOS = {
+    // El descuento se buscaba con un solo nombre exacto y en la hoja se llama de
+    // otra forma, así que se leía como cero: no se aplicaba en el total de la
+    // pantalla ni salía la columna en el PDF. Nada avisaba, porque un descuento
+    // de cero se ve igual que no haber puesto descuento.
+    '% descuento':              ['% Descuento', 'Descuento %', 'Porcentaje de descuento',
+                                 'Descuento', '% desc', 'Desc %', 'Desc'],
+    'Descuentos':               ['Descuento', 'Monto descuento', 'Descuento monto',
+                                 'Descuento $', 'Importe descuento'],
     'Cómo Llego':               ['Como llego', 'Cómo llegó', 'Cómo llego', 'Como llegó',
                                  'Forma de Contacto', 'Canal', 'Origen'],
     'Cómo llegó':               ['Cómo Llego', 'Como llego', 'Como llegó', 'Forma de Contacto'],
@@ -10805,8 +10815,13 @@
     var precio = toNum(rec[findHeaderByName(lc.precio || 'Precio Unitario')]);
     var cant = toNum(rec[findHeaderByName('Cantidad')]); if (cant <= 0) cant = 1;
     var base = precio * cant;
-    var pct = pctNumero(rec[findHeaderByName('% descuento')]);
-    var desc = toNum(rec[findHeaderByName('Descuentos')]);
+    var cPctL = findHeaderByName('% descuento');
+    var cDscL = findHeaderByName('Descuentos');
+    var pct = pctNumero(rec[cPctL]);
+    // Google guarda un 10% como 0.1 cuando la celda tiene formato de porcentaje
+    if (pct > 0 && pct < 1) pct = pct * 100;
+    // Si las dos búsquedas cayeron en la misma columna, es un porcentaje, no un monto
+    var desc = (cDscL && cDscL !== cPctL) ? toNum(rec[cDscL]) : 0;
     if (pct > 0) base = base * (1 - pct / 100);
     else if (desc > 0) base = base - desc;
     return base < 0 ? 0 : base;
@@ -12196,6 +12211,25 @@
     });
     if (!entradas.length) { toast('No pusiste cantidades.', 'err'); return; }
 
+    // Aviso de entrada repetida. Pasó de verdad: se registraron tres entradas
+    // iguales del mismo espejo porque el stock no se actualizaba y parecía que
+    // no se había guardado. La entrada sí quedaba; lo que faltaba era el aviso.
+    var yaRegistradas = (entradaLineas || []).filter(function (l, i) {
+      var inp = document.querySelector('.ent-cant[data-i="' + i + '"]');
+      return inp && parseFloat(inp.value || '0') && (l.yaEntro || 0) > 0;
+    });
+    if (yaRegistradas.length) {
+      var det = yaRegistradas.map(function (l) {
+        return l.producto + (l.material ? ' · ' + l.material : '') +
+               ': ya tiene ' + fmtNum(l.yaEntro) + ' registradas';
+      }).join('\n');
+      if (!confirm('De este pedido ya hay entradas registradas:\n\n' + det +
+                   '\n\n¿Registrar estas de todos modos? Si es que no se veían en Stock, ' +
+                   'ya no hace falta: el stock se recalcula solo al guardar.')) {
+        return;
+      }
+    }
+
     // Si se fue directo al cliente, la pieza entró y salió el mismo día: se escribe
     // también la salida, con el folio elegido y la dirección de esa venta.
     var salidas = [];
@@ -12253,10 +12287,20 @@
           .catch(function () {});
       }));
     }).then(function () {
+      // El Stock no se captura: se deduce de lo pedido, lo que entró y lo que
+      // salió, y hasta ahora eso solo pasaba cuando alguien apretaba "Recalcular
+      // stock". Por eso se registraba una entrada, se iba a Stock y no había
+      // cambiado nada — y la gente lo volvía a registrar creyendo que falló.
+      return api('stock-export', { token: state.token })
+        .then(function (o) { return o; })
+        .catch(function () { return null; });   // si falla, la entrada ya quedó
+    }).then(function (rec) {
       toast('Entrada registrada: ' + fmtNum(entradas.length) +
             (entradas.length === 1 ? ' mueble.' : ' muebles.') +
             (salidas.length ? ' Y ' + fmtNum(salidas.length) +
-              (salidas.length === 1 ? ' salida directa al cliente.' : ' salidas directas al cliente.') : ''), 'ok');
+              (salidas.length === 1 ? ' salida directa al cliente.' : ' salidas directas al cliente.') : '') +
+            (rec ? ' Stock actualizado.' : ' Ojo: el stock no se pudo recalcular, hazlo a mano.'),
+            rec ? 'ok' : 'warn');
       var ped = entradaPedido;
       cerrarMandarAVenta();
       loadArea();
@@ -13462,7 +13506,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.03-323';
+    var mia = '2026.09.03-324';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
