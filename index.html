@@ -1007,7 +1007,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.02-320</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.03-321</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -2099,6 +2099,7 @@
 
   // ===== Qué tiene guardado cada proveedor =====
   var invProvAbierto = {}, invLineaAbierta = {};
+  var invProvSoloPend = false;   // ver solo lo que el proveedor todavía nos debe
   // Baja un PDF que viene en base64. Se usa Blob porque las direcciones "data:"
   // fallan en Chrome cuando el archivo pasa de un par de megas.
   function bajarPdf(base64, nombre) {
@@ -3625,8 +3626,23 @@
         '<div class="sum-card"><div class="k">Por fabricar</div><div class="v">' + fmtNum(t.porFabricar) + '</div></div>' +
         '<div class="sum-card"><div class="k">Combinaciones</div><div class="v">' + fmtNum(t.combinaciones) + '</div></div>';
 
-      var h = '<div class="cot-grid">';
-      (d.proveedores || []).forEach(function (p) {
+      // Nico pidió poder ver solo lo pendiente de entrega. Se filtra aquí y no
+      // en el servidor porque los datos ya vienen: es repintar, no volver a leer.
+      var h = '<label class="s" style="display:flex;align-items:center;gap:6px;' +
+        'cursor:pointer;margin-bottom:12px"><input type="checkbox" id="ipPend"' +
+        (invProvSoloPend ? ' checked' : '') + '>' +
+        'Solo lo que falta que nos entreguen</label>';
+      h += '<div class="cot-grid">';
+      var provs = (d.proveedores || []);
+      if (invProvSoloPend) {
+        provs = provs.map(function (p) {
+          return {
+            proveedor: p.proveedor, disponible: p.disponible, porFabricar: p.porFabricar,
+            lineas: p.lineas.filter(function (l) { return l.porFabricar > 0; })
+          };
+        }).filter(function (p) { return p.lineas.length; });
+      }
+      provs.forEach(function (p) {
         var ab = !!invProvAbierto[p.proveedor];
         h += '<div class="cot-card' + (ab ? ' open' : '') + '">' +
           '<button type="button" class="cot-head" data-invprov="' + esc(p.proveedor).replace(/"/g, '&quot;') + '">' +
@@ -3693,6 +3709,10 @@
       });
       document.getElementById('tableWrap').innerHTML = h + '</div>';
       document.getElementById('count').textContent = (d.proveedores || []).length + ' proveedores';
+      var ip = document.getElementById('ipPend');
+      if (ip) ip.addEventListener('change', function () {
+        invProvSoloPend = this.checked; loadInvProv();
+      });
       document.querySelectorAll('#tableWrap [data-invprov]').forEach(function (b) {
         b.addEventListener('click', function () {
           var k = b.getAttribute('data-invprov');
@@ -6328,12 +6348,17 @@
       '<div class="kpi"><div class="k">A medias</div><div class="v"' +
         (r.aMedias ? ' style="color:var(--amber)"' : '') + '>' + fmtNum(r.aMedias) + '</div></div>' +
       '<div class="kpi"><div class="k">Piezas sin pedir</div><div class="v">' +
-        fmtNum(r.piezasSinPedir) + '</div></div></div>';
+        fmtNum(r.piezasSinPedir) + '</div></div>' +
+      '<div class="kpi"><div class="k">Sin envío asignado</div><div class="v"' +
+        (r.sinEnvio ? ' style="color:var(--amber)"' : '') + '>' + fmtNum(r.sinEnvio) + '</div>' +
+        '<div class="s">' + fmtNum(r.locales) + ' locales · ' + fmtNum(r.foraneos) +
+        ' foráneos</div></div></div>';
 
     h += '<div class="est-wrap"><table class="est-tabla"><thead><tr>' +
       '<th class="est-con">FOLIO</th><th style="text-align:left">CLIENTE</th>' +
       '<th>FECHA</th><th>PZS</th><th>PEDIDAS</th>' +
       '<th style="text-align:left">PROVEEDOR</th>' +
+      '<th style="text-align:left">ENVÍO</th>' +
       '<th style="text-align:left">QUÉ FALTA PEDIR</th></tr></thead><tbody>';
     (d.folios || []).forEach(function (f) {
       var col = f.estado === 'sin pedir' ? 'var(--danger)'
@@ -6349,6 +6374,14 @@
             : '<span style="color:var(--danger)">sin asignar</span>') +
           (f.pedidos.length ? '<div class="s" style="color:var(--muted)">' +
             esc(f.pedidos.join(' · ')) + '</div>' : '') + '</td>' +
+        '<td style="text-align:left;white-space:normal;min-width:120px">' +
+          (f.envio
+            ? esc(f.envio.donde || '') +
+              (f.envio.zona ? '<div class="s" style="color:var(--muted)">' +
+                esc(f.envio.zona) + '</div>' : '') +
+              (f.envio.paqueteria ? '<div class="s" style="color:var(--muted)">' +
+                esc(f.envio.paqueteria) + '</div>' : '')
+            : '<span style="color:var(--amber)">sin envío</span>') + '</td>' +
         '<td style="text-align:left;white-space:normal;min-width:220px;color:var(--slate)">' +
           (f.faltan.length ? f.faltan.map(function (x) {
               return esc(fmtNum(x.piezas) + ' ' + x.item + (x.material ? ' · ' + x.material : ''));
@@ -13409,7 +13442,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.02-320';
+    var mia = '2026.09.03-321';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
