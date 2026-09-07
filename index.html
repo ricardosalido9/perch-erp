@@ -1007,7 +1007,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.07-344</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.07-345</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -6591,6 +6591,120 @@
     });
   }
 
+  // ===== Los archivos de un folio =====
+  // La cotización, la CSF, los comprobantes de pago. Todo vive en la misma carpeta
+  // de Drive y hasta ahora no había forma de llegar a ella desde el ERP: el link
+  // salía un instante al generar el PDF y se perdía.
+  var arcFolio = null, arcCliente = '';
+  function abrirArchivos(folio, cliente) {
+    arcFolio = folio; arcCliente = cliente || '';
+    document.getElementById('aventaTitulo').textContent = 'Archivos · ' + folio;
+    document.getElementById('aventaCuerpo').innerHTML =
+      '<div class="state" style="padding:30px 0">Buscando la carpeta en Drive…</div>';
+    document.getElementById('aventaOk').textContent = 'Cerrar';
+    document.getElementById('aventaCancel').textContent = 'Cerrar';
+    document.getElementById('aventaModal').classList.add('on');
+    modalModo = 'cerrar';
+    cargarArchivos();
+  }
+  function cargarArchivos() {
+    api('archivos-folio', { token: state.token, folio: arcFolio, cliente: arcCliente })
+      .then(pintarArchivos)
+      .catch(function (e) {
+        document.getElementById('aventaCuerpo').innerHTML =
+          '<div class="state" style="color:var(--danger)">' +
+          esc((e && e.message) || 'No se pudo leer la carpeta.') +
+          (e && e.pista ? '<div class="s" style="color:var(--slate);margin-top:8px;' +
+            'font-weight:400">' + esc(e.pista) + '</div>' : '') + '</div>';
+      });
+  }
+  function pintarArchivos(d) {
+    var h = '';
+    if (d.carpeta) {
+      h += '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;' +
+        'margin-bottom:12px"><div class="s" style="color:var(--slate)">Carpeta <b>' +
+        esc(d.nombreCarpeta || arcFolio) + '</b></div>' +
+        '<a href="' + esc(d.carpeta) + '" target="_blank" rel="noopener" class="row-btn">' +
+        'Abrir en Drive</a></div>';
+    }
+    if (!d.existe) {
+      h += '<div class="aviso-caja">' + esc(d.nota || '') + '</div>';
+    } else if (!(d.archivos || []).length) {
+      h += '<div class="state" style="padding:14px 0">La carpeta está vacía.</div>';
+    } else {
+      h += '<table class="mini-table"><thead><tr><th>Archivo</th><th>Qué es</th>' +
+        '<th style="text-align:right">Tamaño</th><th></th></tr></thead><tbody>' +
+        d.archivos.map(function (a) {
+          return '<tr><td>' + esc(a.nombre) + '</td>' +
+            '<td class="s" style="color:var(--slate)">' + esc(a.que) + '</td>' +
+            '<td class="num s">' + esc(a.kb ? fmtNum(a.kb) + ' KB' : '') + '</td>' +
+            '<td><a href="' + esc(a.liga) + '" target="_blank" rel="noopener" ' +
+            'class="row-btn">Abrir</a></td></tr>';
+        }).join('') + '</tbody></table>';
+    }
+    // Lo que falta, dicho por su nombre
+    if ((d.falta || []).length) {
+      h += '<div class="s" style="color:var(--amber);margin-top:10px">Todavía no hay: ' +
+        esc(d.falta.join(' · ')) + '</div>';
+    }
+    // Subir un archivo a esta misma carpeta
+    h += '<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line)">' +
+      '<div class="s" style="font-weight:700;margin-bottom:8px">Subir un archivo</div>' +
+      '<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">' +
+      '<div class="fld" style="width:210px;margin:0"><label>Qué es</label>' +
+        '<select id="arcTipo">' +
+        ['Comprobante de pago', 'Constancia de situación fiscal', 'Nota de remisión',
+         'Factura', 'Otro'].map(function (t) {
+          return '<option value="' + esc(t) + '">' + esc(t) + '</option>'; }).join('') +
+        '</select></div>' +
+      '<div class="fld" style="margin:0"><label>Archivo</label>' +
+        '<input type="file" id="arcFile"></div>' +
+      '<button type="button" id="arcSubir">Subir</button></div>' +
+      '<div class="s" style="color:var(--muted);margin-top:6px">Hasta 4 MB. El archivo se ' +
+      'guarda en la carpeta del folio, junto a la cotización.</div></div>';
+
+    document.getElementById('aventaCuerpo').innerHTML = h;
+    document.getElementById('arcSubir').addEventListener('click', subirArchivoFolio);
+  }
+  function subirArchivoFolio() {
+    var inp = document.getElementById('arcFile');
+    var file = inp && inp.files && inp.files[0];
+    if (!file) { toast('Elige un archivo.', 'err'); return; }
+    if (file.size > 4 * 1024 * 1024) {
+      toast('El archivo pesa más de 4 MB. Comprímelo o súbelo directo en Drive.', 'err'); return;
+    }
+    var tipo = document.getElementById('arcTipo').value;
+    var btn = document.getElementById('arcSubir');
+    btn.disabled = true; btn.textContent = 'Subiendo…';
+    var fr = new FileReader();
+    fr.onload = function () {
+      // El nombre lleva el tipo por delante para poder agruparlos después
+      var ext = (file.name.match(/\.[a-z0-9]+$/i) || [''])[0];
+      var base = file.name.replace(/\.[a-z0-9]+$/i, '');
+      var nombre = tipo + ' - ' + arcFolio + ' - ' + base + ext;
+      api('upload', { token: state.token, folio: arcFolio, cliente: arcCliente,
+                      nombre: nombre, mime: file.type || 'application/octet-stream',
+                      data: String(fr.result).split(',')[1] })
+        .then(function () {
+          toast('Archivo subido.', 'ok');
+          inp.value = '';
+          cargarArchivos();
+        })
+        .catch(function (e) {
+          avisoFijo('<b>No se pudo subir el archivo.</b><div style="margin-top:6px">' +
+            esc((e && e.message) || '') + '</div>' +
+            (e && e.pista ? '<div class="s" style="margin-top:6px;color:var(--slate)">' +
+              esc(e.pista) + '</div>' : ''));
+        })
+        .then(function () { btn.disabled = false; btn.textContent = 'Subir'; });
+    };
+    fr.onerror = function () {
+      toast('No se pudo leer el archivo.', 'err');
+      btn.disabled = false; btn.textContent = 'Subir';
+    };
+    fr.readAsDataURL(file);
+  }
+
   function loadLogistica() {
     var hoy = new Date();
     if (logMes === null) { logMes = hoy.getMonth() + 1; logAnio = hoy.getFullYear(); }
@@ -9479,6 +9593,9 @@
             '<button type="button" class="pdf-btn" data-folio="' + esc(k).replace(/"/g, '&quot;') + '">Ver PDF</button>' +
             '<button type="button" class="pdf-btn-nuevo" data-folio="' + esc(k).replace(/"/g, '&quot;') +
               '" title="El formato que diseñó Pau">PDF formato nuevo</button>' +
+            '<button type="button" class="archivos-btn" data-folio="' + esc(k).replace(/"/g, '&quot;') +
+              '" data-cli="' + esc(r0[cCli] || '').replace(/"/g, '&quot;') +
+              '">Archivos del folio</button>' +
             (state.key === 'cotizaciones' && !esSoloLectura(state.key)
               ? '<button type="button" class="dup-cot" data-folio="' + esc(k).replace(/"/g, '&quot;') +
                 '">Hacer una versión nueva</button>' : '') +
@@ -13836,7 +13953,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.07-344';
+    var mia = '2026.09.07-345';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
@@ -14048,6 +14165,8 @@
       selectArea('cotizaciones', 'Cotizaciones', true);
       return;
     }
+    var arc = e.target.closest('.archivos-btn');
+    if (arc) { abrirArchivos(arc.getAttribute('data-folio'), arc.getAttribute('data-cli')); return; }
     var asg = e.target.closest('.asignar-btn');
     if (asg) { abrirAsignar(asg.getAttribute('data-ped')); return; }
     var pn = e.target.closest('.pdf-btn-nuevo');

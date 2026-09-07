@@ -62,6 +62,7 @@ const RUTAS = {
   emitidos:       require('../lib/handlers/emitidos'),
   'relacion-pdf': require('../lib/handlers/relacion-pdf'),
   'entregas-pdf': require('../lib/handlers/entregas-pdf'),
+  'archivos-folio':require('../lib/handlers/archivos-folio'),
   'ventas-folios':require('../lib/handlers/ventas-folios'),
   'envios-folio': require('../lib/handlers/envios-folio'),
   'cfdi-reporte': require('../lib/handlers/cfdi-reporte'),
