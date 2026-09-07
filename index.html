@@ -1007,7 +1007,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.07-331</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.07-333</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -8011,15 +8011,31 @@
           return '<div style="margin-bottom:6px"><b>' + esc(v.folio) + '</b> · ' +
             fmtNum(v.piezas) + (v.piezas === 1 ? ' pieza' : ' piezas') +
             (v.muebles || []).map(function (m) {
-              return '<div style="color:var(--muted);margin-left:10px">· ' +
-                fmtNum(m.faltan) + ' ' + esc(m.producto) + (m.material ? ' · ' + esc(m.material) : '') +
-                (m.enStock > 0
-                  ? ' <span style="color:var(--success)">hay ' + fmtNum(m.enStock) + ' en stock</span>'
-                  : ((m.proveedores || []).length
-                      ? ' <span style="color:var(--muted)">lo hacen: ' +
-                        esc(m.proveedores.join(', ')) + '</span>'
-                      : ' <span style="color:var(--amber)">sin proveedor en la lista de costos</span>')) +
-                '</div>';
+              // Un mueble puede llevar dos componentes. Se listan los dos con lo
+              // que hay de cada uno, porque para surtirlo tienen que estar ambos
+              // y hay que saber cuál es el que frena.
+              var comps = m.componentes || [{ material: m.material, enStock: m.enStock,
+                                              alcanza: m.enStock >= m.faltan,
+                                              proveedores: m.proveedores }];
+              return '<div style="color:var(--muted);margin-left:10px;margin-bottom:4px">· ' +
+                fmtNum(m.faltan) + ' ' + esc(m.producto) +
+                (comps.length > 1 ? ' <span class="s">(' + comps.length + ' componentes)</span>' : '') +
+                comps.map(function (x) {
+                  return '<div style="margin-left:12px">' +
+                    (x.material ? esc(x.material) : 'sin material') + ' · ' +
+                    (x.alcanza
+                      ? '<span style="color:var(--success)">hay ' + fmtNum(x.enStock) +
+                        ' en stock</span>'
+                      : (x.enStock > 0
+                          ? '<span style="color:var(--amber)">solo hay ' + fmtNum(x.enStock) +
+                            ' de ' + fmtNum(m.faltan) + '</span>'
+                          : '<span style="color:var(--danger)">sin stock</span>') +
+                        ((x.proveedores || []).length
+                          ? ' <span style="color:var(--muted)">· lo hace ' +
+                            esc(x.proveedores.join(', ')) + '</span>'
+                          : ' <span style="color:var(--amber)">· sin proveedor en la lista de costos</span>')) +
+                    '</div>';
+                }).join('') + '</div>';
             }).join('') + '</div>';
         }).join('') + '</div></details>';
     }
@@ -9338,14 +9354,31 @@
       return String(b).localeCompare(String(a), 'es', { numeric: true });
     });
 
+    // Cantidad por precio, menos el descuento del renglón. Es la misma cuenta que
+    // hace el PDF; tenerla aparte era lo que hacía que la tarjeta mostrara un
+    // total y el PDF otro.
+    var cPctT = findHeaderByName('% descuento');
+    var cDscT = findHeaderByName('Descuentos');
+    var importeDeRenglon = function (r) {
+      var c = parseNumber(cCant ? r[cCant] : null) || 0;
+      var p = parseNumber(cPU ? r[cPU] : null) || 0;
+      var base = c * p;
+      var pct = parseNumber(cPctT ? r[cPctT] : null) || 0;
+      // Google guarda un 15% como 0.15 si la celda tiene formato de porcentaje
+      if (pct > 0 && pct < 1) pct = pct * 100;
+      var dto = (cDscT && cDscT !== cPctT) ? (parseNumber(r[cDscT]) || 0) : 0;
+      if (pct) base = base - (base * pct / 100);
+      else if (dto) base = base - dto;
+      return { cantidad: c, precio: p, pct: pct, importe: base };
+    };
+
     var h = '<div class="cot-grid">';
     orden.forEach(function (k) {
       var items = g[k], r0 = items[0];
       var piezas = 0, total = 0, envio = 0;
       items.forEach(function (r) {
-        var c = parseNumber(cCant ? r[cCant] : null) || 0;
-        var p = parseNumber(cPU ? r[cPU] : null) || 0;
-        piezas += c; total += c * p;
+        var d = importeDeRenglon(r);
+        piezas += d.cantidad; total += d.importe;
         var e = parseNumber(cEnv ? r[cEnv] : null); if (e) envio += e;
       });
       total += envio;
@@ -9369,6 +9402,7 @@
         h += '<div class="cot-body">' +
           '<table class="mini-table"><thead><tr><th>Producto</th><th>Material</th>' +
           '<th style="text-align:right">Cantidad</th><th style="text-align:right">Precio Unitario</th>' +
+          '<th style="text-align:right">Descuento</th>' +
           '<th style="text-align:right">Importe</th><th></th></tr></thead><tbody>';
         items.forEach(function (r) {
           var c = parseNumber(cCant ? r[cCant] : null) || 0;
@@ -9388,12 +9422,13 @@
                 '" value="' + esc(c) + '" style="width:70px;text-align:right"></td>' +
               '<td><input class="row-input ed-campo" type="number" step="0.01" data-col="' + esc(cPU || '') +
                 '" value="' + esc(p) + '" style="width:100px;text-align:right"></td>' +
-              '<td class="num">' + esc(formatMoney(c * p)) + '</td>' +
+              '<td class="num s">' + esc(importeDeRenglon(r).pct ? importeDeRenglon(r).pct + '%' : '—') + '</td>' +
+              '<td class="num">' + esc(formatMoney(importeDeRenglon(r).importe)) + '</td>' +
               '<td style="white-space:nowrap"><button type="button" class="row-btn primary ed-ok" data-row="' +
                 r._row + '">Guardar</button> ' +
               '<button type="button" class="row-btn ed-no">Cancelar</button></td></tr>';
             // Segundo renglón: descuento y textos, que no caben arriba
-            h += '<tr class="fila-edit"><td colspan="6" style="padding-top:0">' +
+            h += '<tr class="fila-edit"><td colspan="7" style="padding-top:0">' +
               '<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">' +
               (cPct ? '<div><label class="k">% descuento</label><br>' +
                 '<input class="row-input ed-campo" data-col="' + esc(cPct) + '" value="' +
@@ -9414,7 +9449,9 @@
           } else {
             h += '<tr><td>' + esc(r[cProd] || '') + '</td><td>' + esc(cMat ? (r[cMat] || '') : '') + '</td>' +
               '<td class="num">' + fmtNum(c) + '</td><td class="num">' + esc(formatMoney(p)) + '</td>' +
-              '<td class="num">' + esc(formatMoney(c * p)) + '</td>' +
+              '<td class="num s"' + (importeDeRenglon(r).pct ? ' style="color:var(--success)"' : '') + '>' +
+                esc(importeDeRenglon(r).pct ? '-' + importeDeRenglon(r).pct + '%' : '—') + '</td>' +
+              '<td class="num">' + esc(formatMoney(importeDeRenglon(r).importe)) + '</td>' +
               '<td><button type="button" class="row-btn ed-abrir" data-row="' + r._row +
               '" title="Corregir este producto">Editar</button></td></tr>';
           }
@@ -9889,10 +9926,17 @@
     var cPre = findHeaderByName(lc.precio || 'Precio Unitario');
     var cCant = findHeaderByName('Cantidad');
     if (!cPre || !cCant) return;
-    var neto = lineTotal(rec);
-    [['Total con envio sin impuestos', neto], ['Total sin IVA', neto],
-     ['Total', lc.conIVA ? neto * lc.conIVA : neto],
-     ['Total con IVA', neto * 1.16]].forEach(function (par) {
+    // El importe del renglón, ya con su descuento.
+    var importe = lineTotal(rec);
+    var iva = lc.iva || 1.16;
+    // Estaba al revés: se tomaba el importe como si fuera sin IVA y se le sumaba
+    // otro 16%, así que la cotización salía 16% más cara de lo cotizado. Como el
+    // precio ya lo trae, la base se obtiene dividiendo.
+    var sinIVA = lc.precioLlevaIVA ? importe / iva : importe;
+    var conIVA = lc.precioLlevaIVA ? importe : importe * iva;
+    [['Total con envio sin impuestos', sinIVA], ['Total sin IVA', sinIVA],
+     ['Total', conIVA],
+     ['Total con IVA', conIVA]].forEach(function (par) {
       var c = findHeaderByName(par[0]);
       if (c) rec[c] = Math.round(par[1] * 100) / 100;
     });
@@ -10265,8 +10309,13 @@
     prov_pedidos: { line: ['Producto', 'Material', 'Tela', 'Especificaciones', 'Cantidad',
                            'Costo Unitario', 'Costo Total', 'Costo Total + IVA', 'Destino'],
                     producto: 'Producto', precio: 'Costo Unitario', conIVA: 1.16 },
-    ventas_registro: { line: LINEA_PRODUCTO, envioOnce: 'Envio', producto: 'Producto', precio: 'Precio Unitario' },
-    cotizaciones:    { line: LINEA_PRODUCTO, envioOnce: 'Envio', producto: 'Producto', precio: 'Precio Unitario' }
+    // En ventas y cotizaciones el Precio Unitario YA lleva el IVA: así se cotiza y
+    // así lo dice el PDF. Por eso aquí no se suma nada; para llegar a la base se
+    // divide. precioLlevaIVA lo dice explícito para que no haya que adivinarlo.
+    ventas_registro: { line: LINEA_PRODUCTO, envioOnce: 'Envio', producto: 'Producto',
+                       precio: 'Precio Unitario', precioLlevaIVA: true, iva: 1.16 },
+    cotizaciones:    { line: LINEA_PRODUCTO, envioOnce: 'Envio', producto: 'Producto',
+                       precio: 'Precio Unitario', precioLlevaIVA: true, iva: 1.16 }
   };
   function lineCfg() { return LINE_ITEMS[state.key] || null; }
   function isLineField(h) {
@@ -13688,7 +13737,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.07-331';
+    var mia = '2026.09.07-333';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
