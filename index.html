@@ -1007,7 +1007,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.07-334</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.07-337</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -8022,7 +8022,9 @@
                 (comps.length > 1 ? ' <span class="s">(' + comps.length + ' componentes)</span>' : '') +
                 comps.map(function (x) {
                   return '<div style="margin-left:12px">' +
-                    (x.material ? esc(x.material) : 'sin material') + ' · ' +
+                    (x.material ? esc(x.material) : 'sin material') +
+                    (x.delCatalogo ? ' <span class="s" style="color:var(--muted)">' +
+                      '(del catálogo)</span>' : '') + ' · ' +
                     (x.alcanza
                       ? '<span style="color:var(--success)">hay ' + fmtNum(x.enStock) +
                         ' en stock</span>'
@@ -12563,6 +12565,15 @@
     document.getElementById('aventaCuerpo').innerHTML =
       '<div class="state" style="padding:30px 0">Buscando ventas que pidieron estos productos…</div>';
     document.getElementById('aventaModal').classList.add('on');
+    // El botón se apaga mientras carga. Antes se podía darle clic con la ventana a
+    // medias, y salía un mensaje en rojo que parecía un error del sistema cuando
+    // en realidad solo faltaba esperar. La salida no se registraba y no quedaba
+    // claro por qué.
+    modalModo = '';
+    (function () {
+      var b = document.getElementById('aventaOk');
+      b.disabled = true; b.textContent = 'Cargando…';
+    })();
     // Junto con las ventas pendientes se trae lo que ESE pedido ya sacó antes.
     // Sin esto, al abrir el reparto por segunda vez la cuenta empezaba de cero y
     // se podían sacar más piezas de las que se pidieron.
@@ -12587,10 +12598,19 @@
           });
         }
         pintarMandarAVenta();
+        var b = document.getElementById('aventaOk');
+        b.disabled = false; b.textContent = 'Registrar salidas';
       })
       .catch(function (e) {
         document.getElementById('aventaCuerpo').innerHTML =
-          '<div class="state">' + esc((e && e.message) || 'No se pudieron leer las ventas.') + '</div>';
+          '<div class="state" style="color:var(--danger)">' +
+          esc((e && e.message) || 'No se pudieron leer las ventas que pidieron estos productos.') +
+          (e && e.pista ? '<div class="s" style="color:var(--slate);margin-top:8px;' +
+            'font-weight:400">' + esc(e.pista) + '</div>' : '') +
+          '<div class="s" style="color:var(--slate);margin-top:8px;font-weight:400">' +
+          'La salida no se registró. Cierra y vuelve a intentar.</div></div>';
+        var b2 = document.getElementById('aventaOk');
+        b2.disabled = true; b2.textContent = 'No se pudo cargar';
       });
   }
   // Una línea del pedido se puede repartir entre VARIAS ventas.
@@ -13737,7 +13757,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.07-334';
+    var mia = '2026.09.07-337';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
@@ -13819,7 +13839,13 @@
     if (document.getElementById('aventaCuerpo').querySelector('.avta-linea, table')) {
       registrarSalidas(); return;
     }
-    toast('Esta ventana todavía está cargando.', 'err');
+    // Si se llega hasta aquí es que la ventana no terminó de cargar o falló. Se
+    // dice cuál de las dos, porque no se arreglan igual.
+    var cuerpo = document.getElementById('aventaCuerpo');
+    var cargando = cuerpo && /Buscando|Cargando|Leyendo/i.test(cuerpo.textContent || '');
+    toast(cargando
+      ? 'La ventana todavía está cargando. Espera a que salgan los muebles y vuelve a darle.'
+      : 'La ventana no cargó bien y no se guardó nada. Ciérrala y vuelve a abrirla.', 'err');
   });
   document.getElementById('ventaClose').addEventListener('click', cerrarConvertirVenta);
   document.getElementById('ventaCancel').addEventListener('click', cerrarConvertirVenta);
