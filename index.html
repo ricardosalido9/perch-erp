@@ -1007,7 +1007,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.07-341</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.07-344</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -5100,6 +5100,7 @@
     document.getElementById('aventaCuerpo').innerHTML = cuerpoEfectivo(iso);
     document.getElementById('aventaOk').textContent = 'Registrar';
     document.getElementById('aventaModal').classList.add('on');
+    modalModo = '';
     engancharEfectivo();
   }
   function cuerpoEfectivo(iso) {
@@ -12689,12 +12690,20 @@
   function pintarMandarAVenta() {
     var h = '';
     aventaLineas.forEach(function (l, i) {
-      var ops = aventaPend.filter(function (p) {
-        if (norm(p.producto) !== norm(l.producto)) return false;
-        // Si la venta trae material, tiene que ser el mismo que se está pidiendo
+      // Primero las ventas que coinciden en producto Y material.
+      var mismoProd = aventaPend.filter(function (p) {
+        return norm(p.producto) === norm(l.producto);
+      });
+      var ops = mismoProd.filter(function (p) {
         if (l.material && p.material) return norm(p.material) === norm(l.material);
         return true;
       });
+      // Si ninguna coincide en material, se ofrecen las del mismo producto de
+      // todos modos, marcadas. Antes se escondían y la ventana decía que nadie
+      // había pedido ese mueble, cuando la venta sí existía y lo que no cuadraba
+      // era cómo estaba escrito el material.
+      var porMaterial = false;
+      if (!ops.length && mismoProd.length) { ops = mismoProd; porMaterial = true; }
       // El cupo real es lo pedido menos lo que ya salió en repartos anteriores
       var cupo = cupoDe(claveLinea(l.producto, l.material));
       var falta = cupo.libre;
@@ -12702,7 +12711,10 @@
         ';border-radius:12px;padding:14px 16px;margin-bottom:12px">' +
         '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:10px">' +
           '<div><b>' + esc(l.producto) + '</b> · ' + esc(l.material || '—') +
-            (l.proveedor ? ' <span class="s" style="color:var(--muted)">' + esc(l.proveedor) + '</span>' : '') + '</div>' +
+            (l.proveedor ? ' <span class="s" style="color:var(--muted)">' + esc(l.proveedor) + '</span>' : '') +
+            (porMaterial ? '<div class="s" style="color:var(--amber)">Ninguna venta pide este ' +
+              'mueble en ' + esc(l.material) + '. Salen las de otros materiales por si es la ' +
+              'misma pieza escrita distinto.</div>' : '') + '</div>' +
           '<div class="s">' + fmtNum(cupo.pedidas) + ' pedidas' +
             (cupo.yaSalio ? ' · ' + fmtNum(cupo.yaSalio) + ' ya salieron' : '') + ' · ' +
             '<b style="color:' + (falta < 0 ? 'var(--danger)' : (falta === 0 ? 'var(--success)' : 'var(--slate)')) + '">' +
@@ -12915,6 +12927,7 @@
       '<div class="state" style="padding:30px 0">Buscando ventas que pidieron estos productos…</div>';
     document.getElementById('aventaCancel').textContent = 'No, es para stock';
     document.getElementById('aventaModal').classList.add('on');
+    modalModo = '';
     api('pendientes', { token: state.token,
         productos: aventaLineas.map(function (l) { return { producto: l.producto, material: l.material }; }) })
       .then(function (d) {
@@ -12922,7 +12935,16 @@
         if (!aventaPend.length) {
           document.getElementById('aventaCuerpo').innerHTML =
             '<div class="state" style="padding:24px 0">Ninguna venta pendiente pidió estos productos. ' +
-            'El pedido se queda en stock.</div>';
+            'El pedido se queda en stock.' +
+            '<div class="s" style="color:var(--slate);margin-top:10px;font-weight:400">Se buscó: ' +
+            esc(aventaLineas.map(function (l) {
+              return l.producto + (l.material ? ' · ' + l.material : '');
+            }).join(' | ')) + '</div>' +
+            '<div class="s" style="color:var(--muted);margin-top:6px;font-weight:400">Si sabes que ' +
+            'sí hay una venta con ese mueble, revisa cómo está escrito el producto en VENTAS y en ' +
+            'el pedido: si no coinciden, no se encuentran.</div></div>';
+          document.getElementById('aventaOk').textContent = 'Está bien, es para stock';
+          modalModo = 'cerrar';
           return;
         }
         pintarMandarAVenta();
@@ -13069,10 +13091,36 @@
   function siguientePaso() {
     var f = colaPasos.shift();
     if (!f) { pasoEnCurso = false; return; }
-    pasoEnCurso = true;
+    pasoEnCurso = true; pasoHuerfano = false;
     try { f(); } catch (e) { console.error(e); pasoEnCurso = false; siguientePaso(); }
   }
   function terminarPaso() { pasoEnCurso = false; setTimeout(siguientePaso, 250); }
+
+  // Las preguntas de después de cerrar una venta —marketing, datos del cliente,
+  // visita al showroom, Cuentas por Cobrar y la factura— van en fila: cada una
+  // espera a que la anterior termine.
+  //
+  // El problema es cuando una se queda a medias: si su ventana se cierra por un
+  // camino que no avisa, la fila se queda trabada y NINGUNA de las que siguen
+  // vuelve a salir en toda la sesión. Se ve como si la pregunta de la factura
+  // hubiera desaparecido del sistema.
+  //
+  // Esto lo vigila: si hay un paso en curso y no queda ninguna ventana abierta,
+  // es que se cerró sin avisar y la fila puede seguir.
+  var IDS_MODALES = ['aventaModal', 'ventaModal', 'facModal', 'addModal'];
+  setInterval(function () {
+    if (!pasoEnCurso) return;
+    var alguna = IDS_MODALES.some(function (id) {
+      var el = document.getElementById(id);
+      return el && el.classList.contains('on');
+    });
+    if (alguna) return;
+    // Se espera una vuelta más antes de destrabar, por si la ventana está
+    // justo abriéndose. Dos vueltas seguidas sin ninguna abierta sí es que se cerró.
+    if (pasoHuerfano) { pasoHuerfano = false; terminarPaso(); }
+    else pasoHuerfano = true;
+  }, 1500);
+  var pasoHuerfano = false;
 
   // Datos que un cliente debe tener completos para poder facturarle y entregarle
   var CLIENTE_OBLIGATORIO = ['Teléfono', 'Despacho', 'Dirección de envío'];
@@ -13788,7 +13836,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.07-341';
+    var mia = '2026.09.07-344';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
