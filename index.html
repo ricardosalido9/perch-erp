@@ -1007,7 +1007,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.07-340</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.07-341</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -3224,8 +3224,13 @@
           'border-radius:10px;padding:14px 16px;color:var(--danger)">' +
           '<b>No se pudo abrir.</b><div style="margin-top:6px">' + esc(msg) + '</div></div>';
         document.getElementById('aventaOk').textContent = 'Cerrar';
-        modalModo = '';
-        toast(msg, 'err');
+        modalModo = 'cerrar';
+        // El aviso se queda en pantalla: un toast se va solo y con él la única
+        // pista de por qué no abrió.
+        avisoFijo('<b>No se pudo abrir "Corregir el cliente".</b>' +
+          '<div style="margin-top:6px">' + esc(msg) + '</div>' +
+          (e && e.pista ? '<div class="s" style="margin-top:6px;color:var(--slate)">' +
+            esc(e.pista) + '</div>' : ''));
       });
   }
   function pintarCorregirCliente() {
@@ -12629,7 +12634,8 @@
           '<div class="s" style="color:var(--slate);margin-top:8px;font-weight:400">' +
           'La salida no se registró.</div></div>';
         var b2 = document.getElementById('aventaOk');
-        b2.disabled = true; b2.textContent = 'No se pudo cargar';
+        b2.disabled = false; b2.textContent = 'Cerrar';
+        modalModo = 'cerrar';
         // El error también fuera de la ventana: adentro queda tapado por el aviso
         // y sin poder leerlo no hay forma de saber qué falló.
         avisoFijo('<b>No se pudo abrir "Mandar a venta".</b>' +
@@ -13782,7 +13788,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.07-340';
+    var mia = '2026.09.07-341';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
@@ -13850,6 +13856,7 @@
       case 'reporteNomina':   generarReporteNomina(); return;
       case 'versionNueva':    guardarVersionNueva(); return;
       case 'asignar':         guardarAsignar(); return;
+      case 'cerrar':          cerrarMandarAVenta(); return;
       case 'pedirPago':       guardarPedirPago(); return;
       case 'cierre':
         if (cierrePdf) { bajarPdf(cierrePdf.pdf, cierrePdf.nombre); return; }
@@ -13870,7 +13877,7 @@
     var cargando = cuerpo && /Buscando|Cargando|Leyendo/i.test(cuerpo.textContent || '');
     toast(cargando
       ? 'La ventana todavía está cargando. Espera a que salgan los muebles y vuelve a darle.'
-      : 'La ventana no cargó bien y no se guardó nada. Ciérrala y vuelve a abrirla.', 'err');
+      : 'Esta ventana no se puede guardar desde aquí. Ciérrala con la X de la esquina.', 'err');
   });
   document.getElementById('ventaClose').addEventListener('click', cerrarConvertirVenta);
   document.getElementById('ventaCancel').addEventListener('click', cerrarConvertirVenta);
