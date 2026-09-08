@@ -1007,7 +1007,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.07-347</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.07-349</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -8141,16 +8141,20 @@
                 fmtNum(m.faltan) + ' ' + esc(m.producto) +
                 (comps.length > 1 ? ' <span class="s">(' + comps.length + ' componentes)</span>' : '') +
                 comps.map(function (x) {
+                  var pide = (x.faltan != null) ? x.faltan : m.faltan;
                   return '<div style="margin-left:12px">' +
+                    'faltan ' + fmtNum(pide) + ' · ' +
                     (x.material ? esc(x.material) : 'sin material') +
                     (x.delCatalogo ? ' <span class="s" style="color:var(--muted)">' +
-                      '(del catálogo)</span>' : '') + ' · ' +
+                      '(del catálogo)</span>' : '') +
+                    (x.yaSalio ? ' <span class="s" style="color:var(--success)">(' +
+                      fmtNum(x.yaSalio) + ' ya salieron)</span>' : '') + ' · ' +
                     (x.alcanza
                       ? '<span style="color:var(--success)">hay ' + fmtNum(x.enStock) +
                         ' en stock</span>'
                       : (x.enStock > 0
                           ? '<span style="color:var(--amber)">solo hay ' + fmtNum(x.enStock) +
-                            ' de ' + fmtNum(m.faltan) + '</span>'
+                            ' de ' + fmtNum(pide) + '</span>'
                           : '<span style="color:var(--danger)">sin stock</span>') +
                         ((x.proveedores || []).length
                           ? ' <span style="color:var(--muted)">· lo hace ' +
@@ -13954,7 +13958,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.07-347';
+    var mia = '2026.09.07-349';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
