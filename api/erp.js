@@ -48,6 +48,7 @@ const RUTAS = {
   'estado-pdf':   require('../lib/handlers/estado-pdf'),
   'estado-html':  require('../lib/handlers/estado-html'),
   'inicio-html':  require('../lib/handlers/inicio-html'),
+  'cierre-html':  require('../lib/handlers/cierre-html'),
   conexiones:     require('../lib/handlers/conexiones'),
   saldos:         require('../lib/handlers/saldos'),
   'nomina-pdf':   require('../lib/handlers/nomina-pdf'),

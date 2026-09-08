@@ -200,15 +200,20 @@
   .dash-bar .quick { display:flex; gap:6px; margin-left:auto; flex-wrap:wrap; }
   .dash-bar .quick button { padding:6px 11px; font-size:13px; }
   .dash-bar .quick button.on { background:var(--ink); color:#fff; border-color:var(--ink); }
-  .dash-section { margin-bottom:28px; }
-  .dash-section > h3 { margin:0 0 12px; font-size:13px; font-weight:600; color:var(--slate);
-    text-transform:uppercase; letter-spacing:1px; }
+  .dash-section { margin-bottom:30px; }
+  .dash-section > h3 { margin:0 0 4px; font-family:Georgia,'Times New Roman',serif;
+    font-size:20px; font-weight:600; color:var(--ink); text-transform:none; letter-spacing:0;
+    border-bottom:1.5px solid var(--ink); padding-bottom:9px; display:flex;
+    justify-content:space-between; align-items:baseline; gap:14px; }
+  .dash-section > .kpi-grid, .dash-section > .dash-cols { margin-top:14px; }
   .kpi-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; }
-  .kpi { background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:16px 18px; min-width:0; }
-  .kpi .k { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.6px; }
-  .kpi .v { font-size:24px; font-weight:600; letter-spacing:-0.6px; margin-top:4px;
+  .kpi { background:var(--surface); border:1px solid var(--line); border-radius:0; padding:16px 18px; min-width:0; }
+  .kpi .k { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:1.3px; }
+  .kpi .v { font-size:25px; font-weight:500; letter-spacing:0; margin-top:7px;
+    font-family:ui-monospace,'SF Mono',Menlo,monospace;
     font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .kpi .s { font-size:12px; color:var(--muted); margin-top:2px; }
+  .kpi .s { font-size:11px; color:var(--muted); margin-top:5px; }
+  .kpi.dark { border:1.5px solid var(--accent-ink); }
 
   /* Filtro de fechas del dashboard */
   .dash-filter { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-bottom:22px; }
@@ -219,15 +224,15 @@
   .dash-filter span { color:var(--muted); }
   .dash-filter button { padding:7px 14px; font-size:13px; }
   .dash-filter .dash-hint { font-size:12px; color:var(--muted); margin-left:4px; }
-  .kpi.dark { background:var(--rail); border-color:var(--rail); }
+  .kpi.dark { background:var(--rail); border-color:var(--rail); border-radius:0; }
   .kpi.dark .k { color:var(--muted); }
   .kpi.dark .v { color:#fff; }
   .kpi.dark .s { color:var(--muted); }
 
   .dash-cols { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:18px; }
-  .panel { background:var(--surface); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  .panel { background:var(--surface); border:1px solid var(--line); border-radius:0; overflow:hidden; }
   .panel > h4 { margin:0; padding:14px 16px; border-bottom:1px solid var(--line);
-    font-size:14px; font-weight:600; }
+    font-size:13.5px; font-weight:600; }
   .panel-body { padding:16px; }
 
   /* Barras horizontales */
@@ -1007,7 +1012,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.08-351</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.08-355</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -4171,6 +4176,21 @@
           '<div class="state" style="padding:40px 0">' + esc(d.mensaje) + '</div>';
         return;
       }
+      // Cuando faltan TODOS los complementos casi siempre es que no se encontró la
+      // pestaña o la columna, no que falten de verdad. Se dice antes de que alguien
+      // salga a perseguir facturas que sí están pagadas.
+      var L = d.lectura || {};
+      if (L.columnaRelacion === '(NO SE ENCONTRÓ)' ||
+          L.pestanaComplementos === '(NO SE ENCONTRÓ)' || !L.complementosLeidos) {
+        avisoFijo('<b>No se pudieron leer los complementos, así que todas las facturas ' +
+          'salen como pendientes.</b>' +
+          '<div class="s" style="margin-top:6px">Pestaña: ' + esc(L.pestanaComplementos || '—') +
+          ' · complementos leídos: ' + fmtNum(L.complementosLeidos || 0) +
+          ' · columna de relación: ' + esc(L.columnaRelacion || '—') + '</div>' +
+          ((L.encabezadosComplementos || []).length
+            ? '<div class="s" style="margin-top:6px;color:var(--slate)">La pestaña tiene: ' +
+              esc(L.encabezadosComplementos.join(' · ')) + '</div>' : ''));
+      }
       var t = d.totales || {};
       var box = document.getElementById('summary');
       box.style.display = 'block';
@@ -5736,7 +5756,12 @@
   // ilegible para leer. Esta pantalla la vuelve el estado de siempre: sangría por
   // nivel, subtotales en negrita, los doce meses, el total y el año anterior.
   var estadoCual = 'resultados', estadoAnio = new Date().getFullYear();
-  var estadoDesde = 1, estadoHasta = 12, estadoVista = 'importes', estadoVacios = false;
+  // El mes en curso, en base 1. Es hasta dónde tiene sentido evaluar: incluir
+  // meses que no han pasado mete ceros que ensucian promedios y comparaciones.
+  function mesHoy() { return new Date().getMonth() + 1; }
+  // De un año pasado sí se ve el año completo.
+  function hastaDelAnio(a) { return a < new Date().getFullYear() ? 12 : mesHoy(); }
+  var estadoDesde = 1, estadoHasta = mesHoy(), estadoVista = 'importes', estadoVacios = false;
   var estadoUlt = null, estadoCruce = null, estadoPdf = null, cruceAgrupar = 'auto';
   function loadEstado(cual) {
     estadoCual = cual;
@@ -5906,7 +5931,8 @@
     if (fuente) fuente.innerHTML = '';
     var recargar = function () { loadEstado(estadoCual); };
     document.getElementById('estAnio').addEventListener('change', function () {
-      estadoAnio = +this.value; recargar();
+      estadoAnio = +this.value;
+      estadoHasta = hastaDelAnio(estadoAnio); recargar();
     });
     document.getElementById('estDesde').addEventListener('change', function () {
       estadoDesde = +this.value;
@@ -6228,7 +6254,7 @@
   // ===== Bancos y Cajas =====
   // El saldo no se captura: se calcula desde el libro. Lo único capturado es el
   // arranque, y la pantalla dice cuáles cuentas todavía no lo tienen.
-  var saldosAnio = new Date().getFullYear(), saldosDesde = 1, saldosHasta = 12;
+  var saldosAnio = new Date().getFullYear(), saldosDesde = 1, saldosHasta = mesHoy();
   function loadSaldos() {
     document.getElementById('summary').innerHTML = '';
     document.getElementById('summary').style.display = 'none';
@@ -6319,7 +6345,9 @@
     }
     document.getElementById('tableWrap').innerHTML = h;
     document.getElementById('sdAnio').addEventListener('change', function () {
-      saldosAnio = +this.value; loadSaldos();
+      saldosAnio = +this.value;
+      saldosHasta = hastaDelAnio(saldosAnio);
+      loadSaldos();
     });
     document.getElementById('sdHasta').addEventListener('change', function () {
       saldosHasta = +this.value; loadSaldos();
@@ -8609,10 +8637,19 @@
       '<div class="fld"><label>Notas del mes <span class="s" style="color:var(--muted)">' +
         'opcional, aparecen al final</span></label>' +
         '<textarea id="ciNotas" rows="3" placeholder="Qué explica el mes, qué quedó pendiente…"></textarea></div>' +
+      '<div style="margin-top:12px"><button type="button" id="ciTablero">Ver como tablero</button>' +
+      '<span class="s" style="color:var(--muted);margin-left:10px">Se abre en otra pestaña. ' +
+      'Para PDF: imprimir y guardar como PDF.</span></div>' +
       '<div id="ciVista" style="margin-top:14px"></div>';
     document.getElementById('aventaOk').textContent = 'Armar el reporte';
     document.getElementById('aventaModal').classList.add('on');
     cierrePdf = null;
+    document.getElementById('ciTablero').addEventListener('click', function () {
+      window.open('/api/erp?action=cierre-html&mes=' +
+        document.getElementById('ciMes').value + '&anio=' +
+        document.getElementById('ciAnio').value +
+        '&token=' + encodeURIComponent(state.token), '_blank');
+    });
   }
   function generarCierre() {
     var btn = document.getElementById('aventaOk');
@@ -9191,19 +9228,41 @@
     });
     var clr = document.getElementById('dClear');
     if (clr) clr.addEventListener('click', function () {
-      dashRange = { from: '', to: '' }; dashCompare = false; renderDashboard();
+      dashRange = { from: isoInicioAnio(), to: isoHoy() };
+      dashCompare = false; dashMetas = false;
+      renderDashboard();
+      toast('Vuelto al año en curso: 1 de enero a hoy.', 'ok');
     });
-    var cmp = document.getElementById('dCmp');
-    if (cmp) cmp.addEventListener('click', function () {
+    // Comparar necesita un periodo. Si no hay, se toma el año en curso hasta hoy
+    // en vez de no hacer nada, que es lo que pasaba antes.
+    var periodoOAnioEnCurso = function () {
       dashRange.from = document.getElementById('dFrom').value;
       dashRange.to = document.getElementById('dTo').value;
-      dashCompare = !dashCompare; renderDashboard();
+      if (dashRange.from && dashRange.to) return false;
+      var hoy = new Date();
+      var dosDig = function (n) { return String(n).padStart(2, '0'); };
+      dashRange.from = hoy.getFullYear() + '-01-01';
+      dashRange.to = hoy.getFullYear() + '-' + dosDig(hoy.getMonth() + 1) + '-' +
+                     dosDig(hoy.getDate());
+      return true;
+    };
+    var cmp = document.getElementById('dCmp');
+    if (cmp) cmp.addEventListener('click', function () {
+      var sePuso = periodoOAnioEnCurso();
+      dashCompare = !dashCompare;
+      renderDashboard();
+      if (sePuso && dashCompare) {
+        toast('Se puso el año en curso como periodo. Cámbialo arriba si quieres otro.', 'ok');
+      }
     });
     var mtb = document.getElementById('dMetas');
     if (mtb) mtb.addEventListener('click', function () {
-      dashRange.from = document.getElementById('dFrom').value;
-      dashRange.to = document.getElementById('dTo').value;
-      dashMetas = !dashMetas; renderDashboard();
+      var sePuso2 = periodoOAnioEnCurso();
+      dashMetas = !dashMetas;
+      renderDashboard();
+      if (sePuso2 && dashMetas) {
+        toast('Se puso el año en curso como periodo. Cámbialo arriba si quieres otro.', 'ok');
+      }
     });
   }
 
@@ -13980,7 +14039,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.08-351';
+    var mia = '2026.09.08-355';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
