@@ -1012,7 +1012,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.08-355</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.08-356</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1293,6 +1293,7 @@
     cta_clientes:        'Lo que se vendió contra lo que de verdad entró, ligado por folio.',
     fac_control:         'A quién falta facturarle y a quién falta emitirle el complemento de pago.',
     cfdi_control:        'Los CFDIs del SAT: qué factura no tiene su complemento emitido.',
+    cfdi_comp_rec:       'Del otro lado: qué factura que nos emitieron sigue sin su complemento.',
     cfdi_prov:           'Qué facturas y complementos nos deben los proveedores de lo que ya les pagamos.',
     prov_razon:          'El puente entre el nombre corto de Egresos y la razón social del CFDI.',
     fac_impuestos:       'Impuestos por mes: base, tasa, a cargo, a favor y si ya se pagó.',
@@ -1311,7 +1312,7 @@
     fin_cxc:             'Saldos por cobrar de cada pedido.',
     fin_ingresos:        'Cobros recibidos, ligados al folio del pedido.'
   };
-  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'fac_control', 'cfdi_control', 'cfdi_prov', 'prov_razon', 'rh_resumen', 'fin_gastos_op', 'fin_efectivo', 'fac_impuestos', 'fac_emitidos', 'log_calendario', 'fin_estados', 'fin_flujo', 'fin_balance', 'fin_bancos', 'ventas_folios',
+  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'fac_control', 'cfdi_control', 'cfdi_comp_rec', 'cfdi_prov', 'prov_razon', 'rh_resumen', 'fin_gastos_op', 'fin_efectivo', 'fac_impuestos', 'fac_emitidos', 'log_calendario', 'fin_estados', 'fin_flujo', 'fin_balance', 'fin_bancos', 'ventas_folios',
     // El stock sale de pedidos, entradas y salidas: se recalcula, no se edita
     'op_stock', 'op_revisar', 'prov_revision'];
   function esLector() {
@@ -4165,12 +4166,12 @@
 
   // ===== CFDIs contra complementos, leyendo del SAT =====
   var cfdiVista = 'falta';
-  function loadCfdi() {
+  function loadCfdi(lado) {
     document.getElementById('tableWrap').innerHTML =
       '<div class="state" style="padding:50px 0">Cruzando facturas contra complementos…</div>';
     document.getElementById('summary').innerHTML = '';
     mostrarAlta(false);
-    api('cfdi', { token: state.token }).then(function (d) {
+    api('cfdi', { token: state.token, lado: lado || 'emitidos' }).then(function (d) {
       if (d.sinArchivo) {
         document.getElementById('tableWrap').innerHTML =
           '<div class="state" style="padding:40px 0">' + esc(d.mensaje) + '</div>';
@@ -6977,7 +6978,8 @@
     if (state.key === 'rh_resumen') return loadRH();
     if (state.key === 'prov_razon') return loadProvRazon();
     if (state.key === 'cfdi_prov') return loadCfdiProv();
-    if (state.key === 'cfdi_control') return loadCfdi();
+    if (state.key === 'cfdi_control') return loadCfdi('emitidos');
+    if (state.key === 'cfdi_comp_rec') return loadCfdi('recibidos');
     if (state.key === 'fac_control') return loadFacturacion();
     if (state.key === 'cta_clientes') return loadCtaClientes();
     if (state.key === 'expediente') return loadClientes();
@@ -14039,7 +14041,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.08-355';
+    var mia = '2026.09.08-356';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
