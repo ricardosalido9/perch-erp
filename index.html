@@ -1012,7 +1012,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.08-356</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.08-357</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -4166,12 +4166,14 @@
 
   // ===== CFDIs contra complementos, leyendo del SAT =====
   var cfdiVista = 'falta';
+  var cfdiAnio = new Date().getFullYear(), cfdiLado = 'emitidos';
   function loadCfdi(lado) {
+    cfdiLado = lado || 'emitidos';
     document.getElementById('tableWrap').innerHTML =
       '<div class="state" style="padding:50px 0">Cruzando facturas contra complementos…</div>';
     document.getElementById('summary').innerHTML = '';
     mostrarAlta(false);
-    api('cfdi', { token: state.token, lado: lado || 'emitidos' }).then(function (d) {
+    api('cfdi', { token: state.token, lado: cfdiLado, anio: cfdiAnio }).then(function (d) {
       if (d.sinArchivo) {
         document.getElementById('tableWrap').innerHTML =
           '<div class="state" style="padding:40px 0">' + esc(d.mensaje) + '</div>';
@@ -4181,7 +4183,16 @@
       // pestaña o la columna, no que falten de verdad. Se dice antes de que alguien
       // salga a perseguir facturas que sí están pagadas.
       var L = d.lectura || {};
-      if (L.columnaRelacion === '(NO SE ENCONTRÓ)' ||
+      if (L.ligadoPorMonto) {
+        // Hay complementos pero sin la columna que dice a qué factura pagan
+        avisoFijo('<b>Esta hoja de complementos no dice a qué factura paga cada uno.</b>' +
+          '<div style="margin-top:6px">Se están ligando por <b>proveedor y monto</b>, que no es ' +
+          'lo mismo: dos facturas del mismo proveedor por el mismo importe se confunden entre sí. ' +
+          'Los renglones ligados así salen marcados.</div>' +
+          '<div class="s" style="margin-top:6px;color:var(--slate)">Para que ligue bien, la hoja ' +
+          'necesita una columna <b>UUID CFDI Pago</b> con el UUID de la factura que paga cada ' +
+          'complemento. Hoy tiene: ' + esc((L.encabezadosComplementos || []).join(' · ')) + '</div>');
+      } else if (L.columnaRelacion === '(NO SE ENCONTRÓ)' ||
           L.pestanaComplementos === '(NO SE ENCONTRÓ)' || !L.complementosLeidos) {
         avisoFijo('<b>No se pudieron leer los complementos, así que todas las facturas ' +
           'salen como pendientes.</b>' +
@@ -4278,8 +4289,32 @@
       }
       document.getElementById('tableWrap').innerHTML = h;
       document.getElementById('count').textContent = lista.length + ' facturas';
+      // Selector de año: con tres años encima, verlos juntos no deja trabajar
+      var barra = document.querySelector('#summary .mes-chip');
+      if (barra && barra.parentNode && !document.getElementById('cfdiAnioSel')) {
+        var sel = document.createElement('select');
+        sel.id = 'cfdiAnioSel';
+        sel.style.cssText = 'margin-left:10px;padding:6px 10px;font:inherit;' +
+          'border:1px solid var(--line);background:var(--surface)';
+        var anios = (d.anios || []).slice();
+        if (anios.indexOf(cfdiAnio) === -1) anios.unshift(cfdiAnio);
+        sel.innerHTML = anios.map(function (a) {
+          return '<option value="' + a + '"' + (a === d.anio ? ' selected' : '') + '>' + a + '</option>';
+        }).join('') + '<option value="0"' + (d.anio === 0 ? ' selected' : '') + '>Todos los años</option>';
+        sel.addEventListener('change', function () { cfdiAnio = +this.value; loadCfdi(cfdiLado); });
+        barra.parentNode.appendChild(sel);
+        if (d.deOtroAnio) {
+          var nota = document.createElement('span');
+          nota.className = 's';
+          nota.style.cssText = 'color:var(--muted);margin-left:8px';
+          nota.textContent = fmtNum(d.deOtroAnio) + ' facturas de otros años, fuera de esta vista';
+          barra.parentNode.appendChild(nota);
+        }
+      }
       document.querySelectorAll('#summary [data-cfdi]').forEach(function (b) {
-        b.addEventListener('click', function () { cfdiVista = b.getAttribute('data-cfdi'); loadCfdi(); });
+        b.addEventListener('click', function () {
+          cfdiVista = b.getAttribute('data-cfdi'); loadCfdi(cfdiLado);
+        });
       });
     }).catch(function (e) {
       document.getElementById('tableWrap').innerHTML =
@@ -14041,7 +14076,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.08-356';
+    var mia = '2026.09.08-357';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
