@@ -46,6 +46,8 @@ const RUTAS = {
   'cruce-ventas': require('../lib/handlers/cruce-ventas'),
   'cruce-flujo':  require('../lib/handlers/cruce-flujo'),
   'estado-pdf':   require('../lib/handlers/estado-pdf'),
+  'estado-html':  require('../lib/handlers/estado-html'),
+  'inicio-html':  require('../lib/handlers/inicio-html'),
   conexiones:     require('../lib/handlers/conexiones'),
   saldos:         require('../lib/handlers/saldos'),
   'nomina-pdf':   require('../lib/handlers/nomina-pdf'),
