@@ -1012,7 +1012,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.16-363</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.16-365</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -5930,6 +5930,8 @@
       // tabla fuera de la vista, que es lo que se viene a ver.
       '<button type="button" id="estNotas" title="Lo que escribas sale en el tablero">' +
       'Notas</button>' +
+      '<button type="button" id="estTodos" title="Un solo PDF con los tres estados">' +
+      'Estados completos (PDF)</button>' +
       '<button type="button" class="primary" id="estTablero" ' +
       'title="Se abre en una pestaña. Para PDF: imprimir y guardar como PDF">Tablero</button>' +
       '<button type="button" id="estPdf" ' +
@@ -6059,6 +6061,24 @@
     document.getElementById('estCsv').addEventListener('click', function () { bajarCsvEstado(d); });
     // El tablero se abre en su propia pestaña: es una página completa, no un
     // archivo. De ahí sale el PDF con Imprimir, conservando el diseño.
+    document.getElementById('estTodos').addEventListener('click', function () {
+      var b = document.getElementById('estTodos');
+      b.disabled = true; b.textContent = 'Armando…';
+      api('estados-pdf', { token: state.token, anio: estadoAnio,
+                           desde: estadoDesde, hasta: estadoHasta })
+        .then(function (o) {
+          bajarPdf(o.pdf, o.nombre || 'Estados Financieros.pdf');
+          var msg = 'Listo: ' + (o.estados || []).join(', ') + ' · ' + o.paginas + ' páginas.';
+          toast(msg, 'ok');
+          if ((o.faltaron || []).length) {
+            avisoFijo('<b>Estos estados no entraron al documento:</b><div style="margin-top:6px">' +
+              o.faltaron.map(function (f) { return esc(f.cual + ' — ' + f.porQue); }).join('<br>') +
+              '</div>');
+          }
+        })
+        .catch(fail)
+        .then(function () { b.disabled = false; b.textContent = 'Estados completos (PDF)'; });
+    });
     document.getElementById('estNotas').addEventListener('click', function () {
       abrirNotas('estado', estadoAnio, 0,
         (d.filas || []).filter(function (f) { return f.tipo === 'subtotal'; })
@@ -8823,7 +8843,10 @@
       '<div class="fld"><label>Notas del mes <span class="s" style="color:var(--muted)">' +
         'opcional, aparecen al final</span></label>' +
         '<textarea id="ciNotas" rows="3" placeholder="Qué explica el mes, qué quedó pendiente…"></textarea></div>' +
-      '<div style="margin-top:12px"><button type="button" id="ciNotas">Notas</button> ' +
+      '<div style="margin-top:12px">' +
+      '<button type="button" class="primary" id="ciPaquete" ' +
+      'title="Los seis reportes del mes en un solo PDF">Cierre completo (PDF)</button> ' +
+      '<button type="button" id="ciNotas">Notas</button> ' +
       '<button type="button" id="ciTablero">Ver como tablero</button>' +
       '<span class="s" style="color:var(--muted);margin-left:10px">Se abre en otra pestaña. ' +
       'Para PDF: imprimir y guardar como PDF.</span></div>' +
@@ -8831,6 +8854,28 @@
     document.getElementById('aventaOk').textContent = 'Armar el reporte';
     document.getElementById('aventaModal').classList.add('on');
     cierrePdf = null;
+    // El cierre completo: seis reportes en un archivo. Tarda, porque son seis
+    // cálculos distintos; por eso el botón dice en qué va.
+    document.getElementById('ciPaquete').addEventListener('click', function () {
+      var b = document.getElementById('ciPaquete');
+      b.disabled = true; b.textContent = 'Armando los seis…';
+      api('cierre-paquete', { token: state.token,
+            mes: +document.getElementById('ciMes').value,
+            anio: +document.getElementById('ciAnio').value })
+        .then(function (o) {
+          bajarPdf(o.pdf, o.nombre || 'Cierre del mes.pdf');
+          toast('Listo: ' + (o.piezas || []).length + ' reportes, ' + o.paginas + ' páginas.', 'ok');
+          if ((o.faltaron || []).length) {
+            avisoFijo('<b>Estas piezas no entraron al cierre:</b><div style="margin-top:6px">' +
+              o.faltaron.map(function (f) {
+                return esc(f.pieza + ' — ' + f.porQue); }).join('<br>') + '</div>' +
+              '<div class="s" style="margin-top:6px;color:var(--slate)">El documento salió con ' +
+              'las demás. Se pueden agregar después arreglando lo que falta.</div>');
+          }
+        })
+        .catch(fail)
+        .then(function () { b.disabled = false; b.textContent = 'Cierre completo (PDF)'; });
+    });
     document.getElementById('ciNotas').addEventListener('click', function () {
       abrirNotas('cierre', +document.getElementById('ciAnio').value,
         +document.getElementById('ciMes').value,
@@ -14410,7 +14455,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.16-363';
+    var mia = '2026.09.16-365';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
