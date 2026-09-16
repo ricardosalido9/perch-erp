@@ -1012,7 +1012,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.15-361</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.15-362</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -2406,10 +2406,21 @@
       '<div class="s" style="color:var(--muted)">Trae el neto del mes contra el mes anterior y ' +
       'contra el mismo mes del año pasado, altas y bajas con rotación, el desglose por área y ' +
       'puesto, por tipo de pago, y el detalle recibo por recibo.</div>' +
+      '<div style="margin-top:12px"><button type="button" id="noTablero">Ver como tablero</button>' +
+      '<span class="s" style="color:var(--muted);margin-left:10px">Se abre en otra pestaña. ' +
+      'Para PDF: imprimir y guardar como PDF.</span></div>' +
       '<div id="noVista" style="margin-top:12px"></div>';
     document.getElementById('aventaOk').textContent = 'Armar el reporte';
     document.getElementById('aventaCancel').textContent = 'Cerrar';
     document.getElementById('aventaModal').classList.add('on');
+    if (document.getElementById('noTablero')) {
+      document.getElementById('noTablero').addEventListener('click', function () {
+        window.open('/api/erp?action=nomina-html&mes=' +
+          document.getElementById('noMes').value + '&anio=' +
+          document.getElementById('noAnio').value +
+          '&token=' + encodeURIComponent(state.token), '_blank');
+      });
+    }
     nominaPdf = null;
   }
   function generarReporteNomina() {
@@ -5455,6 +5466,22 @@
       document.getElementById('tableWrap').innerHTML = h;
       document.getElementById('summary').style.display = 'none';
       document.getElementById('count').textContent = (d.meses || []).length + ' meses';
+      var btab = document.getElementById('cfdiTableroBtn');
+      if (!btab) {
+        var ref = document.getElementById('cfdiReporteBtn');
+        if (ref && ref.parentNode) {
+          btab = document.createElement('button');
+          btab.id = 'cfdiTableroBtn'; btab.type = 'button';
+          btab.textContent = 'Ver como tablero';
+          btab.title = 'Se abre en otra pestaña. Para PDF: imprimir y guardar como PDF';
+          ref.parentNode.insertBefore(btab, ref);
+        }
+      }
+      if (btab) btab.onclick = function () {
+        var m = +document.getElementById('cfdiReporteMes').value || d.mesDeclarar;
+        window.open('/api/erp?action=cfdi-reporte-html&mes=' + m + '&anio=' + d.anio +
+          '&token=' + encodeURIComponent(state.token), '_blank');
+      };
       var brep = document.getElementById('cfdiReporteBtn');
       if (brep) brep.addEventListener('click', function () {
         var mesSel = +document.getElementById('cfdiReporteMes').value || d.mesDeclarar;
@@ -14306,7 +14333,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.15-361';
+    var mia = '2026.09.15-362';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
