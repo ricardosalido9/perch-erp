@@ -49,6 +49,7 @@ const RUTAS = {
   'estado-html':  require('../lib/handlers/estado-html'),
   'inicio-html':  require('../lib/handlers/inicio-html'),
   'cierre-html':  require('../lib/handlers/cierre-html'),
+  'costos-html':  require('../lib/handlers/costos-html'),
   conexiones:     require('../lib/handlers/conexiones'),
   saldos:         require('../lib/handlers/saldos'),
   'nomina-pdf':   require('../lib/handlers/nomina-pdf'),

@@ -1012,7 +1012,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.15-360</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.15-361</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1744,6 +1744,23 @@
 
   function loadCostos() {
     document.getElementById('driveCostosBtn').style.display = '';
+    var bt = document.getElementById('btnTableroCostos');
+    if (!bt) {
+      var ref = document.getElementById('driveCostosBtn');
+      if (ref && ref.parentNode) {
+        bt = document.createElement('button');
+        bt.id = 'btnTableroCostos';
+        bt.type = 'button';
+        bt.textContent = 'Ver como tablero';
+        bt.title = 'Se abre en otra pestaña. Para PDF: imprimir y guardar como PDF';
+        bt.addEventListener('click', function () {
+          window.open('/api/erp?action=costos-html&token=' +
+            encodeURIComponent(state.token), '_blank');
+        });
+        ref.parentNode.insertBefore(bt, ref);
+      }
+    }
+    if (bt) bt.style.display = '';
     document.getElementById('tableWrap').innerHTML =
       '<div class="state" style="padding:50px 0">Cruzando ventas, salidas, pedidos y catálogo…</div>';
     document.getElementById('summary').innerHTML = '';
@@ -14289,7 +14306,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.15-360';
+    var mia = '2026.09.15-361';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
