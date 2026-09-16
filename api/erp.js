@@ -52,6 +52,7 @@ const RUTAS = {
   'costos-html':  require('../lib/handlers/costos-html'),
   'cfdi-reporte-html': require('../lib/handlers/cfdi-reporte-html'),
   'nomina-html':  require('../lib/handlers/nomina-html'),
+  notas:          require('../lib/handlers/notas'),
   conexiones:     require('../lib/handlers/conexiones'),
   saldos:         require('../lib/handlers/saldos'),
   'nomina-pdf':   require('../lib/handlers/nomina-pdf'),

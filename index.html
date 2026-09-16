@@ -1012,7 +1012,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.15-362</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.16-363</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -5928,6 +5928,8 @@
         ? '<button type="button" id="estCruceF">Cuadrar contra Ingresos y Egresos</button>' : '') +
       // La lectura de los números va en el PDF, no aquí: en pantalla empujaba la
       // tabla fuera de la vista, que es lo que se viene a ver.
+      '<button type="button" id="estNotas" title="Lo que escribas sale en el tablero">' +
+      'Notas</button>' +
       '<button type="button" class="primary" id="estTablero" ' +
       'title="Se abre en una pestaña. Para PDF: imprimir y guardar como PDF">Tablero</button>' +
       '<button type="button" id="estPdf" ' +
@@ -6057,6 +6059,12 @@
     document.getElementById('estCsv').addEventListener('click', function () { bajarCsvEstado(d); });
     // El tablero se abre en su propia pestaña: es una página completa, no un
     // archivo. De ahí sale el PDF con Imprimir, conservando el diseño.
+    document.getElementById('estNotas').addEventListener('click', function () {
+      abrirNotas('estado', estadoAnio, 0,
+        (d.filas || []).filter(function (f) { return f.tipo === 'subtotal'; })
+          .map(function (f) { return f.concepto; }).slice(0, 6)
+          .concat(['En qué se gasta', 'De dónde viene el ingreso']));
+    });
     document.getElementById('estTablero').addEventListener('click', function () {
       var u = '/api/erp?action=estado-html&cual=' + encodeURIComponent(estadoCual) +
         '&anio=' + estadoAnio + '&desde=' + estadoDesde + '&hasta=' + estadoHasta +
@@ -6842,6 +6850,68 @@
       btn.disabled = false; btn.textContent = 'Subir';
     };
     fr.readAsDataURL(file);
+  }
+
+  // ===== Notas de los reportes =====
+  // El sistema calcula; el criterio lo pone quien cierra el mes. Aquí se escribe
+  // eso, se guarda por reporte y mes, y sale en el tablero junto a su sección.
+  var notasRep = null, notasAnio = 0, notasMes = 0;
+  function abrirNotas(reporte, anio, mes, secciones) {
+    notasRep = reporte; notasAnio = anio; notasMes = mes || 0;
+    document.getElementById('aventaTitulo').textContent = 'Notas del reporte';
+    document.getElementById('aventaCuerpo').innerHTML =
+      '<div class="state" style="padding:30px 0">Leyendo las notas…</div>';
+    document.getElementById('aventaOk').textContent = 'Guardar';
+    document.getElementById('aventaCancel').textContent = 'Cerrar';
+    document.getElementById('aventaModal').classList.add('on');
+    modalModo = 'notas';
+    api('notas', { token: state.token, reporte: reporte, anio: anio, mes: notasMes })
+      .then(function (d) { pintarNotas(d, secciones || []); })
+      .catch(function (e) {
+        document.getElementById('aventaCuerpo').innerHTML =
+          '<div class="state" style="color:var(--danger)">' +
+          esc((e && e.message) || 'No se pudieron leer las notas.') +
+          (e && e.pista ? '<div class="s" style="color:var(--slate);margin-top:8px;' +
+            'font-weight:400">' + esc(e.pista) + '</div>' : '') + '</div>';
+        modalModo = 'cerrar';
+        document.getElementById('aventaOk').textContent = 'Cerrar';
+      });
+  }
+  function pintarNotas(d, secciones) {
+    var n = d.notas || {};
+    // La general va primero; las demás son las secciones del tablero
+    var lista = [{ k: 'general', t: 'Lo que hay que saber de este mes' }]
+      .concat(secciones.map(function (s2) { return { k: s2, t: s2 }; }));
+    var h = '<div class="s" style="color:var(--slate);margin-bottom:12px">' +
+      'Lo que escribas aquí sale en el tablero, debajo de su sección. Se guarda por ' +
+      'reporte y mes, así que el mes pasado conserva las suyas.</div>';
+    h += lista.map(function (x) {
+      return '<div class="fld" style="margin-bottom:12px"><label>' + esc(x.t) + '</label>' +
+        '<textarea class="nota-campo" data-sec="' + esc(x.k).replace(/"/g, '&quot;') +
+        '" rows="' + (x.k === 'general' ? 4 : 2) + '" ' +
+        'placeholder="Sin nota">' + esc(n[x.k] || '') + '</textarea></div>';
+    }).join('');
+    document.getElementById('aventaCuerpo').innerHTML = h;
+  }
+  function guardarNotas() {
+    var campos = Array.prototype.slice.call(document.querySelectorAll('.nota-campo'));
+    var btn = document.getElementById('aventaOk');
+    btn.disabled = true; btn.textContent = 'Guardando…';
+    Promise.all(campos.map(function (c) {
+      return api('notas', { token: state.token, guardar: true, reporte: notasRep,
+        anio: notasAnio, mes: notasMes, seccion: c.getAttribute('data-sec'),
+        texto: c.value });
+    })).then(function () {
+      toast('Notas guardadas.', 'ok');
+      cerrarMandarAVenta();
+    }).catch(function (e) {
+      avisoFijo('<b>No se pudieron guardar las notas.</b><div style="margin-top:6px">' +
+        esc((e && e.message) || '') + '</div>' +
+        (e && e.pista ? '<div class="s" style="margin-top:6px;color:var(--slate)">' +
+          esc(e.pista) + '</div>' : ''));
+    }).then(function () {
+      btn.disabled = false; btn.textContent = 'Guardar';
+    });
   }
 
   function loadLogistica() {
@@ -8753,13 +8823,20 @@
       '<div class="fld"><label>Notas del mes <span class="s" style="color:var(--muted)">' +
         'opcional, aparecen al final</span></label>' +
         '<textarea id="ciNotas" rows="3" placeholder="Qué explica el mes, qué quedó pendiente…"></textarea></div>' +
-      '<div style="margin-top:12px"><button type="button" id="ciTablero">Ver como tablero</button>' +
+      '<div style="margin-top:12px"><button type="button" id="ciNotas">Notas</button> ' +
+      '<button type="button" id="ciTablero">Ver como tablero</button>' +
       '<span class="s" style="color:var(--muted);margin-left:10px">Se abre en otra pestaña. ' +
       'Para PDF: imprimir y guardar como PDF.</span></div>' +
       '<div id="ciVista" style="margin-top:14px"></div>';
     document.getElementById('aventaOk').textContent = 'Armar el reporte';
     document.getElementById('aventaModal').classList.add('on');
     cierrePdf = null;
+    document.getElementById('ciNotas').addEventListener('click', function () {
+      abrirNotas('cierre', +document.getElementById('ciAnio').value,
+        +document.getElementById('ciMes').value,
+        ['En qué se convierte la venta', 'El año mes a mes', 'El embudo del mes',
+         'Qué se vendió', 'Quién compró', 'De dónde llegaron']);
+    });
     document.getElementById('ciTablero').addEventListener('click', function () {
       window.open('/api/erp?action=cierre-html&mes=' +
         document.getElementById('ciMes').value + '&anio=' +
@@ -14333,7 +14410,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.15-362';
+    var mia = '2026.09.16-363';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
@@ -14401,6 +14478,7 @@
       case 'reporteNomina':   generarReporteNomina(); return;
       case 'versionNueva':    guardarVersionNueva(); return;
       case 'asignar':         guardarAsignar(); return;
+      case 'notas':           guardarNotas(); return;
       case 'salidas':         registrarSalidas(); return;
       case 'cerrar':          cerrarMandarAVenta(); return;
       case 'pedirPago':       guardarPedirPago(); return;
