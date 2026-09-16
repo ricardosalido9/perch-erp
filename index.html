@@ -1012,7 +1012,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.15-358</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.15-360</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -10946,6 +10946,125 @@
     var html = '<option value="">— elegir —</option>';
     opts.forEach(function (o) { html += '<option>' + esc(o) + '</option>'; });
     sel.innerHTML = html;
+    // Con muchas opciones, un desplegable normal obliga a bajar con el scroll: el
+    // navegador solo salta a lo que EMPIEZA con lo que tecleas, y los productos se
+    // llaman "Silla Chara", así que escribir "chara" no encuentra nada. Se le pone
+    // un buscador que filtra por cualquier parte del nombre.
+    if (opts.length >= 8) hacerBuscable(sel);
+    else quitarBuscador(sel);
+  }
+
+  // ===== Desplegable con buscador =====
+  //
+  // No se reemplaza el <select>: se esconde y se le pone encima un campo de texto
+  // con su lista. Todo el código que ya existe sigue leyendo sel.value y
+  // escuchando su evento 'change', así que nada más tuvo que cambiar.
+  // El valor lo puede cambiar el código, no solo el usuario. En ese caso hay que
+  // reflejarlo en el campo de texto, o el buscador queda diciendo otra cosa.
+  function sincronizarBuscador(sel) {
+    if (sel && sel._buscador) sel._buscador._input.value = sel.value || '';
+  }
+  function quitarBuscador(sel) {
+    var caja = sel._buscador;
+    if (!caja) return;
+    caja.parentNode.removeChild(caja);
+    sel._buscador = null;
+    sel.style.display = '';
+  }
+  function hacerBuscable(sel) {
+    var opciones = Array.prototype.slice.call(sel.options)
+      .filter(function (o) { return o.value !== ''; })
+      .map(function (o) { return o.textContent; });
+
+    // Si ya tenía buscador, solo se le cambian las opciones
+    if (sel._buscador) {
+      sel._buscador._opciones = opciones;
+      sel._buscador._input.value = sel.value || '';
+      return;
+    }
+    sel.style.display = 'none';
+    var caja = document.createElement('div');
+    caja.style.cssText = 'position:relative';
+    var inp = document.createElement('input');
+    inp.type = 'text';
+    inp.setAttribute('autocomplete', 'off');
+    inp.placeholder = 'Escribe para buscar…';
+    inp.value = sel.value || '';
+    inp.style.cssText = 'width:100%';
+    var lista = document.createElement('div');
+    lista.style.cssText = 'position:absolute;z-index:40;left:0;right:0;top:100%;' +
+      'background:var(--surface);border:1px solid var(--line);max-height:260px;' +
+      'overflow:auto;display:none;box-shadow:0 8px 24px rgba(0,0,0,.10)';
+    caja.appendChild(inp); caja.appendChild(lista);
+    sel.parentNode.insertBefore(caja, sel);
+    sel._buscador = caja; caja._input = inp; caja._opciones = opciones;
+
+    var marcado = -1;
+    // Coincide si TODAS las palabras escritas aparecen en algún lado del nombre.
+    // Así "nogal chara" encuentra "Silla Chara · Nogal" sin importar el orden.
+    var filtrar = function (t) {
+      var pal = norm(t).split(/\s+/).filter(Boolean);
+      if (!pal.length) return caja._opciones.slice(0, 60);
+      return caja._opciones.filter(function (o) {
+        var n = norm(o);
+        return pal.every(function (p) { return n.indexOf(p) !== -1; });
+      }).slice(0, 60);
+    };
+    var pintar = function () {
+      var res = filtrar(inp.value);
+      marcado = -1;
+      if (!res.length) {
+        lista.innerHTML = '<div style="padding:10px 12px;color:var(--muted);font-size:13px">' +
+          'Nada coincide con “' + esc(inp.value) + '”</div>';
+      } else {
+        lista.innerHTML = res.map(function (o, i) {
+          return '<div data-i="' + i + '" style="padding:8px 12px;cursor:pointer;font-size:13.5px">' +
+            esc(o) + '</div>';
+        }).join('');
+      }
+      lista._res = res;
+      lista.style.display = 'block';
+    };
+    var elegir = function (txt2) {
+      sel.value = txt2;
+      inp.value = txt2;
+      lista.style.display = 'none';
+      // Se avisa como si el usuario hubiera usado el desplegable de siempre
+      sel.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    var resaltar = function () {
+      Array.prototype.slice.call(lista.children).forEach(function (el, i) {
+        el.style.background = (i === marcado) ? 'var(--paper)' : '';
+      });
+      if (marcado >= 0 && lista.children[marcado]) {
+        lista.children[marcado].scrollIntoView({ block: 'nearest' });
+      }
+    };
+    inp.addEventListener('focus', pintar);
+    inp.addEventListener('input', pintar);
+    inp.addEventListener('keydown', function (e) {
+      var n = (lista._res || []).length;
+      if (e.key === 'ArrowDown') { e.preventDefault(); marcado = Math.min(n - 1, marcado + 1); resaltar(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); marcado = Math.max(0, marcado - 1); resaltar(); }
+      else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (n === 1) elegir(lista._res[0]);              // si solo queda una, ésa
+        else if (marcado >= 0) elegir(lista._res[marcado]);
+      } else if (e.key === 'Escape') { lista.style.display = 'none'; }
+    });
+    lista.addEventListener('mousedown', function (e) {
+      var d = e.target.closest('[data-i]'); if (!d) return;
+      e.preventDefault();
+      elegir((lista._res || [])[+d.getAttribute('data-i')]);
+    });
+    inp.addEventListener('blur', function () {
+      setTimeout(function () {
+        lista.style.display = 'none';
+        // Lo escrito a medias no vale: o se eligió algo de la lista o se limpia.
+        // Dejarlo escrito haría creer que quedó elegido cuando no.
+        if (norm(inp.value) !== norm(sel.value || '')) inp.value = sel.value || '';
+      }, 150);
+    });
   }
   // Valores distintos (no vacíos) del nivel `level` entre filas que coinciden con lo elegido antes.
   // Hay productos que no llevan segundo material y en el catálogo esa celda va
@@ -10980,7 +11099,8 @@
     for (var d = level + 1; d < c.levels.length; d++) {
       var sel = cascElem(d);
       var opts = cascDistinct(c, elegidos, d);
-      if (sel) { fillOptions(sel, opts); sel.value = ''; showFld(sel, opts.length > 0); }
+      if (sel) { fillOptions(sel, opts); sel.value = ''; sincronizarBuscador(sel);
+                 showFld(sel, opts.length > 0); }
     }
     resolveCascadeFills();
   }
@@ -11019,11 +11139,42 @@
         var val = matches[0][fname] || '';
         var same = matches.every(function (m) { return norm(m[fname] || '') === norm(val); });
         el.value = same ? val : '';
-      } else { el.value = ''; }
+        // El precio del catálogo manda: se pone siempre. Pero se recuerda cuál
+        // era, para avisar si alguien lo cambia a mano.
+        if (/precio/i.test(fname) && same && val) el.setAttribute('data-catalogo', val);
+        else el.removeAttribute('data-catalogo');
+      } else { el.value = ''; el.removeAttribute('data-catalogo'); }
     });
-    recalcComputed();
+    recalcComputed();      // de ahí sale el aviso del precio
     updateOrderTotal();
   }
+  // Si el precio escrito no es el del catálogo, se dice cuál es y de cuánto es la
+  // diferencia. No se impide cambiarlo: hay pedidos que llevan otro precio. Lo que
+  // no puede pasar es que se cambie sin que nadie se entere.
+  function avisarPrecioDistinto() {
+    var el = document.querySelector('[data-catalogo]');
+    if (!el) { var vie = document.getElementById('avisoPrecio'); if (vie) vie.remove(); return; }
+    var lista = toNum(el.getAttribute('data-catalogo'));
+    var puesto = toNum(el.value);
+    var caja = document.getElementById('avisoPrecio');
+    if (!lista || !puesto || Math.abs(lista - puesto) < 0.01) {
+      if (caja) caja.remove();
+      return;
+    }
+    if (!caja) {
+      caja = document.createElement('div');
+      caja.id = 'avisoPrecio';
+      caja.className = 's';
+      caja.style.cssText = 'color:var(--amber);margin-top:4px';
+      var cont = closestFld(el) || el.parentNode;
+      cont.appendChild(caja);
+    }
+    var dif = (puesto - lista) / lista * 100;
+    caja.innerHTML = 'El catálogo dice <b>' + esc(fmtMoney(lista)) + '</b>. Estás poniendo ' +
+      (dif > 0 ? 'un ' + dif.toFixed(0) + '% más' : 'un ' + Math.abs(dif).toFixed(0) + '% menos') +
+      '. Se guarda lo que escribiste.';
+  }
+
   // Tabla de consulta por varias llaves (costo unitario según producto + material + proveedor)
   function tablaLU() {
     return (state.lookups || []).filter(function (l) { return l.type === 'tabla'; })[0];
@@ -11265,7 +11416,7 @@
   function initCascade() {
     var c = cascadeLU(); if (!c) return;
     var s0 = cascElem(0);
-    if (s0) { fillOptions(s0, cascDistinct(c, [], 0)); s0.value = ''; }
+    if (s0) { fillOptions(s0, cascDistinct(c, [], 0)); s0.value = ''; sincronizarBuscador(s0); }
     for (var d = 1; d < c.levels.length; d++) {
       var sd = cascElem(d); if (sd) { fillOptions(sd, []); showFld(sd, false); }
     }
@@ -11909,6 +12060,7 @@
   }
 
   function recalcComputed() {
+    try { avisarPrecioDistinto(); } catch (e) {}
     var defs = COMPUTED_FIELDS[state.key]; if (!defs) return;
     Object.keys(defs).forEach(function (target) {
       var d = defs[target];
@@ -14137,7 +14289,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.15-358';
+    var mia = '2026.09.15-360';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
