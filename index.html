@@ -1012,7 +1012,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.08-357</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.15-358</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1312,6 +1312,24 @@
     fin_cxc:             'Saldos por cobrar de cada pedido.',
     fin_ingresos:        'Cobros recibidos, ligados al folio del pedido.'
   };
+  // Áreas que no se editan porque salen de un cálculo o de otra hoja. Se dice
+  // dónde sí se edita el dato, porque "no se puede editar" a secas manda a la
+  // gente a borrar y volver a capturar.
+  var DONDE_SE_EDITA = {
+    expediente:   'Es un resumen de cada cliente. Los datos se editan en Ventas › Clientes.',
+    cta_clientes: 'Sale de las ventas y los pagos. Se corrige en Ventas o en Cuentas por Cobrar.',
+    inv_prov:     'Sale de los pedidos, las entradas y las salidas de cada proveedor.',
+    costos:       'Se calcula cruzando ventas, salidas, pedidos y catálogo.',
+    ingresos:     'Se captura desde Subir banco o desde Efectivo.',
+    egresos:      'Se captura desde Subir banco o desde Efectivo.',
+    cfdi_control: 'Sale de la descarga del SAT. Se corrige en el archivo de CFDIs.',
+    cfdi_comp_rec:'Sale de la descarga del SAT. Se corrige en el archivo de CFDIs.',
+    fin_estados:  'Sale de la estructura del estado. Se corrige en sus dos pestañas.',
+    fin_flujo:    'Sale de la estructura del estado. Se corrige en sus dos pestañas.',
+    fin_balance:  'Sale de la estructura del estado. Se corrige en sus dos pestañas.',
+    fin_bancos:   'Se calcula desde Ingresos y Egresos más el saldo de arranque.',
+    ventas_folios:'Sale de cruzar Ventas contra Pedidos a proveedores.'
+  };
   var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'fac_control', 'cfdi_control', 'cfdi_comp_rec', 'cfdi_prov', 'prov_razon', 'rh_resumen', 'fin_gastos_op', 'fin_efectivo', 'fac_impuestos', 'fac_emitidos', 'log_calendario', 'fin_estados', 'fin_flujo', 'fin_balance', 'fin_bancos', 'ventas_folios',
     // El stock sale de pedidos, entradas y salidas: se recalcula, no se edita
     'op_stock', 'op_revisar', 'prov_revision'];
@@ -1323,7 +1341,10 @@
     var r = String(state.rol || '').toLowerCase();
     if (!r || r === 'admin' || r === 'administrador') return true;
     if (r === 'comercial') {
-      return ['ventas_registro', 'cotizaciones', 'leads', 'showroom', 'ventas_clientes'].indexOf(key) !== -1;
+      // El catálogo lo edita quien cotiza: corregir una descripción o un precio
+      // es trabajo del día y mandarlo a pedir frena la operación.
+      return ['ventas_registro', 'cotizaciones', 'leads', 'showroom', 'ventas_clientes',
+              'inventario'].indexOf(key) !== -1;
     }
     if (r === 'operativo') {
       return ['prov_pedidos', 'prov_entradas', 'prov_salidas'].indexOf(key) !== -1;
@@ -7044,10 +7065,24 @@
       // Siempre visible: dónde se lee y dónde se escribe esta área
       var fuente = document.getElementById('areaFuente');
       if (fuente) {
-        fuente.innerHTML = (data.sheetName && data.archivoUrl)
+        var base = (data.sheetName && data.archivoUrl)
           ? 'Se guarda en <a href="' + esc(data.archivoUrl) + '" target="_blank">' +
             esc(data.sheetName) + '</a>'
           : '';
+        // Si no se puede editar, se dice por qué y dónde sí. "No se puede editar"
+        // a secas manda a la gente a borrar el registro y volverlo a capturar.
+        if (esSoloLectura(state.key)) {
+          var porQue = DONDE_SE_EDITA[state.key];
+          var motivo = porQue
+            ? porQue
+            : (esLector()
+               ? 'Tu usuario es de solo consulta.'
+               : (!rolPuedeEditar(state.key)
+                  ? 'Tu rol no edita esta área. Si la necesitas, se puede habilitar.'
+                  : 'Esta pantalla es de consulta.'));
+          base += (base ? ' · ' : '') + '<span style="color:var(--amber)">' + esc(motivo) + '</span>';
+        }
+        fuente.innerHTML = base;
       }
       // Área creada pero sin archivo: se explica qué falta en vez de salir vacía
       if (data.sinArchivo) {
@@ -11317,6 +11352,8 @@
     var pend = currentLineRec(); if (pend) items.push(pend);
     var subtotal = 0; items.forEach(function (r) { subtotal += lineTotal(r); });
     // El envío puede no existir en esta área (pedidos a proveedores no lleva)
+    var cpInp = document.getElementById('cpPedido');
+    if (cpInp) cpValor = cpInp.value;
     var envInp2 = document.getElementById('envioPedido');
     var elEnv = envInp2 || fieldEl('Envio');
     var envio = toNum(elEnv && elEnv.value != null ? elEnv.value : 0);
@@ -11329,6 +11366,7 @@
   }
   // Cuál es el campo de envío del área actual, y su valor mientras se captura
   var envioValor = '';
+  var cpValor = '';     // código postal de destino del envío
   // Descuento aplicado a todo el pedido: se reparte entre los productos ya agregados
   var descPedido = { tipo: '', monto: '' };
   // Cómo se paga el pedido. El efectivo no lleva IVA: el precio ya lo traía dentro.
@@ -11600,9 +11638,22 @@
     }
     var envH = envioCampoActual();
     if (envH) {
+      // El envío es del pedido, no un producto: se captura aquí con su monto y su
+      // código postal. Darlo de alta como artículo del catálogo lo mete al
+      // inventario y le pone el precio de lista, que es justo lo que no se quiere.
+      var cpH = findHeaderByName('CP destino') || findHeaderByName('Código Postal destino') ||
+                findHeaderByName('CP') || findHeaderByName('Codigo Postal');
       html += '<div class="li-envio"><label for="envioPedido">' + esc(envH) + ' del pedido</label>' +
               '<input id="envioPedido" type="number" step="0.01" min="0" data-col="' + esc(envH) +
-              '" placeholder="0.00" value="' + esc(envioValor) + '"></div>';
+              '" placeholder="0.00" value="' + esc(envioValor) + '">' +
+              (cpH
+                ? '<label for="cpPedido" style="margin-left:12px">CP de destino</label>' +
+                  '<input id="cpPedido" type="text" inputmode="numeric" maxlength="5" ' +
+                  'style="width:90px" data-col="' + esc(cpH) + '" placeholder="00000" value="' +
+                  esc(cpValor) + '">'
+                : '<span class="s" style="color:var(--muted);margin-left:10px">' +
+                  'Para guardar el CP, agrega una columna <b>CP destino</b> a la hoja</span>') +
+              '</div>';
     }
     // Cómo se paga: el efectivo no lleva IVA
     if (PAGO_AREAS.indexOf(state.key) !== -1) {
@@ -13631,6 +13682,16 @@
     previo.then(function () {
     return api('to-sale', { token: state.token, folio: cotAConvertir, fechaEntrega: iso ? isoToLargo(iso) : '' })
       .then(function (out) {
+        if ((out.columnasPerdidas || []).length) {
+          avisoFijo('<b>La venta se creó, pero estas columnas de la cotización no existen ' +
+            'en VENTAS y su dato se quedó atrás:</b><div style="margin-top:6px">' +
+            esc(out.columnasPerdidas.join(' · ')) + '</div>' +
+            '<div class="s" style="margin-top:6px;color:var(--slate)">Agrégalas a la hoja de ' +
+            'VENTAS con ese nombre y la próxima vez se copian solas.</div>');
+        }
+        return out;
+      })
+      .then(function (out) {
         toast('Venta creada · Folio ' + out.folio + ' (' + out.filas +
               (out.filas === 1 ? ' producto' : ' productos') + ')', 'ok');
         var folioVenta = out.folio;
@@ -14076,7 +14137,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.08-357';
+    var mia = '2026.09.15-358';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
