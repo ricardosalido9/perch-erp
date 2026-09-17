@@ -1012,7 +1012,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.16-365</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.16-366</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -6680,12 +6680,27 @@
     modalModo = 'asignar';
     document.getElementById('aventaModal').classList.add('on');
     // Se traen las ventas que esperan estos muebles y se agregan a los desplegables
-    api('pendientes', { token: state.token,
-        productos: asigLineas.map(function (l) {
-          return { producto: l.producto, material: l.material }; }) })
-      .then(function (d) {
+    Promise.all([
+      // Las que pidieron exactamente estos muebles
+      api('pendientes', { token: state.token,
+          productos: asigLineas.map(function (l) {
+            return { producto: l.producto, material: l.material }; }) })
+        .catch(function () { return { pendientes: [] }; }),
+      // Y todas las ventas abiertas, por si la pieza va a una que pidió otro
+      // material o que ya tiene parte surtida
+      api('pendientes', { token: state.token })
+        .catch(function () { return { pendientes: [] }; })
+    ])
+      .then(function (r) {
+        var d = r[0] || {}, todas = r[1] || {};
         var vistos = {}, extra = '';
         (d.pendientes || []).forEach(function (p) {
+          if (!p.folio || vistos[p.folio]) return;
+          vistos[p.folio] = 1;
+          extra += '<option value="' + esc(p.folio).replace(/"/g, '&quot;') + '">' +
+            esc(p.folio + (p.cliente ? ' · ' + p.cliente : '')) + ' · pidió este mueble</option>';
+        });
+        (todas.pendientes || []).forEach(function (p) {
           if (!p.folio || vistos[p.folio]) return;
           vistos[p.folio] = 1;
           extra += '<option value="' + esc(p.folio).replace(/"/g, '&quot;') + '">' +
@@ -13341,6 +13356,11 @@
             'style="width:78px;text-align:right" placeholder="cant" value="' + esc(d2.cant) + '">' +
           '<select class="av-folio" data-i="' + i + '" data-j="' + j + '" style="min-width:250px">' +
             '<option value="">Se queda en stock</option>' +
+            // Exhibición es un destino tan real como una venta: la pieza sale de
+            // bodega y se va al showroom. Sin esta opción había que mandarla a
+            // stock y moverla después a mano, o no registrarla.
+            '<option value="Exhibición"' + (d2.folio === 'Exhibición' ? ' selected' : '') +
+              '>Exhibición (showroom)</option>' +
             ops.map(function (p) {
               return '<option value="' + esc(p.folio) + '" data-dir="' + esc(p.direccion).replace(/"/g, '&quot;') + '"' +
                 (d2.folio === p.folio ? ' selected' : '') + '>' + esc(p.folio) + ' · ' +
@@ -14455,7 +14475,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.16-365';
+    var mia = '2026.09.16-366';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
