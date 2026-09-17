@@ -1012,7 +1012,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.16-366</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.17-368</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -2145,6 +2145,8 @@
 
   // ===== Qué tiene guardado cada proveedor =====
   var invProvAbierto = {}, invLineaAbierta = {};
+  // Los productos del catálogo, para autocompletar al corregir un renglón
+  var catalogoProductos = [];
   var invProvSoloPend = false;   // ver solo lo que el proveedor todavía nos debe
   // Baja un PDF que viene en base64. Se usa Blob porque las direcciones "data:"
   // fallan en Chrome cuando el archivo pasa de un par de megas.
@@ -9875,7 +9877,26 @@
             var cDes2 = findHeaderByName('Descripción') || findHeaderByName('Descripcion');
             var cMed = findHeaderByName('Medidas');
             var cEsp = findHeaderByName('Especificaciones');
-            h += '<tr class="fila-edit"><td>' + esc(r[cProd] || '') + '</td>' +
+            // La lista del catálogo, para que el campo del producto autocomplete
+            // en vez de tener que escribirlo exacto. Si el nombre no coincide con
+            // el catálogo, el costo y la foto dejan de encontrarse.
+            if (!document.getElementById('listaProductosEd')) {
+              var dl = document.createElement('datalist');
+              dl.id = 'listaProductosEd';
+              var vistos = {};
+              (state.rows || []).forEach(function (x) {
+                var v = cProd ? String(x[cProd] || '').trim() : '';
+                if (v && !vistos[v]) { vistos[v] = 1; }
+              });
+              (catalogoProductos || []).forEach(function (v) { if (v) vistos[v] = 1; });
+              dl.innerHTML = Object.keys(vistos).sort()
+                .map(function (v) { return '<option value="' + esc(v) + '">'; }).join('');
+              document.body.appendChild(dl);
+            }
+            h += '<tr class="fila-edit">' +
+              '<td><input class="row-input ed-campo" list="listaProductosEd" data-col="' +
+                esc(cProd || '') + '" value="' + esc(r[cProd] || '') +
+                '" style="width:150px"></td>' +
               '<td><input class="row-input ed-campo" data-col="' + esc(cMat || '') + '" value="' +
                 esc(cMat ? (r[cMat] || '') : '') + '" style="width:120px"></td>' +
               '<td><input class="row-input ed-campo" type="number" min="0" data-col="' + esc(cCant || '') +
@@ -11597,7 +11618,11 @@
   function initCascade() {
     var c = cascadeLU(); if (!c) return;
     var s0 = cascElem(0);
-    if (s0) { fillOptions(s0, cascDistinct(c, [], 0)); s0.value = ''; sincronizarBuscador(s0); }
+    if (s0) {
+      var prods = cascDistinct(c, [], 0);
+      catalogoProductos = prods.slice();      // para autocompletar al corregir
+      fillOptions(s0, prods); s0.value = ''; sincronizarBuscador(s0);
+    }
     for (var d = 1; d < c.levels.length; d++) {
       var sd = cascElem(d); if (sd) { fillOptions(sd, []); showFld(sd, false); }
     }
@@ -12873,7 +12898,11 @@
     var btn = document.getElementById(esCotiza ? 'saveQuoteBtn' : 'saveBtn');
     var etiqueta = btn.textContent;
     btn.disabled = true; btn.textContent = 'Guardando...';
-    api('add', { token: state.token, key: areaDestino, records: records }).then(function (out) {
+    // Si se está agregando a un folio que ya existe, se le dice al servidor cuál:
+    // si no, genera uno nuevo y el producto acaba en otra cotización. El botón
+    // decía "Agregar producto" y creaba una cotización aparte.
+    api('add', { token: state.token, key: areaDestino, records: records,
+                 folio: folioDestino || undefined }).then(function (out) {
       var n = (out && out.filas) || records.length;
       var folio = (out && out.folio) ? (' · Folio ' + out.folio) : '';
       toast((esCotiza ? 'Cotización guardada: ' : 'Venta guardada: ') + n +
@@ -14097,6 +14126,26 @@
             esc(out.porQueClasico || '') + '</div>');
         }
         var L = out.lectura;
+        // Las fotos que no se encontraron: casi siempre el producto está escrito
+        // distinto al catálogo, no es que falte la foto.
+        if (L && L.catalogo && (L.productos || []).length) {
+          var sinFoto = L.productos.filter(function (p) { return !p.tieneFoto; });
+          if (sinFoto.length) {
+            avisoFijo('<b>' + fmtNum(sinFoto.length) +
+              (sinFoto.length === 1 ? ' producto no encontró su foto' : ' productos no encontraron su foto')
+              + ' en el catálogo.</b>' +
+              '<div class="s" style="margin-top:6px">' +
+              sinFoto.map(function (p) { return esc(p.producto + ' · ' + (p.material || 'sin material')); })
+                .join('<br>') + '</div>' +
+              '<div class="s" style="margin-top:8px;color:var(--slate)">El catálogo es <b>' +
+              esc(L.catalogo.pestana) + '</b> con ' + fmtNum(L.catalogo.renglones) +
+              ' renglones, y la columna de la foto es <b>' + esc(L.catalogo.columnaFoto) +
+              '</b>. Se busca por producto y material: si están escritos distinto ahí y en la ' +
+              'cotización, no se encuentran.' +
+              (L.catalogo.archivo ? ' <a href="' + esc(L.catalogo.archivo) +
+                '" target="_blank">Abrir el catálogo</a>' : '') + '</div>');
+          }
+        }
         if (L && !L.renglonesConDescuento &&
             L.columnaPct === '(no se encontró)' && L.columnaDescuento === '(no se encontró)') {
           avisoFijo('<b>La cotización salió sin descuentos porque no encontré la columna.</b>' +
@@ -14475,7 +14524,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.16-366';
+    var mia = '2026.09.17-368';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
@@ -14670,7 +14719,15 @@
       var origEd = (state.rows || []).filter(function (r) { return r._row === filaEd; })[0] || {};
       var recEd = {};
       state.headers.forEach(function (h2) { recEd[h2] = (origEd[h2] != null) ? origEd[h2] : ''; });
-      trEd.querySelectorAll('.ed-campo').forEach(function (inp) {
+      // Los campos están repartidos en dos renglones seguidos. Se leen los dos:
+      // buscar solo en el del botón dejaba fuera el descuento y la descripción.
+      var campos = Array.prototype.slice.call(trEd.querySelectorAll('.ed-campo'));
+      var sig = trEd.nextElementSibling;
+      while (sig && sig.classList.contains('fila-edit')) {
+        campos = campos.concat(Array.prototype.slice.call(sig.querySelectorAll('.ed-campo')));
+        sig = sig.nextElementSibling;
+      }
+      campos.forEach(function (inp) {
         var col = inp.getAttribute('data-col');
         if (col) recEd[col] = inp.value;
       });
