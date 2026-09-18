@@ -1012,7 +1012,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.18-384</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.18-385</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -11688,6 +11688,13 @@
     return { rec: rec, ok: tienePrincipales, cantidad: cant ? (cant.value || '').trim() : '' };
   }
   function clearLineFields() {
+    // También los controles visibles del descuento: si solo se limpiaban los
+    // campos ocultos, el siguiente producto se veía con el descuento del anterior
+    // puesto en pantalla pero sin guardarlo.
+    var dt = document.querySelector('#formFields .disc-type');
+    var da = document.querySelector('#formFields .disc-amt');
+    if (dt) dt.value = 'pct';
+    if (da) { da.value = ''; da.disabled = false; da.placeholder = '% (ej. 10)'; }
     var c = lineCfg(); if (!c) return;
     c.line.forEach(function (f) {
       var real = findHeaderByName(f); if (!real) return;
@@ -12475,9 +12482,16 @@
         lab.innerHTML = 'Descuento';
         var drow = document.createElement('div'); drow.style.display = 'flex'; drow.style.flexDirection = 'column'; drow.style.gap = '6px';
         var dtype = document.createElement('select'); dtype.className = 'disc-type'; dtype.style.width = '100%';
-        dtype.innerHTML = '<option value="">Sin descuento</option><option value="pct">Porcentaje (%)</option><option value="val">Valor ($)</option>';
+        // El porcentaje viene elegido de entrada y el campo del monto nace activo.
+        // Antes arrancaba en "Sin descuento" con el monto deshabilitado: se veía
+        // gris y no dejaba escribir, así que parecía que el ERP no aceptaba
+        // descuentos. Quien no quiera descuento simplemente lo deja vacío.
+        dtype.innerHTML = '<option value="pct">Porcentaje (%)</option>' +
+                          '<option value="val">Valor ($)</option>' +
+                          '<option value="">Sin descuento</option>';
+        dtype.value = 'pct';
         var damt = document.createElement('input'); damt.type = 'number'; damt.className = 'disc-amt';
-        damt.placeholder = '0'; damt.style.width = '100%'; damt.disabled = true;
+        damt.placeholder = '% (ej. 10)'; damt.style.width = '100%';
         drow.appendChild(dtype); drow.appendChild(damt);
         var hPct = document.createElement('input'); hPct.type = 'hidden'; hPct.setAttribute('data-col', findHeaderByName(dcfg.pct) || dcfg.pct);
         var hVal = document.createElement('input'); hVal.type = 'hidden'; hVal.setAttribute('data-col', findHeaderByName(dcfg.val) || dcfg.val);
@@ -14664,7 +14678,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.18-384';
+    var mia = '2026.09.18-385';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
