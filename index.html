@@ -1012,7 +1012,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.17-374</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.17-376</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -9950,8 +9950,6 @@
               '<button type="button" class="row-btn primary add-a-folio" data-folio="' +
               esc(k).replace(/"/g, '&quot;') + '">+ Agregar producto</button>') +
             '<button type="button" class="pdf-btn" data-folio="' + esc(k).replace(/"/g, '&quot;') + '">Ver PDF</button>' +
-            '<button type="button" class="pdf-btn-nuevo" data-folio="' + esc(k).replace(/"/g, '&quot;') +
-              '" title="El formato que diseñó Pau">PDF formato nuevo</button>' +
             '<button type="button" class="archivos-btn" data-folio="' + esc(k).replace(/"/g, '&quot;') +
               '" data-cli="' + esc(r0[cCli] || '').replace(/"/g, '&quot;') +
               '">Archivos del folio</button>' +
@@ -14065,7 +14063,8 @@
         cerrarConvertirVenta();
         loadArea();
         // El PDF de la venta y su carpeta en Drive
-        api('quote-pdf', { token: state.token, key: 'ventas_registro', folio: folioVenta, venta: true })
+        api('quote-pdf', { token: state.token, key: 'ventas_registro', folio: folioVenta,
+                           venta: true, formato: 'nuevo' })
           .catch(function () {});
         // Y el paso de facturación, igual que en una venta capturada directo
         api('quote', { token: state.token, key: 'ventas_registro', folio: folioVenta }).then(function (q) {
@@ -14114,8 +14113,11 @@
   // Genera el PDF en el servidor y lo guarda en Drive. Si Drive no está listo, lo descarga.
   function generarPdfCotizacion(folio, esVenta, silencioso, formato) {
     if (!silencioso) toast('Generando el PDF...', 'ok');
+    // El formato de diseño es el único que se manda al cliente. El viejo sigue
+    // ahí pero solo como respaldo automático: si el nuevo fallara, el servidor
+    // cae a él y avisa, en vez de dejar a alguien sin cotización que mandar.
     return api('quote-pdf', { token: state.token, key: state.key, folio: folio,
-                              venta: !!esVenta, formato: formato || 'clasico' })
+                              venta: !!esVenta, formato: formato || 'nuevo' })
       .then(function (out) {
         // La columna de descuento solo se dibuja si algún renglón trae descuento.
         // Cuando no sale, no hay forma de saber desde el PDF si es que no había
@@ -14549,7 +14551,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.17-374';
+    var mia = '2026.09.17-376';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
@@ -14776,11 +14778,6 @@
     if (arc) { abrirArchivos(arc.getAttribute('data-folio'), arc.getAttribute('data-cli')); return; }
     var asg = e.target.closest('.asignar-btn');
     if (asg) { abrirAsignar(asg.getAttribute('data-ped')); return; }
-    var pn = e.target.closest('.pdf-btn-nuevo');
-    if (pn) {
-      generarPdfCotizacion(pn.getAttribute('data-folio'), state.key === 'ventas_registro', false, 'nuevo');
-      return;
-    }
     var pb = e.target.closest('.pdf-btn');
     if (pb) {
       generarPdfCotizacion(pb.getAttribute('data-folio'), state.key === 'ventas_registro', false);
