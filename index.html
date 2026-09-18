@@ -1012,7 +1012,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.17-370</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.17-374</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -14129,6 +14129,23 @@
         // Las fotos que no se encontraron: casi siempre el producto está escrito
         // distinto al catálogo, no es que falte la foto.
         if (L && L.catalogo && (L.productos || []).length) {
+          // La descripción tomada de otra variante es más grave que la foto
+          // faltante: la cotización describe otra madera y el cliente la lee.
+          var otraVar = L.productos.filter(function (p) {
+            return p.variante === 'solo por producto'; });
+          if (otraVar.length) {
+            avisoFijo('<b>' + fmtNum(otraVar.length) +
+              (otraVar.length === 1 ? ' producto no existe' : ' productos no existen') +
+              ' en el catálogo con ese material.</b>' +
+              '<div class="s" style="margin-top:6px">' +
+              otraVar.map(function (p) {
+                return esc(p.producto + ' · ' + (p.material || 'sin material')); }).join('<br>') +
+              '</div>' +
+              '<div class="s" style="margin-top:8px;color:var(--slate)">La cotización sale ' +
+              '<b>sin descripción ni medidas</b> para esos renglones, porque las del catálogo ' +
+              'son de otra madera y describirían un mueble distinto. Da de alta esa variante ' +
+              'en el catálogo, o escribe la descripción en el renglón de la cotización.</div>');
+          }
           var sinFoto = L.productos.filter(function (p) { return !p.tieneFoto; });
           if (sinFoto.length) {
             avisoFijo('<b>' + fmtNum(sinFoto.length) +
@@ -14532,7 +14549,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.17-370';
+    var mia = '2026.09.17-374';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
