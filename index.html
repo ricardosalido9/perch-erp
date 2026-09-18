@@ -1012,7 +1012,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.17-378</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.17-380</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -9948,6 +9948,15 @@
                  'value="' + esc(envio || '') + '" placeholder="0.00"></td>' +
                '<td><button type="button" class="row-btn env-ok" data-folio="' +
                  esc(k).replace(/"/g, '&quot;') + '">Guardar</button></td></tr>';
+          var cCPt = findHeaderByName('CP destino') || findHeaderByName('Código Postal destino') ||
+                     findHeaderByName('CP') || findHeaderByName('Codigo Postal');
+          if (cCPt) {
+            h += '<tr><td colspan="4" style="text-align:right">CP de destino</td>' +
+                 '<td class="num"><input class="row-input cp-folio" data-folio="' +
+                   esc(k).replace(/"/g, '&quot;') + '" type="text" inputmode="numeric" ' +
+                   'maxlength="5" style="width:110px;text-align:right" value="' +
+                   esc(r0[cCPt] || '') + '" placeholder="00000"></td><td></td></tr>';
+          }
         } else if (envio) {
           h += '<tr><td colspan="4" style="text-align:right">Envío del pedido</td>' +
                '<td class="num">' + esc(formatMoney(envio)) + '</td><td></td></tr>';
@@ -10502,13 +10511,19 @@
   var VISITO_SHOWROOM = ['Sí', 'No', 'Por visitar', 'TBD'];
   // Cada rango con los días que se suman a la fecha. Siempre el extremo largo:
   // es lo que se le promete al cliente y evita quedar mal.
-  var TIEMPOS_ENTREGA = ['2-5 días', '1-2 semanas', '2-4 semanas', '6-8 semanas',
-                         '10-12 semanas', '12-16 semanas'];
+  // Los tiempos que se ofrecen al cotizar. "4-6 semanas" es el habitual cuando hay
+  // piezas y telas en existencia —así lo dicen las condiciones de la cotización—
+  // y faltaba en la lista, así que había que escribirlo a mano o elegir uno que
+  // no era.
+  var TIEMPOS_ENTREGA = ['2-5 días', '1-2 semanas', '2-4 semanas', '4-6 semanas',
+                         '6-8 semanas', '8-10 semanas', '10-12 semanas', '12-16 semanas'];
   var DIAS_DE_TIEMPO = {
     '2-5 días': 5, '2-5 dias': 5,
     '1-2 semanas': 14,
     '2-4 semanas': 28,
+    '4-6 semanas': 42,
     '6-8 semanas': 56,
+    '8-10 semanas': 70,
     '10-12 semanas': 84,
     '12-16 semanas': 112
   };
@@ -14562,7 +14577,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.17-378';
+    var mia = '2026.09.17-380';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
@@ -14759,6 +14774,13 @@
       var recEnv = {};
       state.headers.forEach(function (h2) { recEnv[h2] = (origEnv[h2] != null) ? origEnv[h2] : ''; });
       recEnv[cEnvH] = inpEnv.value;
+      // El CP va en el mismo guardado: son dos datos del mismo envío y pedir dos
+      // clics para algo que se captura junto solo consigue que se capture a medias.
+      var cCPg = findHeaderByName('CP destino') || findHeaderByName('Código Postal destino') ||
+                 findHeaderByName('CP') || findHeaderByName('Codigo Postal');
+      var inpCP = document.querySelector('.cp-folio[data-folio="' +
+        folioEnv.replace(/"/g, '\\"') + '"]');
+      if (cCPg && inpCP) recEnv[cCPg] = inpCP.value;
       eok.disabled = true; eok.textContent = 'Guardando…';
       api('update', { token: state.token, key: state.key, row: filaEnv, record: recEnv })
         .then(function () { toast('Envío actualizado en ' + folioEnv + '.', 'ok'); loadArea(); })
