@@ -1012,7 +1012,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.17-377</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.17-378</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -9937,7 +9937,18 @@
               '" title="Corregir este producto">Editar</button></td></tr>';
           }
         });
-        if (envio) {
+        // El envío del pedido, editable desde aquí. Es un costo que cambia por
+        // pedido y se acordaba a mano; había que abrir la hoja para tocarlo, o
+        // darlo de alta como si fuera un producto del catálogo.
+        if (!esSoloLectura(state.key) && cEnv) {
+          h += '<tr><td colspan="4" style="text-align:right">Envío del pedido</td>' +
+               '<td class="num"><input class="row-input env-folio" data-folio="' +
+                 esc(k).replace(/"/g, '&quot;') + '" data-row="' + (r0._row || '') +
+                 '" type="number" step="0.01" min="0" style="width:110px;text-align:right" ' +
+                 'value="' + esc(envio || '') + '" placeholder="0.00"></td>' +
+               '<td><button type="button" class="row-btn env-ok" data-folio="' +
+                 esc(k).replace(/"/g, '&quot;') + '">Guardar</button></td></tr>';
+        } else if (envio) {
           h += '<tr><td colspan="4" style="text-align:right">Envío del pedido</td>' +
                '<td class="num">' + esc(formatMoney(envio)) + '</td><td></td></tr>';
         }
@@ -14551,7 +14562,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.17-377';
+    var mia = '2026.09.17-378';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
@@ -14733,6 +14744,28 @@
     }
     var lleg = e.target.closest('.llegaron-btn');
     if (lleg) { abrirEntrada(lleg.getAttribute('data-ped')); return; }
+    // Guardar el envío del folio. Va en el primer renglón del pedido, que es
+    // donde vive: el envío es del pedido, no de cada producto.
+    var eok = e.target.closest('.env-ok');
+    if (eok) {
+      var folioEnv = eok.getAttribute('data-folio');
+      var inpEnv = document.querySelector('.env-folio[data-folio="' +
+        folioEnv.replace(/"/g, '\\"') + '"]');
+      if (!inpEnv) return;
+      var filaEnv = parseInt(inpEnv.getAttribute('data-row'), 10);
+      var cEnvH = findHeaderByName('Envio') || findHeaderByName('Envío');
+      if (!cEnvH || !filaEnv) { toast('Esta hoja no tiene columna de envío.', 'err'); return; }
+      var origEnv = (state.rows || []).filter(function (r) { return r._row === filaEnv; })[0] || {};
+      var recEnv = {};
+      state.headers.forEach(function (h2) { recEnv[h2] = (origEnv[h2] != null) ? origEnv[h2] : ''; });
+      recEnv[cEnvH] = inpEnv.value;
+      eok.disabled = true; eok.textContent = 'Guardando…';
+      api('update', { token: state.token, key: state.key, row: filaEnv, record: recEnv })
+        .then(function () { toast('Envío actualizado en ' + folioEnv + '.', 'ok'); loadArea(); })
+        .catch(fail)
+        .then(function () { eok.disabled = false; eok.textContent = 'Guardar'; });
+      return;
+    }
     var addF = e.target.closest('.add-a-folio');
     if (addF) { agregarAFolio(addF.getAttribute('data-folio')); return; }
     var edA = e.target.closest('.ed-abrir');
