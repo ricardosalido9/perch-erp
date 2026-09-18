@@ -1012,7 +1012,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.17-380</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.17-383</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -9948,8 +9948,7 @@
                  'value="' + esc(envio || '') + '" placeholder="0.00"></td>' +
                '<td><button type="button" class="row-btn env-ok" data-folio="' +
                  esc(k).replace(/"/g, '&quot;') + '">Guardar</button></td></tr>';
-          var cCPt = findHeaderByName('CP destino') || findHeaderByName('Código Postal destino') ||
-                     findHeaderByName('CP') || findHeaderByName('Codigo Postal');
+          var cCPt = cpCampo();
           if (cCPt) {
             h += '<tr><td colspan="4" style="text-align:right">CP de destino</td>' +
                  '<td class="num"><input class="row-input cp-folio" data-folio="' +
@@ -11748,6 +11747,20 @@
   // Cuál es el campo de envío del área actual, y su valor mientras se captura
   var envioValor = '';
   var cpValor = '';     // código postal de destino del envío
+  // La columna del CP se llama distinto según la hoja: CP destino, Código Postal,
+  // C.P., CP de envío. Se buscan los nombres conocidos y, si ninguno está, se
+  // acepta cualquiera que hable de código postal.
+  function cpCampo() {
+    var exacto = findHeaderByName('CP destino') || findHeaderByName('CP Destino') ||
+                 findHeaderByName('Código Postal destino') || findHeaderByName('Codigo Postal destino') ||
+                 findHeaderByName('CP') || findHeaderByName('C.P.') ||
+                 findHeaderByName('Código Postal') || findHeaderByName('Codigo Postal');
+    if (exacto) return exacto;
+    return (state.headers || []).filter(function (h) {
+      var n = norm(h);
+      return n === 'cp' || n === 'c.p.' || /codigo postal|cp destino|cp envio|cp de envio/.test(n);
+    })[0] || null;
+  }
   // Descuento aplicado a todo el pedido: se reparte entre los productos ya agregados
   var descPedido = { tipo: '', monto: '' };
   // Cómo se paga el pedido. El efectivo no lleva IVA: el precio ya lo traía dentro.
@@ -12022,8 +12035,7 @@
       // El envío es del pedido, no un producto: se captura aquí con su monto y su
       // código postal. Darlo de alta como artículo del catálogo lo mete al
       // inventario y le pone el precio de lista, que es justo lo que no se quiere.
-      var cpH = findHeaderByName('CP destino') || findHeaderByName('Código Postal destino') ||
-                findHeaderByName('CP') || findHeaderByName('Codigo Postal');
+      var cpH = cpCampo();
       html += '<div class="li-envio"><label for="envioPedido">' + esc(envH) + ' del pedido</label>' +
               '<input id="envioPedido" type="number" step="0.01" min="0" data-col="' + esc(envH) +
               '" placeholder="0.00" value="' + esc(envioValor) + '">' +
@@ -13504,6 +13516,61 @@
     bOk.textContent = 'Registrar salidas';
     bOk.disabled = false; bOk.title = ''; bOk.style.opacity = ''; bOk.style.cursor = '';
   }
+  // Escribe el folio de la venta en los renglones del pedido que se repartieron.
+  // Es lo que cierra el círculo entre producción y ventas: el pedido deja de estar
+  // "sin asignar" y la venta deja de salir como no pedida.
+  function marcarFolioEnPedido(envs) {
+    if (state.key !== 'prov_pedidos') return Promise.resolve();
+    var cFol = findHeaderByName('Folio cliente');
+    var cProd = findHeaderByName('Producto') || findHeaderByName('Productos');
+    var cMat = findHeaderByName('Material');
+    if (!cFol || !cProd) return Promise.resolve();
+
+    // Un folio por producto y material. Si una pieza se repartió entre dos ventas,
+    // se anotan las dos separadas por coma: partirla en dos renglones cambiaría el
+    // pedido, y el pedido es lo que se le mandó al proveedor.
+    var porPieza = {};
+    (envs || []).forEach(function (e) {
+      var k = norm(e['Productos'] || e['Producto'] || '') + '|' + norm(e['Material'] || '');
+      var f = String(e['Folio cliente'] || e['Folio'] || '').trim();
+      if (!f) return;
+      porPieza[k] = porPieza[k] || [];
+      if (porPieza[k].indexOf(f) === -1) porPieza[k].push(f);
+    });
+
+    var cPed = findHeaderByName('Pedido Proveedor') || findHeaderByName('Pedido');
+    var cambios = (state.rows || [])
+      .filter(function (r) {
+        return cPed && String(r[cPed] || '').trim() === aventaPedido;
+      })
+      .map(function (r) {
+        var k = norm(r[cProd] || '') + '|' + norm(cMat ? r[cMat] : '');
+        var folios = porPieza[k];
+        if (!folios || !folios.length) return null;
+        var yaTiene = String(r[cFol] || '').trim();
+        var nuevo = folios.join(', ');
+        if (norm(yaTiene) === norm(nuevo)) return null;      // ya estaba
+        var rec = {};
+        state.headers.forEach(function (h2) { rec[h2] = (r[h2] != null) ? r[h2] : ''; });
+        rec[cFol] = yaTiene && yaTiene.toLowerCase() !== 'sin asignar'
+          ? yaTiene + ', ' + nuevo : nuevo;
+        return { fila: r._row, rec: rec };
+      })
+      .filter(Boolean);
+
+    if (!cambios.length) return Promise.resolve();
+    return Promise.all(cambios.map(function (c) {
+      return api('update', { token: state.token, key: 'prov_pedidos',
+                             row: c.fila, record: c.rec });
+    })).catch(function () {
+      // Si esto falla, las salidas YA quedaron: se avisa en vez de tirar todo
+      avisoFijo('<b>Las salidas se registraron, pero no se pudo marcar el folio en ' +
+        'el pedido.</b><div class="s" style="margin-top:6px">El pedido va a seguir ' +
+        'apareciendo como "Sin asignar" en Ventas por folio. Se puede corregir con ' +
+        '"Cliente y fecha por mueble".</div>');
+    });
+  }
+
   function registrarSalidas() {
     var envs = [];
     var error = '';
@@ -13545,6 +13612,12 @@
     Promise.all(envs.map(function (e) {
       return api('add', { token: state.token, key: 'prov_salidas', record: e });
     })).then(function () {
+      // Y el folio se escribe también en el PEDIDO. Registrar la salida no bastaba:
+      // el renglón del pedido seguía diciendo "Sin asignar", y Ventas por folio
+      // —que cruza por esa columna— mostraba la venta como si nadie la hubiera
+      // pedido, aunque la pieza ya se hubiera repartido.
+      return marcarFolioEnPedido(envs);
+    }).then(function () {
       toast('Se registraron ' + envs.length + (envs.length === 1 ? ' salida.' : ' salidas.'), 'ok');
       ultimoReparto = { pedido: aventaPedido, envs: envs };
       cerrarMandarAVenta(); loadArea();
@@ -14577,7 +14650,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.17-380';
+    var mia = '2026.09.17-383';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
@@ -14776,8 +14849,7 @@
       recEnv[cEnvH] = inpEnv.value;
       // El CP va en el mismo guardado: son dos datos del mismo envío y pedir dos
       // clics para algo que se captura junto solo consigue que se capture a medias.
-      var cCPg = findHeaderByName('CP destino') || findHeaderByName('Código Postal destino') ||
-                 findHeaderByName('CP') || findHeaderByName('Codigo Postal');
+      var cCPg = cpCampo();
       var inpCP = document.querySelector('.cp-folio[data-folio="' +
         folioEnv.replace(/"/g, '\\"') + '"]');
       if (cCPg && inpCP) recEnv[cCPg] = inpCP.value;
