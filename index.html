@@ -1012,7 +1012,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.17-383</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.18-384</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -2339,10 +2339,18 @@
   function guardarVersionNueva() {
     var cCant = findHeaderByName('Cantidad');
     var cDesc = findHeaderByName('% descuento') || findHeaderByName('Descuentos');
-    var quitar = [], cambios = {};
+    var quitar = [], quitarFilas = [], cambios = {};
     document.querySelectorAll('.ver-inc').forEach(function (chk) {
       var i = chk.getAttribute('data-i');
-      if (!chk.checked) { quitar.push(i); return; }
+      var fila = versionFilas[i] ? versionFilas[i]._row : null;
+      if (!chk.checked) {
+        quitar.push(i);
+        // El número de fila es lo que identifica el renglón sin lugar a dudas.
+        // La posición depende del orden de la pantalla, que puede no ser el de
+        // la hoja si hay un filtro puesto.
+        if (fila) quitarFilas.push(fila);
+        return;
+      }
       var cam = {};
       var ec = document.querySelector('.ver-cant[data-i="' + i + '"]');
       if (ec && cCant) cam[cCant] = ec.value;
@@ -2375,6 +2383,7 @@
       return rec;
     });
     api('dup-cot', { token: state.token, folio: versionDe, quitar: quitar,
+                     quitarFilas: quitarFilas,
                      cambios: cambios, agregar: agregar, cliente: clienteNuevo })
       .then(function (d) {
         toast(d.mensaje || 'Versión nueva creada.', 'ok');
@@ -9933,8 +9942,13 @@
               '<td class="num s"' + (importeDeRenglon(r).pct ? ' style="color:var(--success)"' : '') + '>' +
                 esc(importeDeRenglon(r).pct ? '-' + importeDeRenglon(r).pct + '%' : '—') + '</td>' +
               '<td class="num">' + esc(formatMoney(importeDeRenglon(r).importe)) + '</td>' +
-              '<td><button type="button" class="row-btn ed-abrir" data-row="' + r._row +
-              '" title="Corregir este producto">Editar</button></td></tr>';
+              '<td style="white-space:nowrap">' +
+              '<button type="button" class="row-btn ed-abrir" data-row="' + r._row +
+                '" title="Corregir este producto">Editar</button> ' +
+              '<button type="button" class="row-btn quitar-reng" data-row="' + r._row +
+                '" data-prod="' + esc(r[cProd] || '').replace(/"/g, '&quot;') +
+                '" title="Quitar este producto del pedido">Quitar</button>' +
+              '</td></tr>';
           }
         });
         // El envío del pedido, editable desde aquí. Es un costo que cambia por
@@ -14650,7 +14664,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.17-383';
+    var mia = '2026.09.18-384';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
@@ -14834,6 +14848,26 @@
     if (lleg) { abrirEntrada(lleg.getAttribute('data-ped')); return; }
     // Guardar el envío del folio. Va en el primer renglón del pedido, que es
     // donde vive: el envío es del pedido, no de cada producto.
+    // Quitar un producto del pedido. Se pregunta antes: es de las pocas cosas que
+    // no se pueden deshacer con un clic.
+    var qr = e.target.closest('.quitar-reng');
+    if (qr) {
+      var filaQ = parseInt(qr.getAttribute('data-row'), 10);
+      var prodQ = qr.getAttribute('data-prod') || 'este producto';
+      if (!confirm('¿Quitar ' + prodQ + ' del pedido?\n\nEl renglón queda en blanco con una ' +
+                   'nota de quién lo quitó. Los totales se recalculan solos.')) return;
+      qr.disabled = true; qr.textContent = 'Quitando…';
+      api('quitar-renglon', { token: state.token, key: state.key, row: filaQ, producto: prodQ })
+        .then(function (o) { toast(o.mensaje || 'Renglón quitado.', 'ok'); loadArea(); })
+        .catch(function (err) {
+          avisoFijo('<b>No se pudo quitar el producto.</b><div style="margin-top:6px">' +
+            esc((err && err.message) || '') + '</div>' +
+            (err && err.pista ? '<div class="s" style="margin-top:6px;color:var(--slate)">' +
+              esc(err.pista) + '</div>' : ''));
+          qr.disabled = false; qr.textContent = 'Quitar';
+        });
+      return;
+    }
     var eok = e.target.closest('.env-ok');
     if (eok) {
       var folioEnv = eok.getAttribute('data-folio');

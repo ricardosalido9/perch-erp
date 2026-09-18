@@ -69,6 +69,7 @@ const RUTAS = {
   'cambiar-cliente':require('../lib/handlers/cambiar-cliente'),
   'impacto-cambio':require('../lib/handlers/impacto-cambio'),
   anular:         require('../lib/handlers/anular'),
+  'quitar-renglon': require('../lib/handlers/quitar-renglon'),
   'drive-check':  require('../lib/handlers/drive-check'),
   emitidos:       require('../lib/handlers/emitidos'),
   'relacion-pdf': require('../lib/handlers/relacion-pdf'),
