@@ -1012,7 +1012,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.21-391</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.21-393</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -2150,11 +2150,72 @@
   var invProvSoloPend = false;   // ver solo lo que el proveedor todavía nos debe
   // Baja un PDF que viene en base64. Se usa Blob porque las direcciones "data:"
   // fallan en Chrome cuando el archivo pasa de un par de megas.
+  var avisoDriveVisto = false;
+  function esCelular() {
+    return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent || '') ||
+      (window.matchMedia && window.matchMedia('(pointer: coarse)').matches &&
+       window.innerWidth < 900);
+  }
+  // En el celular, "descargar" casi nunca funciona: el navegador que abre WhatsApp
+  // o Gmail ignora la orden, y Safari la trata distinto. Así que en vez de bajar
+  // el archivo se ofrece una ventanita con dos botones:
+  //   · Compartir o guardar: abre el menú del teléfono, donde se puede mandar
+  //     directo por WhatsApp o guardar en Archivos.
+  //   · Abrir PDF: lo muestra en pantalla completa.
+  // El menú de compartir solo se abre si la persona toca un botón —el teléfono
+  // no deja abrirlo solo—, por eso la ventanita y no una descarga automática.
+  // blob puede ser el archivo o una liga (cuando ya quedó guardado en Drive)
+  function pdfListoEnCelular(blob, nombre) {
+    var viejo = document.getElementById('pdfListo');
+    if (viejo) viejo.remove();
+    var esLiga = typeof blob === 'string';
+    var url = esLiga ? blob : URL.createObjectURL(blob);
+    var archivo = null;
+    if (!esLiga) {
+      try { archivo = new File([blob], nombre, { type: 'application/pdf' }); } catch (e) {}
+    }
+    var puedeCompartir = !!(archivo && navigator.canShare && navigator.canShare({ files: [archivo] }));
+    var caja = document.createElement('div');
+    caja.id = 'pdfListo';
+    caja.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(20,20,20,.45);' +
+      'display:flex;align-items:flex-end;justify-content:center';
+    caja.innerHTML =
+      '<div style="background:var(--surface,#fff);width:100%;max-width:520px;padding:20px 18px 28px;' +
+      'border-radius:18px 18px 0 0;box-shadow:0 -8px 30px rgba(0,0,0,.2)">' +
+      '<div style="font-weight:600;font-size:16px;margin-bottom:4px">Tu PDF está listo</div>' +
+      '<div class="s" style="color:var(--muted);margin-bottom:16px;word-break:break-all">' +
+        esc(nombre) + '</div>' +
+      (puedeCompartir
+        ? '<button type="button" class="primary" id="pdfCompartir" style="width:100%;' +
+          'padding:14px;margin-bottom:10px">Compartir o guardar</button>' : '') +
+      '<a href="' + url + '" target="_blank" rel="noopener" download="' + esc(nombre) + '" ' +
+        'style="display:block;text-align:center;padding:14px;border:1px solid var(--line);' +
+        'border-radius:10px;margin-bottom:10px;color:inherit;text-decoration:none">Abrir PDF</a>' +
+      '<button type="button" id="pdfCerrar" style="width:100%;padding:12px">Cerrar</button>' +
+      '</div>';
+    document.body.appendChild(caja);
+    var cerrar = function () {
+      caja.remove();
+      if (!esLiga) setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+    };
+    document.getElementById('pdfCerrar').addEventListener('click', cerrar);
+    caja.addEventListener('click', function (e) { if (e.target === caja) cerrar(); });
+    var bc = document.getElementById('pdfCompartir');
+    if (bc) bc.addEventListener('click', function () {
+      navigator.share({ files: [archivo], title: nombre })
+        .then(cerrar)
+        .catch(function (err) {
+          // Si la persona cierra el menú no es un error; si falla de verdad, queda "Abrir PDF"
+          if (err && err.name !== 'AbortError') toast('No se pudo compartir. Usa "Abrir PDF".', 'err');
+        });
+    });
+  }
   function bajarPdf(base64, nombre) {
     var bin = atob(base64);
     var buf = new Uint8Array(bin.length);
     for (var i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
     var blob = new Blob([buf], { type: 'application/pdf' });
+    if (esCelular()) { pdfListoEnCelular(blob, nombre); return; }
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
     a.href = url;
@@ -14332,12 +14393,16 @@
             esc((L.columnas || []).join(' · ')) + '</div>');
         }
         if (out.pdf) {                      // no se pudo guardar en Drive: se descarga
-          var bin = atob(out.pdf), arr = new Uint8Array(bin.length);
-          for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-          var url = URL.createObjectURL(new Blob([arr], { type: 'application/pdf' }));
-          var a = document.createElement('a');
-          a.href = url; a.download = out.nombre; a.click();
-          setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+          bajarPdf(out.pdf, out.nombre);
+          // El aviso de Drive es de configuración: solo lo puede arreglar quien
+          // administra el sistema. A los demás les salía en cada cotización,
+          // tapando la pantalla, y parecía que la cotización había fallado.
+          var rolA = String(state.rol || '').toLowerCase();
+          var esAdmin = !rolA || rolA === 'admin' || rolA === 'administrador';
+          if (!esAdmin || avisoDriveVisto) {
+            toast('Cotización lista. (No se guardó copia en Drive.)', 'ok');
+          } else {
+          avisoDriveVisto = true;
           avisoFijo('<b>El PDF se descargó, pero no se guardó en Drive.</b><br>' +
             (out.causa ? esc(out.causa) + '<br>' : '') +
             (out.arreglo ? '<div style="margin-top:6px">' + esc(out.arreglo) + '</div>' : '') +
@@ -14354,10 +14419,18 @@
               'está mal o la carpeta se borró. Si <b>sí abre</b>, existe pero no está compartida ' +
               'con la cuenta de servicio.</div></div>' : '') +
             (out.detalle ? '<div style="margin-top:8px;color:var(--muted);font-size:12px">' +
-                esc(out.detalle) + '</div>' : ''));
+                esc(out.detalle) + '</div>' : '') +
+            '<div class="s" style="margin-top:8px;color:var(--muted)">Este aviso sale una vez por ' +
+            'sesión y solo a administradores.</div>');
+          }
         } else {
           toast('PDF guardado en Drive · ' + out.destino + ' · ' + out.nombre, 'ok');
-          if (!silencioso && out.archivo) window.open(out.archivo, '_blank');
+          // En el celular una ventana que se abre sola la bloquea el navegador:
+          // se ofrece el botón para abrirla
+          if (!silencioso && out.archivo) {
+            if (esCelular()) pdfListoEnCelular(out.archivo, out.nombre || 'Cotización.pdf');
+            else window.open(out.archivo, '_blank');
+          }
         }
         return out;
       })
@@ -14709,7 +14782,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.21-391';
+    var mia = '2026.09.21-393';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
