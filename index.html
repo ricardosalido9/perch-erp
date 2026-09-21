@@ -1012,7 +1012,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.21-386</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.21-387</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -10528,9 +10528,11 @@
   // piezas y telas en existencia —así lo dicen las condiciones de la cotización—
   // y faltaba en la lista, así que había que escribirlo a mano o elegir uno que
   // no era.
-  var TIEMPOS_ENTREGA = ['2-5 días', '1-2 semanas', '2-4 semanas', '4-6 semanas',
+  var TIEMPOS_ENTREGA = ['Entrega inmediata', '2-5 días', '1-2 semanas', '2-4 semanas', '4-6 semanas',
                          '6-8 semanas', '8-10 semanas', '10-12 semanas', '12-16 semanas'];
   var DIAS_DE_TIEMPO = {
+    // Pieza en bodega: se entrega ya y se paga completa, sin anticipo ni finiquito
+    'Entrega inmediata': 0,
     '2-5 días': 5, '2-5 dias': 5,
     '1-2 semanas': 14,
     '2-4 semanas': 28,
@@ -14678,7 +14680,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.21-386';
+    var mia = '2026.09.21-387';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
