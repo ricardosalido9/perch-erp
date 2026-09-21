@@ -1012,7 +1012,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.21-388</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.21-389</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -9968,7 +9968,7 @@
                  '<td class="num"><input class="row-input cp-folio" data-folio="' +
                    esc(k).replace(/"/g, '&quot;') + '" type="text" inputmode="numeric" ' +
                    'maxlength="5" style="width:110px;text-align:right" value="' +
-                   esc(r0[cCPt] || '') + '" placeholder="00000"></td><td></td></tr>';
+                   esc(limpiaCP(r0[cCPt])) + '" placeholder="00000"></td><td></td></tr>';
           }
         } else if (envio) {
           h += '<tr><td colspan="4" style="text-align:right">Envío del pedido</td>' +
@@ -11773,6 +11773,28 @@
   // La columna del CP se llama distinto según la hoja: CP destino, Código Postal,
   // C.P., CP de envío. Se buscan los nombres conocidos y, si ninguno está, se
   // acepta cualquiera que hable de código postal.
+  // Un código postal limpio: cinco dígitos, con su cero inicial.
+  //
+  // Si la columna de la hoja tiene formato de moneda o de número, Google devuelve
+  // el 52783 como "$ 52,783.00", y el 03100 como 3100 porque se come el cero. Se
+  // recupera el número y se completa a cinco dígitos. Si trae letras (un CP de
+  // otro país, "sin CP"), se deja como está.
+  function limpiaCP(v) {
+    var t = String(v == null ? '' : v).trim();
+    if (!t) return '';
+    if (/[a-zA-Z]/.test(t)) return t;
+    var n = parseFloat(t.replace(/[$\s,]/g, ''));
+    if (!isFinite(n)) return t;
+    var d = String(Math.round(n));
+    return d.length < 5 ? ('00000' + d).slice(-5) : d;
+  }
+  // Al guardar se manda como texto (con el apóstrofo que Sheets entiende como
+  // "esto es texto"), para que la hoja no le vuelva a poner formato de número
+  // ni le quite el cero del principio.
+  function cpParaGuardar(v) {
+    var c = limpiaCP(v);
+    return c ? "'" + c : '';
+  }
   function cpCampo() {
     var exacto = findHeaderByName('CP destino') || findHeaderByName('CP Destino') ||
                  findHeaderByName('Código Postal destino') || findHeaderByName('Codigo Postal destino') ||
@@ -12967,6 +12989,13 @@
     // Si se está agregando a un folio que ya existe, se le dice al servidor cuál:
     // si no, genera uno nuevo y el producto acaba en otra cotización. El botón
     // decía "Agregar producto" y creaba una cotización aparte.
+    // El CP se guarda como texto, venga del campo que venga: sin esto la hoja lo
+    // convierte en número, le quita el cero inicial y le pone el formato que tenga
+    // la columna (en esta hoja, moneda).
+    var cpCol = cpCampo();
+    if (cpCol) records.forEach(function (r) {
+      if (r[cpCol] != null && String(r[cpCol]).trim() !== '') r[cpCol] = cpParaGuardar(r[cpCol]);
+    });
     api('add', { token: state.token, key: areaDestino, records: records,
                  folio: folioDestino || undefined }).then(function (out) {
       var n = (out && out.filas) || records.length;
@@ -14680,7 +14709,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.21-388';
+    var mia = '2026.09.21-389';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
@@ -14902,7 +14931,7 @@
       var cCPg = cpCampo();
       var inpCP = document.querySelector('.cp-folio[data-folio="' +
         folioEnv.replace(/"/g, '\\"') + '"]');
-      if (cCPg && inpCP) recEnv[cCPg] = inpCP.value;
+      if (cCPg && inpCP) recEnv[cCPg] = cpParaGuardar(inpCP.value);
       eok.disabled = true; eok.textContent = 'Guardando…';
       api('update', { token: state.token, key: state.key, row: filaEnv, record: recEnv })
         .then(function () { toast('Envío actualizado en ' + folioEnv + '.', 'ok'); loadArea(); })
