@@ -1012,7 +1012,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.22-394</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.22-395</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -3634,6 +3634,9 @@
             '</div>' : '') +
         '<div class="cot-acciones" style="padding:0 14px 12px">' +
           '<button class="edit-btn" data-row="' + r._row + '">Editar</button>' +
+          (sePuedeQuitar() ? ' <button class="row-btn quitar-reng" data-row="' + r._row +
+            '" data-prod="' + esc(nombreDeRenglon(r)).replace(/"/g, '&quot;') +
+            '">Quitar</button>' : '') +
         '</div></div>';
     });
     return h + '</div>';
@@ -3739,6 +3742,9 @@
         '</div>' +
         '<div class="cot-acciones" style="padding:0 14px 12px">' +
           '<button class="edit-btn" data-row="' + r._row + '">Editar</button>' +
+          (sePuedeQuitar() ? ' <button class="row-btn quitar-reng" data-row="' + r._row +
+            '" data-prod="' + esc(nombreDeRenglon(r)).replace(/"/g, '&quot;') +
+            '">Quitar</button>' : '') +
         '</div></div>';
     });
     return h + '</div>';
@@ -10373,6 +10379,9 @@
                     esc(datosLead).replace(/"/g, '&quot;') + '">Cotizar</button>' : '') +
                   '<button class="edit-btn" data-row="' + r._row +
                   '" title="Está en la fila ' + r._row + ' de la hoja">Editar</button>' +
+                  (sePuedeQuitar() ? '<button class="row-btn quitar-reng" data-row="' + r._row +
+                    '" data-prod="' + esc(nombreDeRenglon(r)).replace(/"/g, '&quot;') +
+                    '" title="Quitar este registro">Quitar</button>' : '') +
                   (folioR ? '<button class="row-btn pdf-btn" data-folio="' + esc(folioR).replace(/"/g, '&quot;') +
                       '" title="Ver la cotización con el formato de Perch">PDF</button>' : '') +
                   // Corregir el cliente también desde la tabla, no solo desde las
@@ -11855,6 +11864,24 @@
   function cpParaGuardar(v) {
     var c = limpiaCP(v);
     return c ? "'" + c : '';
+  }
+  // Dónde tiene sentido ofrecer Quitar: las pantallas de captura, y solo si la
+  // persona puede editarlas. La lista la valida otra vez el servidor.
+  var AREAS_QUITABLES = ['cotizaciones', 'ventas_registro', 'prov_pedidos', 'inventario',
+    'ventas_clientes', 'leads', 'showroom', 'marketing', 'prov_entradas', 'prov_salidas',
+    'prov_lista', 'fin_cxc', 'fin_efectivo', 'nomina', 'metas'];
+  function sePuedeQuitar() {
+    return !esSoloLectura(state.key) && AREAS_QUITABLES.indexOf(state.key) !== -1;
+  }
+  // Con qué nombre se le pregunta a la persona si lo quiere quitar
+  function nombreDeRenglon(r) {
+    var campos = ['Producto', 'Productos', 'Item', 'Nombre', 'Nombre/Razón Social',
+                  'Cliente', 'Concepto', 'Descripción', 'Proveedor'];
+    for (var i = 0; i < campos.length; i++) {
+      var h = findHeaderByName(campos[i]);
+      if (h && String(r[h] || '').trim()) return String(r[h]).trim();
+    }
+    return 'este registro';
   }
   function cpCampo() {
     var exacto = findHeaderByName('CP destino') || findHeaderByName('CP Destino') ||
@@ -14782,7 +14809,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.22-394';
+    var mia = '2026.09.22-395';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
