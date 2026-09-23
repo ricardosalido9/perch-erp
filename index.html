@@ -1012,7 +1012,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.23-399</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.23-400</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1055,6 +1055,7 @@
         <button id="filterBtn" type="button">Añadir filtro</button>
         <button id="refreshBtn" type="button">Actualizar</button>
         <button id="openSheetBtn" type="button" title="Abrir la pestaña en Google Sheets">Abrir hoja</button>
+        <button id="diagBtn" type="button" title="Qué se puede hacer en esta pantalla y por qué">¿Por qué no puedo editar?</button>
         <button id="catViewBtn" type="button" style="display:none">Ver como tabla</button>
         <button id="driveCostosBtn" type="button" style="display:none">Actualizar en Drive</button>
         <button id="driveStockBtn" type="button" style="display:none">Recalcular stock</button>
@@ -11929,6 +11930,38 @@
     }
     return 'este registro';
   }
+  // Qué se puede hacer en esta pantalla y por qué. Existe porque "no me deja"
+  // puede ser cinco cosas distintas —el rol, el área, la vista, la hoja— y sin
+  // esto cada una cuesta una vuelta de mensajes para descartarla.
+  function diagnosticoArea() {
+    var k = state.key || '(ninguna)';
+    var rol = String(state.rol || '(sin rol)');
+    var soloLectura = esSoloLectura(k);
+    var motivo = !rolPuedeEditar(k) ? 'el rol "' + rol + '" no edita esta área'
+      : (esLector() ? 'el usuario es de solo consulta'
+      : (READ_ONLY_AREAS.indexOf(k) !== -1
+         ? (DONDE_SE_EDITA[k] || 'es una pantalla calculada, no se captura aquí')
+         : 'sí se puede editar'));
+    var enTarjetas = !!(catalogoAgrupado &&
+      ['leads', 'rh_personal', 'op_envios', 'inventario', 'cotizaciones',
+       'ventas_registro'].indexOf(k) !== -1);
+    var heads = (state.headers || []).filter(Boolean);
+    avisoFijo(
+      '<b>Diagnóstico de esta pantalla</b>' +
+      '<div class="s" style="margin-top:8px;line-height:1.7">' +
+      'Versión: <b>' + esc(state.version || '(no se pudo leer)') + '</b><br>' +
+      'Pantalla: <b>' + esc(state.label || k) + '</b> (' + esc(k) + ')<br>' +
+      'Usuario: ' + esc(state.usuario || '') + ' · rol <b>' + esc(rol) + '</b><br>' +
+      '¿Se puede editar aquí?: <b>' + (soloLectura ? 'NO' : 'SÍ') + '</b> — ' + esc(motivo) + '<br>' +
+      'Vista actual: <b>' + (enTarjetas ? 'tarjetas' : 'tabla') + '</b>' +
+      (enTarjetas ? ' (para editar, el botón Editar cambia solo a tabla)' : '') + '<br>' +
+      'Renglones cargados: ' + fmtNum((state.rows || []).length) +
+      ' · columnas: ' + fmtNum(heads.length) + '<br>' +
+      'Primeras columnas: ' + esc(heads.slice(0, 6).join(' · ')) +
+      '</div>' +
+      '<div class="s" style="margin-top:8px;color:var(--slate)">Manda esta captura y con ' +
+      'esto se sabe qué falta, sin ir probando.</div>');
+  }
   function cpCampo() {
     var exacto = findHeaderByName('CP destino') || findHeaderByName('CP Destino') ||
                  findHeaderByName('Código Postal destino') || findHeaderByName('Codigo Postal destino') ||
@@ -14855,7 +14888,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.23-399';
+    var mia = '2026.09.23-400';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
@@ -15267,6 +15300,7 @@
     save(this.getAttribute('data-destino') || 'cotizaciones');
   });
   document.getElementById('clearBtn').addEventListener('click', clearForm);
+  document.getElementById('diagBtn').addEventListener('click', diagnosticoArea);
   document.getElementById('addLineBtn').addEventListener('click', addProductLine);
   // Total del pedido en vivo al escribir cantidad/precio/descuento/envío
   document.getElementById('formFields').addEventListener('input', function () {
