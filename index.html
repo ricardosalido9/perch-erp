@@ -1012,7 +1012,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.23-396</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.23-397</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -11444,8 +11444,19 @@
         if (visible && !s.value) { pending = true; break; } }
     }
     var resolved = !pending && matches.length > 0;
+    // Los productos "sobre diseño" son piezas únicas: el precio, la descripción y
+    // las medidas los pone quien cotiza, no el catálogo. Si el catálogo los pisara
+    // —con su precio de 0 y su descripción genérica— habría que volver a
+    // escribirlos en cada cotización.
+    var especial = esSobreDiseno(chosen[0] || '');
     (c.fills || []).forEach(function (fname) {
       var el = cascFillElem(fname); if (!el) return;
+      if (especial) {
+        // Solo se limpia si venía de otro producto; lo que la persona escriba manda
+        if (el.getAttribute('data-catalogo')) el.value = '';
+        el.removeAttribute('data-catalogo');
+        return;
+      }
       if (resolved) {
         var val = matches[0][fname] || '';
         var same = matches.every(function (m) { return norm(m[fname] || '') === norm(val); });
@@ -11456,9 +11467,33 @@
         else el.removeAttribute('data-catalogo');
       } else { el.value = ''; el.removeAttribute('data-catalogo'); }
     });
+    avisarSobreDiseno(especial);
     recalcComputed();      // de ahí sale el aviso del precio
     updateOrderTotal();
   }
+  // Una pieza única: el catálogo solo la ofrece como opción, no le dicta nada.
+  // Se reconocen por el nombre, para que dar de alta una nueva sea escribirla en
+  // el catálogo y ya, sin tocar el sistema.
+  function esSobreDiseno(nombre) {
+    return /sobre dise|pieza especial|a la medida|hecho a medida|personalizad/i
+      .test(String(nombre || ''));
+  }
+  // Se avisa qué tiene que escribir, porque esos campos salen vacíos a propósito
+  function avisarSobreDiseno(activo) {
+    var prev = document.getElementById('avisoSobreDiseno');
+    if (!activo) { if (prev) prev.remove(); return; }
+    if (prev) return;
+    var el = fieldEl('Descripción') || fieldEl('Descripcion') || fieldEl('Precio Unitario');
+    if (!el) return;
+    var caja = document.createElement('div');
+    caja.id = 'avisoSobreDiseno';
+    caja.className = 's';
+    caja.style.cssText = 'color:var(--amber);margin-top:4px';
+    caja.textContent = 'Pieza sobre diseño: escribe tú la descripción, las medidas y el precio. ' +
+      'El catálogo no los llena.';
+    (closestFld(el) || el.parentNode).appendChild(caja);
+  }
+
   // Si el precio escrito no es el del catálogo, se dice cuál es y de cuánto es la
   // diferencia. No se impide cambiarlo: hay pedidos que llevan otro precio. Lo que
   // no puede pasar es que se cambie sin que nadie se entere.
@@ -14380,7 +14415,7 @@
           // La descripción tomada de otra variante es más grave que la foto
           // faltante: la cotización describe otra madera y el cliente la lee.
           var otraVar = L.productos.filter(function (p) {
-            return p.variante === 'solo por producto'; });
+            return p.variante === 'solo por producto' && !p.sobreDiseno; });
           if (otraVar.length) {
             avisoFijo('<b>' + fmtNum(otraVar.length) +
               (otraVar.length === 1 ? ' producto no existe' : ' productos no existen') +
@@ -14809,7 +14844,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.23-396';
+    var mia = '2026.09.23-397';
     var el = document.querySelector('.nav-foot div');
     if (!v || !v.version) return;
     if (v.version === mia) {
