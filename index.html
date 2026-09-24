@@ -1012,7 +1012,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.23-400</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.24-402</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -10497,10 +10497,53 @@
     }, 700);
   }
 
+  // Se vuelve a leer la hoja y se comprueba que el cambio esté ahí. Un guardado
+  // puede responder "listo" y no haber cambiado nada —si se escribió en otra
+  // pestaña, o si la celda tiene una fórmula que la vuelve a calcular—, y eso es
+  // exactamente lo que se ve como "no me deja guardar".
+  function verificarQueQuedo(area, rowNum, antes, out) {
+    if (state.key !== area) return;                 // se cambiaron de pantalla
+    var campos = Object.keys(antes || {});
+    if (!campos.length) return;
+    var ahora = (state.rows || []).filter(function (r) { return r._row === rowNum; })[0];
+    if (!ahora) return;
+    var noQuedaron = campos.filter(function (h) {
+      return String(ahora[h] || '').trim() !== String(antes[h] || '').trim();
+    });
+    if (!noQuedaron.length) return;
+    avisoFijo('<b>El cambio no quedó guardado en la hoja.</b>' +
+      '<div style="margin-top:6px">Se pidió cambiar: ' +
+      esc(noQuedaron.map(function (h) { return h + ' → "' + antes[h] + '"'; }).join(' · ')) +
+      '</div>' +
+      '<div class="s" style="margin-top:6px;color:var(--slate)">La hoja sigue diciendo: ' +
+      esc(noQuedaron.map(function (h) { return h + ' = "' + (ahora[h] || '') + '"'; }).join(' · ')) +
+      '</div>' +
+      '<div class="s" style="margin-top:8px;color:var(--muted)">Pasa cuando la celda tiene una ' +
+      'fórmula que la vuelve a calcular, o cuando la pantalla lee una pestaña distinta de la que ' +
+      'se escribe. Versión ' + esc(state.version || '') + ' · área ' + esc(area) +
+      ' · fila ' + rowNum + (out && out.fila ? ' · escrita ' + out.fila : '') +
+      '. Manda esta captura.</div>');
+  }
+
   function escribirEdicion(rowNum, record, btn) {
     btn.disabled = true; btn.textContent = 'Guardando...';
+    // Qué se quería cambiar, para comprobar después que de verdad cambió
+    var antes = {};
+    var original = (state.rows || []).filter(function (r) { return r._row === rowNum; })[0] || {};
+    Object.keys(record).forEach(function (h) {
+      if (String(record[h] || '') !== String(original[h] || '')) antes[h] = record[h];
+    });
     api('update', { token: state.token, key: state.key, row: rowNum, record: record })
-      .then(function () { toast('Cambios guardados.', 'ok'); editingRow = -1; loadArea(); })
+      .then(function (out) {
+        toast('Cambios guardados.', 'ok'); editingRow = -1;
+        var areaGuardada = state.key;
+        loadArea();
+        // loadArea no siempre devuelve una promesa —cada pantalla se carga a su
+        // manera—, así que se comprueba un momento después, cuando ya releyó.
+        setTimeout(function () {
+          verificarQueQuedo(areaGuardada, rowNum, antes, out);
+        }, 2500);
+      })
       .catch(function (e) {
         // El error se queda en pantalla hasta que lo cierren: un aviso que se va
         // solo deja a la persona sin poder decir qué pasó, y a mí adivinando.
@@ -11169,13 +11212,25 @@
   function isAutoNumField(h) {
     return AUTONUM_FIELDS.some(function (a) { return norm(a) === norm(h); });
   }
+  // El número que sigue es el MAYOR más uno.
+  //
+  // Antes se buscaba el primer hueco libre, y en una hoja donde los renglones ya
+  // vienen prenumerados hasta el 1011 el primer hueco era siempre el mismo: por
+  // eso salía 1003 de cajón. Además se respeta el ancho: si los clientes son 001,
+  // 002, el siguiente es 003 y no 3.
   function nextAvailableId(h) {
-    var used = {};
+    var max = 0, ancho = 0;
     state.rows.forEach(function (r) {
-      var v = parseInt(String(r[h] == null ? '' : r[h]).trim(), 10);
-      if (!isNaN(v) && v > 0) used[v] = true;
+      var t = String(r[h] == null ? '' : r[h]).trim();
+      if (!t) return;
+      var v = parseInt(t, 10);
+      if (isNaN(v) || v <= 0) return;
+      if (v > max) max = v;
+      // El ancho de los que tienen ceros adelante manda
+      if (/^0\d+$/.test(t) && t.length > ancho) ancho = t.length;
     });
-    var n = 1; while (used[n]) n++; return String(n);
+    var sig = String(max + 1);
+    return (ancho && sig.length < ancho) ? ('00000' + sig).slice(-ancho) : sig;
   }
   function lookupFor(h) {
     var list = state.lookups || [];
@@ -11338,7 +11393,13 @@
       marcado = -1;
       if (!res.length) {
         lista.innerHTML = '<div style="padding:10px 12px;color:var(--muted);font-size:13px">' +
-          'Nada coincide con “' + esc(inp.value) + '”</div>';
+          'Nada coincide con “' + esc(inp.value) + '”' +
+          '<div style="margin-top:6px"><a href="#" class="porque-no-sale">¿Por qué no aparece?</a>' +
+          '</div></div>';
+        var lnk = lista.querySelector('.porque-no-sale');
+        if (lnk) lnk.addEventListener('mousedown', function (e) {
+          e.preventDefault(); diagnosticoCatalogo(inp.value);
+        });
       } else {
         lista.innerHTML = res.map(function (o, i) {
           return '<div data-i="' + i + '" style="padding:8px 12px;cursor:pointer;font-size:13.5px">' +
@@ -11933,6 +11994,29 @@
   // Qué se puede hacer en esta pantalla y por qué. Existe porque "no me deja"
   // puede ser cinco cosas distintas —el rol, el área, la vista, la hoja— y sin
   // esto cada una cuesta una vuelta de mensajes para descartarla.
+  // De dónde salen los productos del desplegable y qué contiene. Existe porque
+  // "no me aparece el producto" puede ser que el catálogo se lea de otra pestaña,
+  // que el renglón esté escrito distinto, o que la pantalla traiga lo de antes.
+  function diagnosticoCatalogo(texto) {
+    var c = cascadeLU();
+    var lista = c ? cascDistinct(c, [], 0) : [];
+    var busca = norm(texto || '');
+    var parecidos = busca
+      ? lista.filter(function (p) { return norm(p).indexOf(busca) !== -1; })
+      : [];
+    avisoFijo('<b>De dónde salen los productos</b>' +
+      '<div class="s" style="margin-top:8px;line-height:1.7">' +
+      'Pestaña del catálogo: <b>' + esc((c && c.sheetName) || '(no se pudo leer)') + '</b><br>' +
+      'Productos distintos cargados: <b>' + fmtNum(lista.length) + '</b><br>' +
+      (busca
+        ? ('Buscando "' + esc(texto) + '": <b>' +
+           (parecidos.length ? esc(parecidos.slice(0, 8).join(' · ')) : 'ninguno coincide') + '</b><br>')
+        : '') +
+      'Últimos del catálogo: ' + esc(lista.slice(-5).join(' · ')) +
+      '</div>' +
+      '<div class="s" style="margin-top:8px;color:var(--slate)">Si agregaste un producto y no ' +
+      'aparece aquí, revisa que esté en esa pestaña y vuelve a entrar al área para releerla.</div>');
+  }
   function diagnosticoArea() {
     var k = state.key || '(ninguna)';
     var rol = String(state.rol || '(sin rol)');
@@ -14888,7 +14972,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.23-400';
+    var mia = '2026.09.24-402';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
