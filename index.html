@@ -1012,7 +1012,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.30-411</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.30-412</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1331,7 +1331,7 @@
     fin_bancos:   'Se calcula desde Ingresos y Egresos más el saldo de arranque.',
     ventas_folios:'Sale de cruzar Ventas contra Pedidos a proveedores.'
   };
-  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'fac_control', 'cfdi_control', 'cfdi_comp_rec', 'cfdi_prov', 'prov_razon', 'rh_resumen', 'fin_gastos_op', 'fin_efectivo', 'fac_impuestos', 'fac_emitidos', 'log_calendario', 'fin_estados', 'fin_flujo', 'fin_balance', 'fin_bancos', 'ventas_folios',
+  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'fac_control', 'cfdi_control', 'cfdi_comp_rec', 'cfdi_prov', 'prov_razon', 'rh_resumen', 'fin_gastos_op', 'fin_efectivo', 'fac_impuestos', 'fac_emitidos', 'fin_estados', 'fin_flujo', 'fin_balance', 'fin_bancos', 'ventas_folios',
     // El stock sale de pedidos, entradas y salidas: se recalcula, no se edita
     'op_stock', 'op_revisar', 'prov_revision'];
   function esLector() {
@@ -1345,7 +1345,7 @@
       // El catálogo lo edita quien cotiza: corregir una descripción o un precio
       // es trabajo del día y mandarlo a pedir frena la operación.
       return ['ventas_registro', 'cotizaciones', 'leads', 'showroom', 'ventas_clientes',
-              'inventario'].indexOf(key) !== -1;
+              'inventario', 'log_calendario'].indexOf(key) !== -1;
     }
     if (r === 'operativo') {
       return ['prov_pedidos', 'prov_entradas', 'prov_salidas'].indexOf(key) !== -1;
@@ -8346,6 +8346,25 @@
 
   var MESES_NOM = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
   // Convierte 'AAAA-MM-DD' (del selector) a '15 enero 2026'
+  // "30 septiembre 2026" → "2026-09-30", que es lo que entiende el campo de fecha
+  function largoToIso(v) {
+    var t = String(v == null ? '' : v).trim().toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (!t) return '';
+    var m = t.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return m[0];
+    var MES = { enero:1, febrero:2, marzo:3, abril:4, mayo:5, junio:6, julio:7,
+                agosto:8, septiembre:9, setiembre:9, octubre:10, noviembre:11, diciembre:12 };
+    m = t.match(/^(\d{1,2})\s+(?:de\s+)?([a-z]+)\s+(?:de\s+)?(\d{4})/);
+    if (m && MES[m[2]]) {
+      var dd = function (n) { return String(n).padStart(2, '0'); };
+      return m[3] + '-' + dd(MES[m[2]]) + '-' + dd(+m[1]);
+    }
+    m = t.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/);
+    if (m) { var d2 = function (n) { return String(n).padStart(2, '0'); };
+      return m[3] + '-' + d2(+m[2]) + '-' + d2(+m[1]); }
+    return '';
+  }
   function isoToLargo(iso) {
     var m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if (!m) return iso;
@@ -10044,6 +10063,17 @@
                  'value="' + esc(envio || '') + '" placeholder="0.00"></td>' +
                '<td><button type="button" class="row-btn env-ok" data-folio="' +
                  esc(k).replace(/"/g, '&quot;') + '">Guardar</button></td></tr>';
+          var cFEA = findHeaderByName('Fecha de entrega acordada') ||
+                     findHeaderByName('Fecha de Entrega Acordada') ||
+                     findHeaderByName('Fecha de entrega');
+          if (cFEA) {
+            h += '<tr><td colspan="4" style="text-align:right">' + esc(cFEA) + '</td>' +
+                 '<td class="num"><input class="row-input fea-folio" data-folio="' +
+                   esc(k).replace(/"/g, '&quot;') + '" type="date" style="width:150px" value="' +
+                   esc(largoToIso(r0[cFEA])) + '"></td>' +
+                 '<td><button type="button" class="row-btn fea-ok" data-folio="' +
+                   esc(k).replace(/"/g, '&quot;') + '">Guardar</button></td></tr>';
+          }
           var cCPt = cpCampo();
           if (cCPt) {
             h += '<tr><td colspan="4" style="text-align:right">CP de destino</td>' +
@@ -14990,7 +15020,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.30-411';
+    var mia = '2026.09.30-412';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
@@ -15195,6 +15225,31 @@
               esc(err.pista) + '</div>' : ''));
           qr.disabled = false; qr.textContent = 'Quitar';
         });
+      return;
+    }
+    // La fecha de entrega acordada es del pedido completo, no de un producto:
+    // se escribe en todos los renglones del folio de una vez.
+    var fok = e.target.closest('.fea-ok');
+    if (fok) {
+      var folFEA = fok.getAttribute('data-folio');
+      var inpFEA = document.querySelector('.fea-folio[data-folio="' +
+        folFEA.replace(/"/g, '\\"') + '"]');
+      var cFEA2 = findHeaderByName('Fecha de entrega acordada') ||
+                  findHeaderByName('Fecha de Entrega Acordada') ||
+                  findHeaderByName('Fecha de entrega');
+      var cRef2 = findHeaderByName('No. de Referencia') || findHeaderByName('Folio');
+      if (!inpFEA || !cFEA2 || !cRef2) { toast('Esta hoja no tiene esa columna.', 'err'); return; }
+      var setF = {}; setF[cFEA2] = inpFEA.value ? isoToLargo(inpFEA.value) : '';
+      fok.disabled = true; fok.textContent = 'Guardando…';
+      api('fill', { token: state.token, key: state.key,
+                    match: { col: cRef2, value: folFEA }, set: setF })
+        .then(function (o) {
+          toast('Fecha de entrega actualizada en ' + folFEA +
+                ((o && o.filas) ? ' · ' + o.filas + ' renglones.' : '.'), 'ok');
+          loadArea();
+        })
+        .catch(fail)
+        .then(function () { fok.disabled = false; fok.textContent = 'Guardar'; });
       return;
     }
     var eok = e.target.closest('.env-ok');
