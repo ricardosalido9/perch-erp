@@ -1012,7 +1012,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.30-420</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.30-421</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1433,7 +1433,38 @@
     appEl().classList.remove('on');
     document.getElementById('loginView').style.display = 'flex';
     document.getElementById('user').value = '';
-    document.getElementById('user').focus();
+    // Red de seguridad: cualquier error que reviente en la página se muestra en
+  // pantalla. Antes se quedaban en la consola, que nadie abre, y el síntoma era
+  // siempre el mismo —"le doy y no pasa nada"— sin forma de saber qué falló.
+  (function redDeErrores() {
+    var yaMostrado = {};
+    var mostrar = function (titulo, msg, donde) {
+      var clave = String(msg).slice(0, 80);
+      if (yaMostrado[clave]) return;        // el mismo error una sola vez
+      yaMostrado[clave] = true;
+      try {
+        avisoFijo('<b>' + esc(titulo) + '</b>' +
+          '<div style="margin-top:6px">' + esc(msg) + '</div>' +
+          (donde ? '<div class="s" style="margin-top:6px;color:var(--slate)">' +
+            esc(donde) + '</div>' : '') +
+          '<div class="s" style="margin-top:8px;color:var(--muted)">Versión ' +
+          esc((state && state.version) || '') + ' · pantalla ' +
+          esc((state && state.key) || '') + '. Manda esta captura y con eso se arregla.</div>');
+      } catch (e) { /* si ni el aviso se puede pintar, no hay nada que hacer */ }
+    };
+    window.addEventListener('error', function (e) {
+      mostrar('Algo se rompió en la página.',
+        (e && e.message) || 'Error desconocido',
+        (e && e.filename ? 'línea ' + e.lineno + ', columna ' + e.colno : ''));
+    });
+    window.addEventListener('unhandledrejection', function (e) {
+      var r = e && e.reason;
+      mostrar('Una operación falló sin avisar.',
+        (r && (r.message || r.error)) || String(r || ''), (r && r.pista) || '');
+    });
+  })();
+
+  document.getElementById('user').focus();
   }
 
   function buildMenu() {
@@ -15250,7 +15281,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.30-420';
+    var mia = '2026.09.30-421';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
@@ -15695,7 +15726,18 @@
     } else if (t.classList && t.classList.contains('cancel-btn')) {
       editingRow = -1; renderTable();
     } else if (t.classList && t.classList.contains('save-btn')) {
-      saveEdit(parseInt(t.getAttribute('data-row'), 10), t);
+      // Envuelto a propósito: si algo revienta aquí dentro, el botón se quedaba
+      // mudo y parecía que el sistema ignoraba el clic. Ahora se ve qué falló.
+      try {
+        saveEdit(parseInt(t.getAttribute('data-row'), 10), t);
+      } catch (err) {
+        avisoFijo('<b>Se rompió al intentar guardar.</b>' +
+          '<div style="margin-top:6px">' + esc((err && err.message) || String(err)) + '</div>' +
+          '<div class="s" style="margin-top:6px;color:var(--slate)">' +
+          esc(String((err && err.stack) || '').split('\n').slice(0, 3).join(' · ')) + '</div>' +
+          '<div class="s" style="margin-top:8px;color:var(--muted)">Versión ' +
+          esc(state.version || '') + ' · ' + esc(state.key || '') + '. Manda esta captura.</div>');
+      }
     }
   });
   document.getElementById('saveBtn').addEventListener('click', function () { save(); });
@@ -15709,6 +15751,37 @@
   document.getElementById('formFields').addEventListener('input', function () {
     if (lineCfg()) updateOrderTotal();
   });
+  // Red de seguridad: cualquier error que reviente en la página se muestra en
+  // pantalla. Antes se quedaban en la consola, que nadie abre, y el síntoma era
+  // siempre el mismo —"le doy y no pasa nada"— sin forma de saber qué falló.
+  (function redDeErrores() {
+    var yaMostrado = {};
+    var mostrar = function (titulo, msg, donde) {
+      var clave = String(msg).slice(0, 80);
+      if (yaMostrado[clave]) return;        // el mismo error una sola vez
+      yaMostrado[clave] = true;
+      try {
+        avisoFijo('<b>' + esc(titulo) + '</b>' +
+          '<div style="margin-top:6px">' + esc(msg) + '</div>' +
+          (donde ? '<div class="s" style="margin-top:6px;color:var(--slate)">' +
+            esc(donde) + '</div>' : '') +
+          '<div class="s" style="margin-top:8px;color:var(--muted)">Versión ' +
+          esc((state && state.version) || '') + ' · pantalla ' +
+          esc((state && state.key) || '') + '. Manda esta captura y con eso se arregla.</div>');
+      } catch (e) { /* si ni el aviso se puede pintar, no hay nada que hacer */ }
+    };
+    window.addEventListener('error', function (e) {
+      mostrar('Algo se rompió en la página.',
+        (e && e.message) || 'Error desconocido',
+        (e && e.filename ? 'línea ' + e.lineno + ', columna ' + e.colno : ''));
+    });
+    window.addEventListener('unhandledrejection', function (e) {
+      var r = e && e.reason;
+      mostrar('Una operación falló sin avisar.',
+        (r && (r.message || r.error)) || String(r || ''), (r && r.pista) || '');
+    });
+  })();
+
   document.getElementById('user').focus();
 </script>
 </body>
