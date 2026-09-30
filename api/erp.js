@@ -71,6 +71,8 @@ const RUTAS = {
   anular:         require('../lib/handlers/anular'),
   'quitar-renglon': require('../lib/handlers/quitar-renglon'),
   'remision-pdf': require('../lib/handlers/remision-pdf'),
+  'pago-cliente': require('../lib/handlers/pago-cliente'),
+  'cxc-cotejo':   require('../lib/handlers/cxc-cotejo'),
   'drive-check':  require('../lib/handlers/drive-check'),
   emitidos:       require('../lib/handlers/emitidos'),
   'relacion-pdf': require('../lib/handlers/relacion-pdf'),

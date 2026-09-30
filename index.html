@@ -1012,7 +1012,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.30-414</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.30-416</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1331,7 +1331,7 @@
     fin_bancos:   'Se calcula desde Ingresos y Egresos más el saldo de arranque.',
     ventas_folios:'Sale de cruzar Ventas contra Pedidos a proveedores.'
   };
-  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'fac_control', 'cfdi_control', 'cfdi_comp_rec', 'cfdi_prov', 'prov_razon', 'rh_resumen', 'fin_gastos_op', 'fin_efectivo', 'fac_impuestos', 'fac_emitidos', 'fin_estados', 'fin_flujo', 'fin_balance', 'fin_bancos', 'ventas_folios',
+  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'cxc_cotejo', 'fac_control', 'cfdi_control', 'cfdi_comp_rec', 'cfdi_prov', 'prov_razon', 'rh_resumen', 'fin_gastos_op', 'fin_efectivo', 'fac_impuestos', 'fac_emitidos', 'fin_estados', 'fin_flujo', 'fin_balance', 'fin_bancos', 'ventas_folios',
     // El stock sale de pedidos, entradas y salidas: se recalcula, no se edita
     'op_stock', 'op_revisar', 'prov_revision'];
   function esLector() {
@@ -6935,11 +6935,36 @@
       '<div class="fld" style="margin:0"><label>Archivo</label>' +
         '<input type="file" id="arcFile"></div>' +
       '<button type="button" id="arcSubir">Subir</button></div>' +
+      // Un comprobante sin monto no sirve para cuadrar contra el banco, así que
+      // se pide aquí mismo en vez de en otra pantalla.
+      '<div id="arcPago" style="display:none;margin-top:10px;padding-top:10px;' +
+      'border-top:1px dashed var(--line)">' +
+        '<div class="s" style="font-weight:700;margin-bottom:8px">Datos del pago</div>' +
+        '<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">' +
+        '<div class="fld" style="width:150px;margin:0"><label>Cuánto pagó</label>' +
+          '<input type="number" id="arcMonto" step="0.01" min="0" placeholder="0.00"></div>' +
+        '<div class="fld" style="width:160px;margin:0"><label>Fecha del pago</label>' +
+          '<input type="date" id="arcFechaPago"></div>' +
+        '<div class="fld" style="width:150px;margin:0"><label>Método</label>' +
+          '<select id="arcMetodo"><option>Transferencia</option><option>Depósito</option>' +
+          '<option>Tarjeta</option><option>Efectivo</option><option>Otro</option></select></div>' +
+        '<div class="fld" style="width:180px;margin:0"><label>Referencia</label>' +
+          '<input type="text" id="arcRef" placeholder="últimos dígitos, folio"></div>' +
+        '</div>' +
+        '<div class="s" style="color:var(--amber);margin-top:6px">Queda como cobro ' +
+        'reportado. Cuenta como ingreso hasta que aparezca en el banco.</div>' +
+      '</div>' +
       '<div class="s" style="color:var(--muted);margin-top:6px">Hasta 4 MB. El archivo se ' +
       'guarda en la carpeta del folio, junto a la cotización.</div></div>';
 
     document.getElementById('aventaCuerpo').innerHTML = h;
     document.getElementById('arcSubir').addEventListener('click', subirArchivoFolio);
+    var selTipo = document.getElementById('arcTipo');
+    var verPago = function () {
+      document.getElementById('arcPago').style.display =
+        /comprobante de pago/i.test(selTipo.value) ? '' : 'none';
+    };
+    selTipo.addEventListener('change', verPago); verPago();
   }
   function subirArchivoFolio() {
     var inp = document.getElementById('arcFile');
@@ -6960,10 +6985,33 @@
       api('upload', { token: state.token, folio: arcFolio, cliente: arcCliente,
                       nombre: nombre, mime: file.type || 'application/octet-stream',
                       data: String(fr.result).split(',')[1] })
-        .then(function () {
-          toast('Archivo subido.', 'ok');
-          inp.value = '';
-          cargarArchivos();
+        .then(function (out) {
+          if (!/comprobante de pago/i.test(tipo)) {
+            toast('Archivo subido.', 'ok'); inp.value = ''; cargarArchivos(); return;
+          }
+          // Mismo paso: se sube el comprobante y se registra el cobro
+          var fp = document.getElementById('arcFechaPago');
+          return api('pago-cliente', { token: state.token, folio: arcFolio,
+              cliente: arcCliente,
+              monto: document.getElementById('arcMonto').value,
+              fecha: fp && fp.value ? isoToLargo(fp.value) : '',
+              metodo: document.getElementById('arcMetodo').value,
+              referencia: document.getElementById('arcRef').value,
+              comprobante: (out && out.liga) || (out && out.url) || nombre })
+            .then(function (o) {
+              toast(o.mensaje || 'Cobro registrado.', 'ok');
+              inp.value = '';
+              document.getElementById('arcMonto').value = '';
+              document.getElementById('arcRef').value = '';
+              cargarArchivos();
+            })
+            .catch(function (e) {
+              avisoFijo('<b>El comprobante se subió, pero el cobro no se registró.</b>' +
+                '<div style="margin-top:6px">' + esc((e && e.message) || '') + '</div>' +
+                (e && e.pista ? '<div class="s" style="margin-top:6px;color:var(--slate)">' +
+                  esc(e.pista) + '</div>' : ''));
+              cargarArchivos();
+            });
         })
         .catch(function (e) {
           avisoFijo('<b>No se pudo subir el archivo.</b><div style="margin-top:6px">' +
@@ -7040,6 +7088,78 @@
     }).then(function () {
       btn.disabled = false; btn.textContent = 'Guardar';
     });
+  }
+
+  // Los cobros reportados contra lo que entró al banco. Tres listas: los que
+  // cuadran, los reportados que nunca llegaron, y el dinero que entró sin que
+  // nadie lo ligara a su folio.
+  function loadCotejoCxc() {
+    document.getElementById('tableWrap').innerHTML =
+      '<div class="state" style="padding:50px 0">Cruzando cobros contra el banco…</div>';
+    document.getElementById('summary').innerHTML = '';
+    mostrarAlta(false);
+    api('cxc-cotejo', { token: state.token }).then(function (d) {
+      var t = d.totales || {};
+      var box = document.getElementById('summary');
+      box.style.display = 'flex';
+      box.innerHTML =
+        '<div class="sum-card"><div class="k">Cuadrados</div><div class="v">' +
+          fmtMoney(t.confirmados) + '</div><div class="k" style="text-transform:none;' +
+          'letter-spacing:0">' + fmtNum(t.nConfirmados) + ' cobros</div></div>' +
+        '<div class="sum-card"><div class="k">Reportados sin banco</div><div class="v"' +
+          (t.nSinBanco ? ' style="color:var(--danger)"' : '') + '>' + fmtMoney(t.sinBanco) +
+          '</div><div class="k" style="text-transform:none;letter-spacing:0">' +
+          fmtNum(t.nSinBanco) + ' por perseguir</div></div>' +
+        '<div class="sum-card"><div class="k">En banco sin reportar</div><div class="v">' +
+          fmtMoney(t.sinReportar) + '</div><div class="k" style="text-transform:none;' +
+          'letter-spacing:0">' + fmtNum(t.nSinReportar) + ' sin ligar</div></div>' +
+        (t.faltaFolio ? '<div class="sum-card"><div class="k">Sin folio en el banco</div>' +
+          '<div class="v">' + fmtNum(t.faltaFolio) + '</div><div class="k" ' +
+          'style="text-transform:none;letter-spacing:0">cuadraron por monto</div></div>' : '');
+
+      var tabla = function (titulo, nota, filas, cols) {
+        if (!filas.length) return '';
+        return '<h3 style="margin:22px 0 6px;font-size:15px">' + esc(titulo) + '</h3>' +
+          '<div class="s" style="color:var(--slate);margin-bottom:8px">' + esc(nota) + '</div>' +
+          '<table class="mini-table"><thead><tr>' +
+          cols.map(function (c) { return '<th>' + esc(c[0]) + '</th>'; }).join('') +
+          '</tr></thead><tbody>' +
+          filas.map(function (f) {
+            return '<tr>' + cols.map(function (c) {
+              return '<td' + (c[2] ? ' class="num"' : '') + '>' + c[1](f) + '</td>';
+            }).join('') + '</tr>';
+          }).join('') + '</tbody></table>';
+      };
+      var h =
+        tabla('Reportados que no aparecen en el banco',
+          'Alguien subió el comprobante y el dinero no ha entrado. Es lo que hay que perseguir.',
+          d.sinBanco || [],
+          [['Folio', function (f) { return esc(f.folio); }],
+           ['Cliente', function (f) { return esc(f.cliente); }],
+           ['Fecha', function (f) { return esc(f.fecha); }],
+           ['Esperando', function (f) { return f.diasEsperando == null ? '' :
+              (fmtNum(f.diasEsperando) + (f.diasEsperando === 1 ? ' día' : ' días')); }],
+           ['Lo registró', function (f) { return esc(f.registro); }],
+           ['Monto', function (f) { return esc(fmtMoney(f.monto)); }, true]]) +
+        tabla('Entró al banco y nadie lo reportó',
+          'Dinero con folio de venta que no tiene comprobante registrado.',
+          d.sinReportar || [],
+          [['Folio', function (f) { return esc(f.folio); }],
+           ['Concepto', function (f) { return esc(f.concepto); }],
+           ['Monto', function (f) { return esc(fmtMoney(f.monto)); }, true]]) +
+        tabla('Cuadrados',
+          'El comprobante y el banco coinciden. Los que dicen "monto y fecha" cuadraron ' +
+          'sin folio: conviene ponérselo al ingreso en la hoja.',
+          d.confirmados || [],
+          [['Folio', function (f) { return esc(f.folio); }],
+           ['Cliente', function (f) { return esc(f.cliente); }],
+           ['Cuadró por', function (f) { return esc(f.cuadroPor) +
+              (f.faltaFolioEnBanco ? ' <span style="color:var(--amber)">· falta folio</span>' : ''); }],
+           ['Monto', function (f) { return esc(fmtMoney(f.monto)); }, true]]);
+
+      document.getElementById('tableWrap').innerHTML = h ||
+        '<div class="state" style="padding:40px 0">Todavía no hay cobros registrados.</div>';
+    }).catch(fail);
   }
 
   function loadLogistica() {
@@ -7266,6 +7386,7 @@
     if (state.key === 'fin_balance') return loadEstado('balance');
     if (state.key === 'fin_bancos')  return loadSaldos();
     if (state.key === 'ventas_folios') return loadVentasFolios();
+    if (state.key === 'cxc_cotejo') return loadCotejoCxc();
     if (state.key === 'log_calendario') return loadLogistica();
     if (state.key === 'fin_banco') return loadSubirBanco();
     if (state.key === 'fac_emitidos') return loadEmitidos();
@@ -15020,7 +15141,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.30-414';
+    var mia = '2026.09.30-416';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
