@@ -1012,7 +1012,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.25-403</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.29-407</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -10051,6 +10051,10 @@
               '<button type="button" class="row-btn primary add-a-folio" data-folio="' +
               esc(k).replace(/"/g, '&quot;') + '">+ Agregar producto</button>') +
             '<button type="button" class="pdf-btn" data-folio="' + esc(k).replace(/"/g, '&quot;') + '">Ver PDF</button>' +
+            (state.key === 'ventas_registro'
+              ? '<button type="button" class="remision-btn" data-folio="' +
+                esc(k).replace(/"/g, '&quot;') + '" title="Para que la firme el cliente al ' +
+                'recibir">Remisión de entrega</button>' : '') +
             '<button type="button" class="archivos-btn" data-folio="' + esc(k).replace(/"/g, '&quot;') +
               '" data-cli="' + esc(r0[cCli] || '').replace(/"/g, '&quot;') +
               '">Archivos del folio</button>' +
@@ -14972,7 +14976,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.25-403';
+    var mia = '2026.09.29-407';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
@@ -15244,6 +15248,22 @@
       catch (err) { prefillCotizacion = null; }
       var elc = document.querySelector('.nav-item[data-key="cotizaciones"]');
       selectArea('cotizaciones', 'Cotizaciones', true);
+      return;
+    }
+    var rem = e.target.closest('.remision-btn');
+    if (rem) {
+      var fRem = rem.getAttribute('data-folio');
+      rem.disabled = true; rem.textContent = 'Armando…';
+      api('remision-pdf', { token: state.token, key: state.key, folio: fRem })
+        .then(function (o) {
+          bajarPdf(o.pdf, o.nombre || ('Remisión ' + fRem + '.pdf'));
+          if ((o.faltan || []).length) {
+            toast('Falta en la ficha del cliente: ' + o.faltan.join(' y ') +
+                  '. Complétalo a mano en el papel.', 'err');
+          } else { toast('Remisión lista.', 'ok'); }
+        })
+        .catch(fail)
+        .then(function () { rem.disabled = false; rem.textContent = 'Remisión de entrega'; });
       return;
     }
     var arc = e.target.closest('.archivos-btn');
