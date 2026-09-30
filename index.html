@@ -1012,7 +1012,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.30-416</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.30-417</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -6950,6 +6950,11 @@
           '<option>Tarjeta</option><option>Efectivo</option><option>Otro</option></select></div>' +
         '<div class="fld" style="width:180px;margin:0"><label>Referencia</label>' +
           '<input type="text" id="arcRef" placeholder="últimos dígitos, folio"></div>' +
+        '<div class="fld" style="width:190px;margin:0"><label>¿Requiere factura?</label>' +
+          '<select id="arcFactura"><option value="">— elegir —</option>' +
+          '<option value="Sí">Sí, la necesita</option>' +
+          '<option value="No">No la necesita</option>' +
+          '<option value="Ya facturado">Ya está facturada</option></select></div>' +
         '</div>' +
         '<div class="s" style="color:var(--amber);margin-top:6px">Queda como cobro ' +
         'reportado. Cuenta como ingreso hasta que aparezca en el banco.</div>' +
@@ -6997,6 +7002,7 @@
               fecha: fp && fp.value ? isoToLargo(fp.value) : '',
               metodo: document.getElementById('arcMetodo').value,
               referencia: document.getElementById('arcRef').value,
+              requiereFactura: document.getElementById('arcFactura').value,
               comprobante: (out && out.liga) || (out && out.url) || nombre })
             .then(function (o) {
               toast(o.mensaje || 'Cobro registrado.', 'ok');
@@ -7113,6 +7119,10 @@
         '<div class="sum-card"><div class="k">En banco sin reportar</div><div class="v">' +
           fmtMoney(t.sinReportar) + '</div><div class="k" style="text-transform:none;' +
           'letter-spacing:0">' + fmtNum(t.nSinReportar) + ' sin ligar</div></div>' +
+        (t.nPorFacturar ? '<div class="sum-card"><div class="k">Por facturar</div><div class="v"' +
+          ' style="color:var(--amber)">' + fmtMoney(t.porFacturar) + '</div><div class="k" ' +
+          'style="text-transform:none;letter-spacing:0">' + fmtNum(t.nPorFacturar) +
+          ' cobrados sin factura</div></div>' : '') +
         (t.faltaFolio ? '<div class="sum-card"><div class="k">Sin folio en el banco</div>' +
           '<div class="v">' + fmtNum(t.faltaFolio) + '</div><div class="k" ' +
           'style="text-transform:none;letter-spacing:0">cuadraron por monto</div></div>' : '');
@@ -7131,6 +7141,14 @@
           }).join('') + '</tbody></table>';
       };
       var h =
+        tabla('Cobrados y sin facturar',
+          'El dinero ya entró al banco y el cliente pidió factura. Si se pasa el mes, ' +
+          'ya no se puede emitir.',
+          d.porFacturar || [],
+          [['Folio', function (f) { return esc(f.folio); }],
+           ['Cliente', function (f) { return esc(f.cliente); }],
+           ['Fecha del pago', function (f) { return esc(f.fecha); }],
+           ['Monto', function (f) { return esc(fmtMoney(f.monto)); }, true]]) +
         tabla('Reportados que no aparecen en el banco',
           'Alguien subió el comprobante y el dinero no ha entrado. Es lo que hay que perseguir.',
           d.sinBanco || [],
@@ -15141,7 +15159,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.30-416';
+    var mia = '2026.09.30-417';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
