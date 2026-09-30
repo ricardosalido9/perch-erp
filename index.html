@@ -1012,7 +1012,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.30-417</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.30-419</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1331,7 +1331,7 @@
     fin_bancos:   'Se calcula desde Ingresos y Egresos más el saldo de arranque.',
     ventas_folios:'Sale de cruzar Ventas contra Pedidos a proveedores.'
   };
-  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'cxc_cotejo', 'fac_control', 'cfdi_control', 'cfdi_comp_rec', 'cfdi_prov', 'prov_razon', 'rh_resumen', 'fin_gastos_op', 'fin_efectivo', 'fac_impuestos', 'fac_emitidos', 'fin_estados', 'fin_flujo', 'fin_balance', 'fin_bancos', 'ventas_folios',
+  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'cxc_cotejo', 'fac_pendientes', 'fac_control', 'cfdi_control', 'cfdi_comp_rec', 'cfdi_prov', 'prov_razon', 'rh_resumen', 'fin_gastos_op', 'fin_efectivo', 'fac_impuestos', 'fac_emitidos', 'fin_estados', 'fin_flujo', 'fin_balance', 'fin_bancos', 'ventas_folios',
     // El stock sale de pedidos, entradas y salidas: se recalcula, no se edita
     'op_stock', 'op_revisar', 'prov_revision'];
   function esLector() {
@@ -7096,6 +7096,71 @@
     });
   }
 
+  // Qué está cobrado y falta facturar. Lo de meses anteriores va primero: una
+  // factura se emite dentro del mes del cobro, y pasado el mes ya no se puede.
+  function loadControlFactura() {
+    document.getElementById('tableWrap').innerHTML =
+      '<div class="state" style="padding:50px 0">Cruzando cobros contra las facturas del SAT…</div>';
+    document.getElementById('summary').innerHTML = '';
+    mostrarAlta(false);
+    api('control-factura', { token: state.token }).then(function (d) {
+      var t = d.totales || {}, L = d.lectura || {};
+      var box = document.getElementById('summary');
+      box.style.display = 'flex';
+      box.innerHTML =
+        (t.nUrgentes ? '<div class="sum-card"><div class="k">Se pasó el mes</div>' +
+          '<div class="v" style="color:var(--danger)">' + fmtMoney(t.urgentes) + '</div>' +
+          '<div class="k" style="text-transform:none;letter-spacing:0">' + fmtNum(t.nUrgentes) +
+          ' sin factura</div></div>' : '') +
+        '<div class="sum-card"><div class="k">Por facturar este mes</div><div class="v">' +
+          fmtMoney(t.delMes) + '</div><div class="k" style="text-transform:none;letter-spacing:0">' +
+          fmtNum(t.nDelMes) + ' cobros · quedan ' + fmtNum(t.diasQueQuedan) + ' días</div></div>' +
+        '<div class="sum-card"><div class="k">Ya facturado</div><div class="v">' +
+          fmtMoney(t.facturado) + '</div><div class="k" style="text-transform:none;letter-spacing:0">' +
+          fmtNum(t.nFacturado) + ' cobros</div></div>' +
+        (t.marcadoSinCfdi ? '<div class="sum-card"><div class="k">Marcados sin CFDI</div>' +
+          '<div class="v" style="color:var(--amber)">' + fmtNum(t.marcadoSinCfdi) + '</div>' +
+          '<div class="k" style="text-transform:none;letter-spacing:0">el SAT no los tiene</div>' +
+          '</div>' : '');
+
+      var tabla = function (titulo, nota, filas, extra) {
+        if (!filas.length) return '';
+        return '<h3 style="margin:22px 0 6px;font-size:15px">' + esc(titulo) + '</h3>' +
+          '<div class="s" style="color:var(--slate);margin-bottom:8px">' + esc(nota) + '</div>' +
+          '<table class="mini-table"><thead><tr><th>Folio</th><th>Cliente</th>' +
+          '<th>Fecha del pago</th>' + (extra ? '<th>Factura</th>' : '') +
+          '<th style="text-align:right">Monto</th></tr></thead><tbody>' +
+          filas.map(function (f) {
+            return '<tr><td>' + esc(f.folio) + '</td><td>' + esc(f.cliente) + '</td>' +
+              '<td>' + esc(f.fecha) + '</td>' +
+              (extra ? '<td class="s">' + (f.uuid
+                 ? esc(f.fechaFactura || '') + ' · ' + esc(String(f.uuid).slice(0, 8)) + '…' +
+                   (f.cuadroPor && f.cuadroPor !== 'folio'
+                     ? '<div style="color:var(--muted)">cuadró por ' + esc(f.cuadroPor) + '</div>' : '')
+                 : '<span style="color:var(--amber)">marcada a mano, sin CFDI</span>') + '</td>' : '') +
+              '<td class="num">' + esc(fmtMoney(f.monto)) + '</td></tr>';
+          }).join('') + '</tbody></table>';
+      };
+      var h =
+        tabla('Se pasó el mes y no se facturó',
+          'El cobro es de un mes anterior. Ya no se puede emitir la factura de ese mes: ' +
+          'hay que hablar con el cliente.', d.urgentes || []) +
+        tabla('Por facturar este mes',
+          'Cobrados, confirmados en banco y pendientes. Quedan ' +
+          fmtNum(t.diasQueQuedan) + ' días del mes.', d.delMes || []) +
+        tabla('Ya facturado', 'Tienen su CFDI en el SAT o se marcaron como facturados.',
+          d.conFactura || [], true);
+
+      document.getElementById('tableWrap').innerHTML = (h ||
+        '<div class="state" style="padding:40px 0">Ningún cobro pide factura todavía.</div>') +
+        '<div class="s" style="color:var(--muted);margin-top:16px">Sale de ' +
+        fmtNum(L.cobrosConfirmados) + ' cobros confirmados y ' + fmtNum(L.facturasLeidas) +
+        ' facturas del SAT. El CFDI no trae el folio de la venta, así que se cruzan por ' +
+        'cliente y monto, y si no, por monto y fecha cercana. Las que cuadraron así salen ' +
+        'marcadas para poder revisarlas.</div>';
+    }).catch(fail);
+  }
+
   // Los cobros reportados contra lo que entró al banco. Tres listas: los que
   // cuadran, los reportados que nunca llegaron, y el dinero que entró sin que
   // nadie lo ligara a su folio.
@@ -7405,6 +7470,7 @@
     if (state.key === 'fin_bancos')  return loadSaldos();
     if (state.key === 'ventas_folios') return loadVentasFolios();
     if (state.key === 'cxc_cotejo') return loadCotejoCxc();
+    if (state.key === 'fac_pendientes') return loadControlFactura();
     if (state.key === 'log_calendario') return loadLogistica();
     if (state.key === 'fin_banco') return loadSubirBanco();
     if (state.key === 'fac_emitidos') return loadEmitidos();
@@ -15159,7 +15225,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.30-417';
+    var mia = '2026.09.30-419';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
