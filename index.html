@@ -1012,7 +1012,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.09.30-421</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.01-422</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -11554,6 +11554,9 @@
   }
   function applyLookup(lk, value) {
     if (!lk) return;
+    // Un nombre que no está en la lista es un contacto nuevo, no un error: se
+    // deja lo que la persona haya escrito en los demás campos en vez de vaciarlos.
+    if (!lk.map || !lk.map[value]) return;
     var rec = lk.map[value] || {};
     (lk.fills || []).forEach(function (f) {
       if (f.charAt(0) === '_') return;            // campos internos: se usan aparte
@@ -13170,12 +13173,23 @@
       var cat = isReadonlyField(h) ? null : categoryFor(h);  // solo lectura gana sobre desplegable
       var lkf = lookupFor(h);
       if (lkf) {
-        var lsel = document.createElement('select'); lsel.setAttribute('data-col', h);
-        var lhtml = '<option value="">— elegir —</option>';
-        lkf.options.forEach(function (o) { lhtml += '<option>' + esc(o) + '</option>'; });
-        lsel.innerHTML = lhtml;
-        lsel.addEventListener('change', function () { applyLookup(lkf, lsel.value); });
-        wrap.appendChild(lsel);
+        // Lista de sugerencias, no lista cerrada.
+        //
+        // Antes era un desplegable: en Leads solo se podía elegir gente que YA
+        // estaba en la Lista de Clientes, y un lead es justamente alguien que
+        // todavía no es cliente. Ahora se puede escribir un nombre nuevo y las
+        // sugerencias siguen ahí; si se elige una, se rellena el despacho igual.
+        var lid = 'dl-lk-' + norm(h).replace(/[^a-z0-9]+/g, '-');
+        var linp = document.createElement('input');
+        linp.type = 'text'; linp.setAttribute('data-col', h); linp.setAttribute('list', lid);
+        linp.setAttribute('autocomplete', 'off');
+        linp.placeholder = 'Escribe o elige de la lista';
+        var ldl = document.createElement('datalist'); ldl.id = lid;
+        ldl.innerHTML = (lkf.options || []).map(function (o) {
+          return '<option value="' + esc(o) + '">'; }).join('');
+        linp.addEventListener('change', function () { applyLookup(lkf, linp.value); });
+        linp.addEventListener('blur', function () { applyLookup(lkf, linp.value); });
+        wrap.appendChild(linp); wrap.appendChild(ldl);
       } else if (cat) {
         var sel = document.createElement('select'); sel.setAttribute('data-col', h);
         var html = '<option value="">— elegir —</option>';
@@ -15281,7 +15295,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.09.30-421';
+    var mia = '2026.10.01-422';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
