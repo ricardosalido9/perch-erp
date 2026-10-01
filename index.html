@@ -1025,7 +1025,7 @@
   <aside class="sidebar">
     <div class="brand">
       <div class="brandwrap">
-        <img src="/assets/Logo_Perch_verde.png" alt="Pērch" class="brandlogo">
+        <img src="/assets/Perch_Logo.png" alt="PÉRCH" class="brandlogo">
         <div class="bt">Diseño y Mobiliario</div>
       </div>
       <button class="close" id="closeBtn" type="button" aria-label="Cerrar menú">
@@ -1035,7 +1035,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.01-423</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.01-425</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -11564,6 +11564,57 @@
     var sig = String(max + 1);
     return (ancho && sig.length < ancho) ? ('00000' + sig).slice(-ancho) : sig;
   }
+  // Campos cuya lista es común a varias pantallas: un despacho nuevo debe quedar
+  // guardado para todos, no solo escrito en el renglón que se está capturando.
+  var LISTAS_COMPARTIDAS = ['despacho'];
+
+  // Botón para dar de alta en la lista lo que se acaba de escribir.
+  //
+  // Antes, escribir un despacho nuevo lo dejaba en ese renglón y nada más: a la
+  // siguiente cotización había que volver a teclearlo, y al final cada quien lo
+  // escribía distinto. Se pide un clic a propósito, para que un dedazo no se
+  // guarde solo en la lista de todos.
+  function botonGuardarEnLista(wrap, inp, campo, opciones) {
+    if (!wrap || !inp) return;
+    if (LISTAS_COMPARTIDAS.indexOf(norm(campo)) === -1) return;
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 's';
+    b.style.cssText = 'display:none;margin-top:4px;padding:4px 8px;font-size:12px';
+    wrap.appendChild(b);
+    var yaEsta = function (v) {
+      return (opciones || []).some(function (o) { return norm(o) === norm(v); });
+    };
+    var revisar = function () {
+      var v = (inp.value || '').trim();
+      if (!v || yaEsta(v)) { b.style.display = 'none'; return; }
+      b.textContent = '➕ Guardar "' + v + '" en la lista';
+      b.style.display = '';
+    };
+    inp.addEventListener('input', revisar);
+    inp.addEventListener('change', revisar);
+    b.addEventListener('click', function () {
+      var v = (inp.value || '').trim();
+      if (!v) return;
+      b.disabled = true; b.textContent = 'Guardando…';
+      api('categories', { token: state.token, key: state.key, add: true,
+                          categoria: campo, valor: v })
+        .then(function () {
+          toast('"' + v + '" quedó en la lista de ' + campo + '.', 'ok');
+          opciones.push(v);
+          b.style.display = 'none';
+          cargarComboExtra();              // para que aparezca en los demás campos
+        })
+        .catch(function (e) {
+          avisoFijo('<b>No se pudo guardar en la lista.</b><div style="margin-top:6px">' +
+            esc((e && e.message) || '') + '</div>' +
+            '<div class="s" style="margin-top:6px;color:var(--slate)">Se puede agregar a mano ' +
+            'en la pestaña CATEGORIAS del archivo de Clientes, columna ' + esc(campo) + '.</div>');
+        })
+        .then(function () { b.disabled = false; revisar(); });
+    });
+  }
+
   function lookupFor(h) {
     var list = state.lookups || [];
     for (var i = 0; i < list.length; i++) {
@@ -13213,6 +13264,7 @@
         linp.addEventListener('change', function () { applyLookup(lkf, linp.value); });
         linp.addEventListener('blur', function () { applyLookup(lkf, linp.value); });
         wrap.appendChild(linp); wrap.appendChild(ldl);
+        botonGuardarEnLista(wrap, linp, h, lkf.options || []);
       } else if (cat) {
         var sel = document.createElement('select'); sel.setAttribute('data-col', h);
         var html = '<option value="">— elegir —</option>';
@@ -13238,6 +13290,11 @@
           inp.tabIndex = -1;
         }
         inp.setAttribute('data-col', h);   // se envía; el backend ignora las columnas con fórmula
+        if (LISTAS_COMPARTIDAS.indexOf(norm(h)) !== -1) {
+          setTimeout(function () {
+            botonGuardarEnLista(wrap, inp, h, (comboExtraVals[norm(h)] || []).slice());
+          }, 0);
+        }
         if (isAutoNumField(h)) inp.value = nextAvailableId(h);
         if (state.key === 'funnel' && norm(h) === 'valor venta') inp.placeholder = 'Monto, o NA si no dio respuesta';
         if (state.key === 'funnel' && norm(h) === 'valor cotizacion') inp.placeholder = 'Monto cotizado (o NA)';
@@ -15318,7 +15375,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.10.01-423';
+    var mia = '2026.10.01-425';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
