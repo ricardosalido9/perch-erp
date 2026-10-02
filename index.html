@@ -1035,7 +1035,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.02-427</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.02-428</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -11160,6 +11160,8 @@
     inventario: ['Productos', 'Material', 'Material Extra', 'Tipo de Producto'],
     prov_pedidos: ['Proveedor'],
     op_envios: ['Paqueteria', 'Cliente', 'Destino', 'Ciudad'],
+    // El despacho se escribe libre: la lista es justamente la que se está armando
+    ventas_despachos: ['Despacho', 'Contacto', 'Ciudad'],
     leads:      ['Contacto', 'Nombre', 'Cliente', 'Despacho'],
     showroom:   ['Cliente', 'Despacho'],
     cotizaciones:    ['Cliente', 'Despacho', 'Vendedor'],
@@ -11542,6 +11544,7 @@
     prov_pedidos: ['Fecha Estimada de Entrega', 'Proveedor', 'Pedido Proveedor',
                    'Producto', 'Material', 'Cantidad', 'Costo Unitario'],
     // Cada obligatorio puede escribirse de varias formas: basta con que exista una
+    ventas_despachos: ['Despacho'],
     leads:      ['Fecha', ['Contacto', 'Nombre', 'Cliente'], 'Cómo llegó'],
     showroom:   ['Fecha', ['Cliente', 'Nombre', 'Contacto']]
   };
@@ -12383,7 +12386,7 @@
   // Dónde tiene sentido ofrecer Quitar: las pantallas de captura, y solo si la
   // persona puede editarlas. La lista la valida otra vez el servidor.
   var AREAS_QUITABLES = ['cotizaciones', 'ventas_registro', 'prov_pedidos', 'inventario',
-    'ventas_clientes', 'leads', 'showroom', 'marketing', 'prov_entradas', 'prov_salidas',
+    'ventas_clientes', 'ventas_despachos', 'leads', 'showroom', 'marketing', 'prov_entradas', 'prov_salidas',
     'prov_lista', 'fin_cxc', 'fin_efectivo', 'nomina', 'metas'];
   function sePuedeQuitar() {
     return !esSoloLectura(state.key) && AREAS_QUITABLES.indexOf(state.key) !== -1;
@@ -15399,7 +15402,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.10.02-427';
+    var mia = '2026.10.02-428';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
