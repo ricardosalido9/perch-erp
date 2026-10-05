@@ -1035,7 +1035,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.05-436</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.05-437</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -7234,6 +7234,7 @@
         var nombreDe = function (p) {
           return '<div style="min-width:0"><div style="font-weight:600">' + esc(p.producto) +
             '</div><div class="s" style="color:var(--slate)">' + esc(p.material || '') +
+            (p.pedidas ? ' · ' + fmtNum(p.pedidas) + (p.pedidas === 1 ? ' pieza' : ' piezas') : '') +
             '</div></div>';
         };
         var ladoProveedor = function (p) {
@@ -7262,36 +7263,63 @@
         };
 
         if (trazaVista === 'venta') {
-          // Al revés: cada venta con las piezas que la surtieron y de qué pedido
+          // Al revés: cada venta con sus muebles, y debajo de cada mueble de qué
+          // pedido salió cada pieza.
+          //
+          // El mueble se muestra UNA vez aunque lo hayan surtido dos proveedores
+          // o dos pedidos: antes se repetía la misma foto y el mismo nombre en
+          // tres tarjetas y costaba ver que era el mismo producto.
           var porVenta = {};
           (d.piezas || []).forEach(function (p) {
             (p.destinos || []).forEach(function (x) {
               var k = x.folio || '(sin folio)';
-              if (!porVenta[k]) porVenta[k] = { folio: k, cliente: x.cliente || '', piezas: [] };
+              if (!porVenta[k]) porVenta[k] = { folio: k, cliente: x.cliente || '', prods: {} };
               if (!porVenta[k].cliente && x.cliente) porVenta[k].cliente = x.cliente;
-              porVenta[k].piezas.push({ p: p, cant: x.cantidad, fecha: x.fecha });
+              var kp = norm(p.producto);
+              var g = porVenta[k].prods[kp] = porVenta[k].prods[kp] ||
+                { producto: p.producto, foto: p.foto, material: p.material, total: 0, origenes: [] };
+              g.total += x.cantidad || 0;
+              g.origenes.push({ material: p.material, proveedor: p.proveedor, pedido: p.pedido,
+                                cantidad: x.cantidad, fecha: x.fecha });
             });
           });
           var folios = Object.keys(porVenta).sort();
           h += folios.map(function (k) {
             var v = porVenta[k];
-            return '<h3 style="margin:20px 0 8px;font-size:15px">' + esc(v.folio) +
+            return '<h3 style="margin:22px 0 8px;font-size:15px">' + esc(v.folio) +
               (v.cliente ? ' <span class="s" style="color:var(--slate)">· ' + esc(v.cliente) +
                 '</span>' : '') + '</h3>' +
-              v.piezas.map(function (it) {
-                return tarjeta(fotoDe(it.p), nombreDe(it.p),
-                  '<div style="min-width:0"><div class="s" style="color:var(--muted)">' +
-                  'DE DÓNDE SALIÓ</div><div><b>' + esc(it.p.proveedor || '—') + '</b></div>' +
-                  '<div class="s" style="color:var(--slate)">' + esc(it.p.pedido) + ' · ' +
-                  fmtNum(it.cant) + (it.fecha ? ' · entregado el ' + esc(it.fecha) : '') +
-                  '</div></div>');
+              Object.keys(v.prods).map(function (kp) {
+                var g = v.prods[kp];
+                return '<div class="panel" style="margin-bottom:10px;padding:14px 16px;' +
+                  'display:grid;grid-template-columns:72px minmax(150px,1fr) minmax(260px,1.6fr);' +
+                  'gap:16px;align-items:center">' +
+                  fotoDe(g) +
+                  '<div style="min-width:0"><div style="font-weight:600">' + esc(g.producto) +
+                    '</div><div class="s" style="color:var(--slate)">' + fmtNum(g.total) +
+                    (g.total === 1 ? ' pieza' : ' piezas') + '</div></div>' +
+                  '<div style="min-width:0">' +
+                    g.origenes.map(function (o) {
+                      return '<div style="display:flex;gap:8px;align-items:baseline;' +
+                        'margin-bottom:3px;flex-wrap:wrap">' +
+                        '<span style="color:var(--muted)">\u2192</span>' +
+                        '<b>' + esc(o.proveedor || 'Sin proveedor') + '</b>' +
+                        '<span class="s" style="color:var(--slate)">' + esc(o.pedido || '') +
+                        (o.material ? ' · ' + esc(o.material) : '') +
+                        ' · ' + fmtNum(o.cantidad) +
+                        (o.fecha ? ' · ' + esc(o.fecha) : '') + '</span></div>';
+                    }).join('') +
+                  '</div></div>';
               }).join('');
           }).join('');
           if (!folios.length) h += '<div class="state" style="padding:40px 0">' +
             'Todavía no hay piezas entregadas a ninguna venta.</div>';
         } else {
           h += (d.piezas || []).map(function (p) {
-            return tarjeta(fotoDe(p), nombreDe(p) + ladoProveedor(p), ladoDestino(p));
+            return '<div class="panel" style="margin-bottom:10px;padding:14px 16px;display:grid;' +
+              'grid-template-columns:72px minmax(150px,1fr) minmax(200px,1.1fr) minmax(200px,1.2fr);' +
+              'gap:16px;align-items:center">' +
+              fotoDe(p) + nombreDe(p) + ladoProveedor(p) + ladoDestino(p) + '</div>';
           }).join('');
         }
 
@@ -15603,7 +15631,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.10.05-436';
+    var mia = '2026.10.05-437';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
