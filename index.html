@@ -1035,7 +1035,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.02-429</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.02-430</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -8834,6 +8834,10 @@
           '<span class="ad">' + esc(det) + '</span>' +
           // Algunos avisos traen el desglose folio por folio: se puede abrir aquí mismo
           ((a.detalles || []).length ? detalleAvisoHTML(a.detalles) : '') +
+          // Si la lista venía cortada no se decía, y parecía que un folio no
+          // estaba cuando simplemente no se alcanzaba a mostrar.
+          (a.noListados ? '<div class="s" style="color:var(--muted);margin-top:6px">y ' +
+            fmtNum(a.noListados) + ' más que no caben en esta lista</div>' : '') +
           '</span>' +
           '<button data-go="' + esc(a.area) + '"' +
             (a.filtro && a.filtro.col ? ' data-filtro="' + esc(JSON.stringify(a.filtro)).replace(/"/g, '&quot;') + '"' : '') +
@@ -11592,6 +11596,46 @@
   // guardado para todos, no solo escrito en el renglón que se está capturando.
   var LISTAS_COMPARTIDAS = ['despacho'];
 
+  // Abre la lista completa al hacer clic en el campo y la va filtrando al escribir.
+  //
+  // Estos campos eran desplegables cerrados; al abrirlos para poder escribir
+  // nombres nuevos quedaron como una caja de texto a secas y la lista dejó de
+  // verse. Esto devuelve el desplegable sin volver a cerrar el campo.
+  function listaAlHacerClic(wrap, inp, opciones, alElegir) {
+    if (!wrap || !inp || !(opciones || []).length) return;
+    wrap.style.position = 'relative';
+    var caja = document.createElement('div');
+    caja.style.cssText = 'position:absolute;z-index:40;left:0;right:0;top:100%;' +
+      'background:var(--surface);border:1px solid var(--line);max-height:240px;' +
+      'overflow:auto;display:none;box-shadow:0 8px 24px rgba(0,0,0,.10)';
+    wrap.appendChild(caja);
+    var pintar = function () {
+      var t = norm(inp.value);
+      var res = opciones.filter(function (o) { return !t || norm(o).indexOf(t) !== -1; }).slice(0, 80);
+      caja.innerHTML = res.length
+        ? res.map(function (o) {
+            return '<div data-v="' + esc(o).replace(/"/g, '&quot;') +
+              '" style="padding:8px 12px;cursor:pointer;font-size:13.5px">' + esc(o) + '</div>';
+          }).join('')
+        : '<div style="padding:10px 12px;color:var(--muted);font-size:13px">' +
+          'Nada coincide. Puedes escribirlo nuevo.</div>';
+      caja.style.display = 'block';
+    };
+    inp.addEventListener('focus', pintar);
+    inp.addEventListener('input', pintar);
+    caja.addEventListener('mousedown', function (e) {
+      var d = e.target.closest('[data-v]'); if (!d) return;
+      e.preventDefault();
+      inp.value = d.getAttribute('data-v');
+      caja.style.display = 'none';
+      if (alElegir) alElegir(inp.value);
+      inp.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    inp.addEventListener('blur', function () {
+      setTimeout(function () { caja.style.display = 'none'; }, 150);
+    });
+  }
+
   // Botón para dar de alta en la lista lo que se acaba de escribir.
   //
   // Antes, escribir un despacho nuevo lo dejaba en ese renglón y nada más: a la
@@ -13288,6 +13332,7 @@
         linp.addEventListener('change', function () { applyLookup(lkf, linp.value); });
         linp.addEventListener('blur', function () { applyLookup(lkf, linp.value); });
         wrap.appendChild(linp); wrap.appendChild(ldl);
+        listaAlHacerClic(wrap, linp, lkf.options || [], function (v) { applyLookup(lkf, v); });
         botonGuardarEnLista(wrap, linp, h, lkf.options || []);
       } else if (cat) {
         var sel = document.createElement('select'); sel.setAttribute('data-col', h);
@@ -15402,7 +15447,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.10.02-429';
+    var mia = '2026.10.02-430';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
