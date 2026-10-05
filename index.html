@@ -1035,7 +1035,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.05-433</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.05-434</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -7155,6 +7155,19 @@
 
   // De dónde salió cada pieza y a dónde fue: el pedido y el proveedor de un lado,
   // el cliente o la bodega del otro. Antes había que abrir tres hojas y cruzarlas.
+  // Las fotos del catálogo son ligas de Drive, no imágenes: se piden al ERP, que
+  // las baja con la cuenta de servicio y las devuelve como imagen.
+  function urlFoto(v) {
+    var t = String(v || '').trim();
+    if (!t) return '';
+    if (!/drive\.google\.com|docs\.google\.com/.test(t) && /^https?:\/\//.test(t)) return t;
+    var m = t.match(/\/file\/d\/([A-Za-z0-9_-]{20,})/) ||
+            t.match(/[?&]id=([A-Za-z0-9_-]{20,})/) ||
+            t.match(/\/d\/([A-Za-z0-9_-]{20,})/);
+    var id = m ? m[1] : (/^[A-Za-z0-9_-]{20,}$/.test(t) ? t : '');
+    return id ? ('/api/erp?action=foto&id=' + encodeURIComponent(id) +
+                 '&token=' + encodeURIComponent(state.token)) : '';
+  }
   var trazaPedido = '', trazaProv = '';
   function loadTraza() {
     document.getElementById('tableWrap').innerHTML =
@@ -7204,7 +7217,8 @@
             ? '<div style="color:var(--amber)">Por llegar · ' + fmtNum(p.porLlegar) + '</div>' : '';
           return '<div class="panel" style="margin-bottom:10px;padding:14px 16px;display:flex;' +
             'gap:16px;align-items:center;flex-wrap:wrap">' +
-            (p.foto ? '<img src="' + esc(p.foto) + '" alt="" style="width:64px;height:64px;' +
+            (p.foto ? '<img src="' + esc(urlFoto(p.foto)) + '" alt="" loading="lazy" ' +
+              'onerror="this.style.visibility=\'hidden\'" style="width:64px;height:64px;' +
               'object-fit:cover;border-radius:8px;background:var(--paper)">' :
               '<div style="width:64px;height:64px;border-radius:8px;background:var(--paper)"></div>') +
             '<div style="flex:1;min-width:200px"><div style="font-weight:600">' +
@@ -15532,7 +15546,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.10.05-433';
+    var mia = '2026.10.05-434';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
