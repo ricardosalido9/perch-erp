@@ -1035,7 +1035,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.02-430</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.05-431</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1356,7 +1356,7 @@
   };
   var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'cxc_cotejo', 'fac_pendientes', 'fac_control', 'cfdi_control', 'cfdi_comp_rec', 'cfdi_prov', 'prov_razon', 'rh_resumen', 'fin_gastos_op', 'fin_efectivo', 'fac_impuestos', 'fac_emitidos', 'fin_estados', 'fin_flujo', 'fin_balance', 'fin_bancos', 'ventas_folios',
     // El stock sale de pedidos, entradas y salidas: se recalcula, no se edita
-    'op_stock', 'op_revisar', 'prov_revision'];
+    'op_stock', 'op_traza', 'op_revisar', 'prov_revision'];
   function esLector() {
     return state.rol === 'lector' || state.rol === 'viewer' || state.rol === 'lectura';
   }
@@ -7153,6 +7153,85 @@
     });
   }
 
+  // De dónde salió cada pieza y a dónde fue: el pedido y el proveedor de un lado,
+  // el cliente o la bodega del otro. Antes había que abrir tres hojas y cruzarlas.
+  var trazaPedido = '', trazaProv = '';
+  function loadTraza() {
+    document.getElementById('tableWrap').innerHTML =
+      '<div class="state" style="padding:50px 0">Siguiendo las piezas…</div>';
+    document.getElementById('summary').innerHTML = '';
+    mostrarAlta(false);
+    api('traza', { token: state.token, pedido: trazaPedido, proveedor: trazaProv })
+      .then(function (d) {
+        var t = d.totales || {};
+        var box = document.getElementById('summary');
+        box.style.display = 'flex';
+        box.innerHTML =
+          '<div class="sum-card"><div class="k">Piezas pedidas</div><div class="v">' +
+            fmtNum(t.pedidas) + '</div></div>' +
+          '<div class="sum-card"><div class="k">Ya llegaron</div><div class="v">' +
+            fmtNum(t.llegaron) + '</div></div>' +
+          '<div class="sum-card"><div class="k">En bodega</div><div class="v">' +
+            fmtNum(t.enStock) + '</div></div>' +
+          '<div class="sum-card"><div class="k">Entregadas</div><div class="v">' +
+            fmtNum(t.salieron) + '</div></div>' +
+          '<div class="sum-card"><div class="k">Por llegar</div><div class="v">' +
+            fmtNum(t.porLlegar) + '</div></div>';
+
+        var sel = function (id, lista, valor, etiqueta) {
+          return '<select id="' + id + '" style="padding:7px 10px;margin-right:10px">' +
+            '<option value="">' + esc(etiqueta) + '</option>' +
+            lista.map(function (x) {
+              return '<option' + (x === valor ? ' selected' : '') + '>' + esc(x) + '</option>';
+            }).join('') + '</select>';
+        };
+        var h = '<div style="margin-bottom:14px">' +
+          sel('trzPed', d.pedidos || [], trazaPedido, 'Todos los pedidos') +
+          sel('trzPrv', d.proveedores || [], trazaProv, 'Todos los proveedores') + '</div>';
+
+        h += (d.piezas || []).map(function (p) {
+          var destino = p.destinos.length
+            ? p.destinos.map(function (x) {
+                return '<div><b>' + esc(x.cliente || x.folio || 'Venta') + '</b>' +
+                  (x.folio && x.cliente ? ' <span class="s">· ' + esc(x.folio) + '</span>' : '') +
+                  ' <span class="s">· ' + fmtNum(x.cantidad) +
+                  (x.fecha ? ' · ' + esc(x.fecha) : '') + '</span></div>';
+              }).join('')
+            : '';
+          var enBodega = p.enStock
+            ? '<div><b>En bodega</b> <span class="s">· ' + fmtNum(p.enStock) + '</span></div>' : '';
+          var porLlegar = p.porLlegar
+            ? '<div style="color:var(--amber)">Por llegar · ' + fmtNum(p.porLlegar) + '</div>' : '';
+          return '<div class="panel" style="margin-bottom:10px;padding:14px 16px;display:flex;' +
+            'gap:16px;align-items:center;flex-wrap:wrap">' +
+            (p.foto ? '<img src="' + esc(p.foto) + '" alt="" style="width:64px;height:64px;' +
+              'object-fit:cover;border-radius:8px;background:var(--paper)">' :
+              '<div style="width:64px;height:64px;border-radius:8px;background:var(--paper)"></div>') +
+            '<div style="flex:1;min-width:200px"><div style="font-weight:600">' +
+              esc(p.producto) + '</div><div class="s" style="color:var(--slate)">' +
+              esc(p.material || '') + '</div></div>' +
+            '<div style="min-width:180px"><div class="s" style="color:var(--muted)">PROVEEDOR</div>' +
+              '<div>' + esc(p.proveedor || '—') + '</div>' +
+              '<div class="s" style="color:var(--slate)">' + esc(p.pedido) +
+              (p.costoUnitario ? ' · ' + esc(formatMoney(p.costoUnitario)) : '') +
+              (p.fechaPedido ? ' · ' + esc(p.fechaPedido) : '') + '</div></div>' +
+            '<div style="font-size:20px;color:var(--muted)">→</div>' +
+            '<div style="min-width:200px"><div class="s" style="color:var(--muted)">DESTINO</div>' +
+              (destino || enBodega || porLlegar ||
+                '<div class="s" style="color:var(--muted)">sin asignar</div>') +
+              (destino && enBodega ? enBodega : '') +
+              (porLlegar && (destino || enBodega) ? porLlegar : '') + '</div>' +
+            '</div>';
+        }).join('');
+
+        document.getElementById('tableWrap').innerHTML = h ||
+          '<div class="state" style="padding:40px 0">No hay piezas que mostrar.</div>';
+        var a = document.getElementById('trzPed'), b = document.getElementById('trzPrv');
+        if (a) a.addEventListener('change', function () { trazaPedido = a.value; loadTraza(); });
+        if (b) b.addEventListener('change', function () { trazaProv = b.value; loadTraza(); });
+      }).catch(fail);
+  }
+
   // Qué está cobrado y falta facturar. Lo de meses anteriores va primero: una
   // factura se emite dentro del mes del cobro, y pasado el mes ya no se puede.
   function loadControlFactura() {
@@ -7544,6 +7623,7 @@
     if (state.key === 'op_stock' && Date.now() - stockRecalculado > 5 * 60 * 1000) {
       return recalcularStockSiHaceFalta().then(function () { return loadArea(); });
     }
+    if (state.key === 'op_traza') return loadTraza();
     if (state.key === 'cxc_cotejo') return loadCotejoCxc();
     if (state.key === 'fac_pendientes') return loadControlFactura();
     if (state.key === 'log_calendario') return loadLogistica();
@@ -15447,7 +15527,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.10.02-430';
+    var mia = '2026.10.05-431';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
