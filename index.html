@@ -1035,7 +1035,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.06-441</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.06-444</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -7153,6 +7153,77 @@
     });
   }
 
+  // Surtir ventas: lo que se vendió y todavía no tiene de dónde salir. De cada
+  // pieza se dice si hay en bodega —y se asigna de un clic— o quién la ha hecho
+  // antes, para mandarle el pedido sin salir de aquí.
+  function loadSurtir() {
+    document.getElementById('tableWrap').innerHTML =
+      '<div class="state" style="padding:50px 0">Viendo qué falta por surtir…</div>';
+    document.getElementById('summary').innerHTML = '';
+    mostrarAlta(false);
+    api('surtir', { token: state.token }).then(function (d) {
+      var t = d.totales || {};
+      var box = document.getElementById('summary');
+      box.style.display = 'flex';
+      box.innerHTML =
+        '<div class="sum-card"><div class="k">Ventas por surtir</div><div class="v">' +
+          fmtNum(t.ventas) + '</div><div class="k" style="text-transform:none;letter-spacing:0">' +
+          fmtNum(t.piezas) + ' piezas</div></div>' +
+        '<div class="sum-card"><div class="k">Se pueden sacar de bodega</div><div class="v">' +
+          fmtNum(t.deStock) + '</div></div>' +
+        '<div class="sum-card"><div class="k">Hay que pedirlas</div><div class="v">' +
+          fmtNum(t.porPedir) + '</div></div>' +
+        (t.sinProveedor ? '<div class="sum-card"><div class="k">Sin proveedor conocido</div>' +
+          '<div class="v" style="color:var(--amber)">' + fmtNum(t.sinProveedor) + '</div>' +
+          '<div class="k" style="text-transform:none;letter-spacing:0">nadie las ha hecho</div>' +
+          '</div>' : '');
+
+      var h = (d.ventas || []).map(function (v) {
+        return '<h3 style="margin:22px 0 8px;font-size:15px">' + esc(v.folio) +
+          (v.cliente ? ' <span class="s" style="color:var(--slate)">· ' + esc(v.cliente) +
+            '</span>' : '') + '</h3>' +
+          v.piezas.map(function (p) {
+            var datos = 'data-folio="' + esc(p.folio).replace(/"/g, '&quot;') +
+              '" data-cliente="' + esc(p.cliente).replace(/"/g, '&quot;') +
+              '" data-producto="' + esc(p.producto).replace(/"/g, '&quot;') +
+              '" data-material="' + esc(p.material).replace(/"/g, '&quot;') +
+              '" data-especificaciones="' + esc(p.especificaciones).replace(/"/g, '&quot;') + '"';
+            var acciones = '';
+            if (p.puedeDeStock > 0) {
+              acciones += '<button type="button" class="row-btn primary surtir-stock" ' + datos +
+                ' data-cantidad="' + p.puedeDeStock + '">Sacar ' + fmtNum(p.puedeDeStock) +
+                ' de bodega</button> ';
+            }
+            (p.proveedores || []).forEach(function (pr) {
+              acciones += '<button type="button" class="row-btn surtir-pedido" ' + datos +
+                ' data-cantidad="' + (p.falta - p.puedeDeStock || p.falta) +
+                '" data-proveedor="' + esc(pr.proveedor).replace(/"/g, '&quot;') +
+                '" data-costo="' + (pr.costo || 0) + '" title="Ya lo ha hecho ' +
+                fmtNum(pr.veces) + ' veces">Pedir a ' + esc(pr.proveedor) +
+                (pr.costo ? ' · ' + esc(formatMoney(pr.costo)) : '') +
+                (pr.dias ? ' · ' + esc(pr.dias) : '') + '</button> ';
+            });
+            if (!acciones) acciones = '<span class="s" style="color:var(--amber)">' +
+              'Nadie ha hecho esta pieza antes: hay que elegir proveedor a mano.</span>';
+            return '<div class="panel" style="margin-bottom:10px;padding:14px 16px">' +
+              '<div style="display:flex;gap:14px;align-items:baseline;flex-wrap:wrap">' +
+                '<div style="font-weight:600">' + esc(p.producto) + '</div>' +
+                '<div class="s" style="color:var(--slate)">' + esc(p.material || '') + '</div>' +
+                '<div class="s">Faltan <b>' + fmtNum(p.falta) + '</b> de ' + fmtNum(p.vendidas) +
+                  '</div>' +
+                (p.enBodega ? '<div class="s" style="color:var(--success)">En bodega: ' +
+                  fmtNum(p.enBodega) + '</div>' : '') +
+              '</div>' +
+              '<div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">' + acciones +
+              '</div></div>';
+          }).join('');
+      }).join('');
+
+      document.getElementById('tableWrap').innerHTML = h ||
+        '<div class="state" style="padding:40px 0">Todas las ventas están surtidas.</div>';
+    }).catch(fail);
+  }
+
   // De dónde salió cada pieza y a dónde fue: el pedido y el proveedor de un lado,
   // el cliente o la bodega del otro. Antes había que abrir tres hojas y cruzarlas.
   // Las fotos del catálogo son ligas de Drive, no imágenes: se piden al ERP, que
@@ -7727,6 +7798,7 @@
     if (state.key === 'op_stock' && Date.now() - stockRecalculado > 5 * 60 * 1000) {
       return recalcularStockSiHaceFalta().then(function () { return loadArea(); });
     }
+    if (state.key === 'surtir') return loadSurtir();
     if (state.key === 'op_traza') return loadTraza();
     if (state.key === 'cxc_cotejo') return loadCotejoCxc();
     if (state.key === 'fac_pendientes') return loadControlFactura();
@@ -15648,7 +15720,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.10.06-441';
+    var mia = '2026.10.06-444';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
@@ -15945,6 +16017,25 @@
       catch (err) { prefillCotizacion = null; }
       var elc = document.querySelector('.nav-item[data-key="cotizaciones"]');
       selectArea('cotizaciones', 'Cotizaciones', true);
+      return;
+    }
+    // Surtir de bodega o mandar el pedido, desde la misma pantalla
+    var sb = e.target.closest('.surtir-stock') || e.target.closest('.surtir-pedido');
+    if (sb) {
+      var esStock = sb.classList.contains('surtir-stock');
+      var g = function (n) { return sb.getAttribute('data-' + n) || ''; };
+      var cu = g('cantidad');
+      var texto = esStock
+        ? '¿Sacar ' + cu + ' de bodega para ' + g('folio') + '?'
+        : '¿Pedir ' + cu + ' a ' + g('proveedor') + ' para ' + g('folio') + '?';
+      if (!confirm(texto)) return;
+      sb.disabled = true; var antes = sb.textContent; sb.textContent = 'Registrando…';
+      api('surtir', { token: state.token, hacer: esStock ? 'stock' : 'pedido',
+            folio: g('folio'), cliente: g('cliente'), producto: g('producto'),
+            material: g('material'), especificaciones: g('especificaciones'),
+            cantidad: cu, proveedor: g('proveedor'), costo: g('costo') })
+        .then(function (o) { toast(o.mensaje || 'Listo.', 'ok'); loadSurtir(); })
+        .catch(function (err) { fail(err); sb.disabled = false; sb.textContent = antes; });
       return;
     }
     var rem = e.target.closest('.remision-btn');

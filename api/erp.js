@@ -76,6 +76,7 @@ const RUTAS = {
   'control-factura': require('../lib/handlers/control-factura'),
   traza:          require('../lib/handlers/traza'),
   foto:           require('../lib/handlers/foto'),
+  surtir:         require('../lib/handlers/surtir'),
   'drive-check':  require('../lib/handlers/drive-check'),
   emitidos:       require('../lib/handlers/emitidos'),
   'relacion-pdf': require('../lib/handlers/relacion-pdf'),
