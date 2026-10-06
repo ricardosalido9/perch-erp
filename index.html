@@ -1035,7 +1035,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.06-445</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.06-446</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -7183,39 +7183,54 @@
           (v.cliente ? ' <span class="s" style="color:var(--slate)">· ' + esc(v.cliente) +
             '</span>' : '') + '</h3>' +
           v.piezas.map(function (p) {
-            var datos = 'data-folio="' + esc(p.folio).replace(/"/g, '&quot;') +
-              '" data-cliente="' + esc(p.cliente).replace(/"/g, '&quot;') +
-              '" data-producto="' + esc(p.producto).replace(/"/g, '&quot;') +
-              '" data-material="' + esc(p.material).replace(/"/g, '&quot;') +
-              '" data-especificaciones="' + esc(p.especificaciones).replace(/"/g, '&quot;') + '"';
-            var acciones = '';
-            if (p.puedeDeStock > 0) {
-              acciones += '<button type="button" class="row-btn primary surtir-stock" ' + datos +
-                ' data-cantidad="' + p.puedeDeStock + '">Sacar ' + fmtNum(p.puedeDeStock) +
-                ' de bodega</button> ';
-            }
-            (p.proveedores || []).forEach(function (pr) {
-              acciones += '<button type="button" class="row-btn surtir-pedido" ' + datos +
-                ' data-cantidad="' + (p.falta - p.puedeDeStock || p.falta) +
-                '" data-proveedor="' + esc(pr.proveedor).replace(/"/g, '&quot;') +
-                '" data-costo="' + (pr.costo || 0) + '" title="Ya lo ha hecho ' +
-                fmtNum(pr.veces) + ' veces">Pedir a ' + esc(pr.proveedor) +
-                (pr.costo ? ' · ' + esc(formatMoney(pr.costo)) : '') +
-                (pr.dias ? ' · ' + esc(pr.dias) : '') + '</button> ';
-            });
-            if (!acciones) acciones = '<span class="s" style="color:var(--amber)">' +
-              'Nadie ha hecho esta pieza antes: hay que elegir proveedor a mano.</span>';
+            // Un mueble puede llevar dos componentes —la madera y la tela— y cada
+            // uno lo hace otro proveedor en su propio pedido. Por eso el mueble va
+            // una vez y debajo una línea por componente.
             return '<div class="panel" style="margin-bottom:10px;padding:14px 16px">' +
               '<div style="display:flex;gap:14px;align-items:baseline;flex-wrap:wrap">' +
                 '<div style="font-weight:600">' + esc(p.producto) + '</div>' +
                 '<div class="s" style="color:var(--slate)">' + esc(p.material || '') + '</div>' +
-                '<div class="s">Faltan <b>' + fmtNum(p.falta) + '</b> de ' + fmtNum(p.vendidas) +
-                  '</div>' +
-                (p.enBodega ? '<div class="s" style="color:var(--success)">En bodega: ' +
-                  fmtNum(p.enBodega) + '</div>' : '') +
+                '<div class="s">' + fmtNum(p.vendidas) +
+                  (p.vendidas === 1 ? ' pieza vendida' : ' piezas vendidas') + '</div>' +
+                (p.variosComponentes
+                  ? '<div class="s" style="color:var(--slate)">lleva ' +
+                    fmtNum(p.partes.length) + ' componentes</div>' : '') +
               '</div>' +
-              '<div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">' + acciones +
-              '</div></div>';
+              p.partes.map(function (c) {
+                var datos = 'data-folio="' + esc(p.folio).replace(/"/g, '&quot;') +
+                  '" data-cliente="' + esc(p.cliente).replace(/"/g, '&quot;') +
+                  '" data-producto="' + esc(p.producto).replace(/"/g, '&quot;') +
+                  '" data-material="' + esc(c.componente).replace(/"/g, '&quot;') +
+                  '" data-especificaciones="' + esc(p.especificaciones).replace(/"/g, '&quot;') + '"';
+                var acciones = '';
+                if (c.puedeDeStock > 0) {
+                  acciones += '<button type="button" class="row-btn primary surtir-stock" ' +
+                    datos + ' data-cantidad="' + c.puedeDeStock + '">Sacar ' +
+                    fmtNum(c.puedeDeStock) + ' de bodega</button> ';
+                }
+                (c.proveedores || []).forEach(function (pr) {
+                  acciones += '<button type="button" class="row-btn surtir-pedido" ' + datos +
+                    ' data-cantidad="' + (c.falta - c.puedeDeStock || c.falta) +
+                    '" data-proveedor="' + esc(pr.proveedor).replace(/"/g, '&quot;') +
+                    '" data-costo="' + (pr.costo || 0) + '" title="Ya lo ha hecho ' +
+                    fmtNum(pr.veces) + ' veces">Pedir a ' + esc(pr.proveedor) +
+                    (pr.costo ? ' · ' + esc(formatMoney(pr.costo)) : '') +
+                    (pr.dias ? ' · ' + esc(pr.dias) : '') + '</button> ';
+                });
+                if (!acciones) acciones = '<span class="s" style="color:var(--amber)">' +
+                  'Nadie ha hecho este componente antes: hay que elegir proveedor a mano.</span>';
+                return '<div style="margin-top:12px;padding-top:10px;border-top:1px dashed ' +
+                  'var(--line)">' +
+                  '<div style="display:flex;gap:12px;align-items:baseline;flex-wrap:wrap">' +
+                    '<div style="font-weight:600">' + esc(c.componente || 'Sin material') + '</div>' +
+                    '<div class="s">Faltan <b>' + fmtNum(c.falta) + '</b></div>' +
+                    (c.enBodega ? '<div class="s" style="color:var(--success)">En bodega: ' +
+                      fmtNum(c.enBodega) + '</div>' : '') +
+                  '</div>' +
+                  '<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">' + acciones +
+                  '</div></div>';
+              }).join('') +
+              '</div>';
           }).join('');
       }).join('');
 
@@ -15720,7 +15735,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.10.06-445';
+    var mia = '2026.10.06-446';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
