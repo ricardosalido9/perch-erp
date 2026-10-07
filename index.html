@@ -1035,7 +1035,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.07-448</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.07-449</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -3626,6 +3626,32 @@
           '<td>' + esc(x.producto || '—') + '</td>' +
           '<td class="num">' + esc(x.total || '') + '</td></tr>';
       }).join('') + '</tbody></table>' +
+      // Qué va a pasar con la bodega. Es lo que antes nadie veía: si ya se había
+      // sacado la pieza, el status no la devolvía y se quedaba afuera, apartada
+      // para una venta que ya no existe.
+      ((d.bodega && d.bodega.total)
+        ? '<div style="background:var(--paper);border-left:3px solid var(--success);' +
+          'border-radius:8px;padding:10px 14px;font-size:13px;margin-top:12px">' +
+          '<b>Regresan a bodega ' + fmtNum(d.bodega.total) +
+          (d.bodega.total === 1 ? ' pieza' : ' piezas') + '</b><div class="s" ' +
+          'style="color:var(--slate);margin-top:4px">' +
+          (d.bodega.piezas || []).map(function (x) {
+            return fmtNum(x.cantidad) + ' × ' + esc(x.producto) +
+              (x.material ? ' · ' + esc(x.material) : '');
+          }).join('<br>') + '</div></div>' : '') +
+      ((d.pedidosPiezas)
+        ? '<div style="background:var(--paper);border-left:3px solid var(--amber);' +
+          'border-radius:8px;padding:10px 14px;font-size:13px;margin-top:10px">' +
+          '<b>' + fmtNum(d.pedidosPiezas) +
+          (d.pedidosPiezas === 1 ? ' pieza ya pedida' : ' piezas ya pedidas') +
+          ' al proveedor</b><div class="s" style="color:var(--slate);margin-top:4px">' +
+          (d.pedidos || []).map(function (x) {
+            return fmtNum(x.cantidad) + ' × ' + esc(x.producto) +
+              (x.proveedor ? ' · ' + esc(x.proveedor) : '') +
+              (x.pedido ? ' · ' + esc(x.pedido) : '');
+          }).join('<br>') +
+          '<div style="margin-top:6px">El pedido no se cancela desde aquí: eso se habla ' +
+          'con el proveedor. Si llega, entra a bodega sin destino.</div></div></div>' : '') +
       '<div class="fld" style="margin-top:12px"><label>Por qué se cancela</label>' +
       '<input id="anMotivo" placeholder="se capturó mal, el cliente se arrepintió…"></div>' +
       '<div class="s" style="color:var(--muted);margin-top:10px">' + esc(d.nota || '') + '</div>';
@@ -15789,7 +15815,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.10.07-448';
+    var mia = '2026.10.07-449';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
