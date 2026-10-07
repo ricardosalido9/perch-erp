@@ -1035,7 +1035,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.06-447</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.07-448</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -7174,6 +7174,13 @@
   // Surtir ventas: lo que se vendió y todavía no tiene de dónde salir. De cada
   // pieza se dice si hay en bodega —y se asigna de un clic— o quién la ha hecho
   // antes, para mandarle el pedido sin salir de aquí.
+  // Cómo se llama esa variante. Las tres Velas Fénix comparten producto y
+  // material: lo único que las distingue es el Material Extra.
+  function variante(p) {
+    var a = String(p.material || '').trim(), b = String(p.materialExtra || '').trim();
+    if (b && b.toLowerCase() !== a.toLowerCase()) return a ? a + ' · ' + b : b;
+    return a;
+  }
   function loadSurtir() {
     document.getElementById('tableWrap').innerHTML =
       '<div class="state" style="padding:50px 0">Viendo qué falta por surtir…</div>';
@@ -7199,7 +7206,9 @@
       var h = (d.ventas || []).map(function (v) {
         return '<h3 style="margin:22px 0 8px;font-size:15px">' + esc(v.folio) +
           (v.cliente ? ' <span class="s" style="color:var(--slate)">· ' + esc(v.cliente) +
-            '</span>' : '') + '</h3>' +
+            '</span>' : '') +
+          (v.fecha ? ' <span class="s" style="color:var(--muted);font-weight:400">· ' +
+            esc(v.fecha) + '</span>' : '') + '</h3>' +
           v.piezas.map(function (p) {
             // Un mueble puede llevar dos componentes —la madera y la tela— y cada
             // uno lo hace otro proveedor en su propio pedido. Por eso el mueble va
@@ -7207,12 +7216,14 @@
             return '<div class="panel" style="margin-bottom:10px;padding:14px 16px">' +
               '<div style="display:flex;gap:14px;align-items:baseline;flex-wrap:wrap">' +
                 '<div style="font-weight:600">' + esc(p.producto) + '</div>' +
-                '<div class="s" style="color:var(--slate)">' + esc(p.material || '') + '</div>' +
+                '<div class="s" style="color:var(--slate)">' + esc(variante(p)) + '</div>' +
                 '<div class="s">' + fmtNum(p.vendidas) +
                   (p.vendidas === 1 ? ' pieza vendida' : ' piezas vendidas') + '</div>' +
                 (p.variosComponentes
                   ? '<div class="s" style="color:var(--slate)">lleva ' +
                     fmtNum(p.partes.length) + ' componentes</div>' : '') +
+                (p.completa
+                  ? '<div class="s" style="color:var(--success)">\u2713 ya asignada</div>' : '') +
               '</div>' +
               p.partes.map(function (c) {
                 var datos = 'data-folio="' + esc(p.folio).replace(/"/g, '&quot;') +
@@ -7237,11 +7248,27 @@
                 });
                 if (!acciones) acciones = '<span class="s" style="color:var(--amber)">' +
                   'Nadie ha hecho este componente antes: hay que elegir proveedor a mano.</span>';
+                // Lo que ya se consiguió no desaparece: se queda marcado. Si se
+                // borra en cuanto se asigna, quien surte no sabe si lo hizo él o
+                // si se le pasó.
+                if (c.listo) {
+                  return '<div style="margin-top:12px;padding-top:10px;border-top:1px dashed ' +
+                    'var(--line);display:flex;gap:12px;align-items:baseline;flex-wrap:wrap;' +
+                    'opacity:.72">' +
+                    '<div style="font-weight:600;color:var(--success)">\u2713 ' +
+                      esc(c.componente || 'Sin material') + '</div>' +
+                    '<div class="s" style="color:var(--slate)">' + fmtNum(c.surtidas) +
+                      (c.surtidas === 1 ? ' pieza asignada' : ' piezas asignadas') + '</div>' +
+                    '</div>';
+                }
                 return '<div style="margin-top:12px;padding-top:10px;border-top:1px dashed ' +
                   'var(--line)">' +
                   '<div style="display:flex;gap:12px;align-items:baseline;flex-wrap:wrap">' +
                     '<div style="font-weight:600">' + esc(c.componente || 'Sin material') + '</div>' +
                     '<div class="s">Faltan <b>' + fmtNum(c.falta) + '</b></div>' +
+                    (c.surtidas ? '<div class="s" style="color:var(--success)">\u2713 ' +
+                      fmtNum(c.surtidas) + ' ya asignada' + (c.surtidas === 1 ? '' : 's') +
+                      '</div>' : '') +
                     (c.enBodega ? '<div class="s" style="color:var(--success)">En bodega: ' +
                       fmtNum(c.enBodega) + '</div>' : '') +
                   '</div>' +
@@ -15762,7 +15789,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.10.06-447';
+    var mia = '2026.10.07-448';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
