@@ -1035,7 +1035,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.07-449</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.08-450</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -7248,6 +7248,9 @@
                 (p.variosComponentes
                   ? '<div class="s" style="color:var(--slate)">lleva ' +
                     fmtNum(p.partes.length) + ' componentes</div>' : '') +
+                (p.renglones > 1
+                  ? '<div class="s" style="color:var(--muted)">' + fmtNum(p.renglones) +
+                    ' renglones iguales en la venta</div>' : '') +
                 (p.completa
                   ? '<div class="s" style="color:var(--success)">\u2713 ya asignada</div>' : '') +
               '</div>' +
@@ -7258,7 +7261,26 @@
                   '" data-material="' + esc(c.componente).replace(/"/g, '&quot;') +
                   '" data-especificaciones="' + esc(p.especificaciones).replace(/"/g, '&quot;') + '"';
                 var acciones = '';
-                if (c.puedeDeStock > 0) {
+                // De qué pedido sale. Una pieza en bodega no es anónima: llegó en
+                // un pedido concreto, de un proveedor concreto y con su costo, y
+                // la salida tiene que decir de cuál sale o el estado de cuenta del
+                // proveedor y la trazabilidad quedan cojos. Un botón por pedido.
+                if (c.puedeDeStock > 0 && (c.lotes || []).length) {
+                  c.lotes.forEach(function (l) {
+                    var n = Math.min(l.disponibles, c.falta);
+                    if (n <= 0) return;
+                    acciones += '<button type="button" class="row-btn primary surtir-stock" ' +
+                      datos + ' data-cantidad="' + n +
+                      '" data-pedido="' + esc(l.pedido).replace(/"/g, '&quot;') +
+                      '" data-proveedor="' + esc(l.proveedor || '').replace(/"/g, '&quot;') +
+                      '" data-costo="' + (l.costo || 0) +
+                      '" title="Quedan ' + fmtNum(l.disponibles) + ' de este pedido' +
+                      (l.fecha ? ', llegó el ' + esc(l.fecha) : '') + '">Sacar ' + fmtNum(n) +
+                      ' de ' + esc(l.pedido) +
+                      (l.proveedor ? ' · ' + esc(l.proveedor) : '') + '</button> ';
+                  });
+                } else if (c.puedeDeStock > 0) {
+                  // Entradas sin número de pedido: no hay de dónde elegir
                   acciones += '<button type="button" class="row-btn primary surtir-stock" ' +
                     datos + ' data-cantidad="' + c.puedeDeStock + '">Sacar ' +
                     fmtNum(c.puedeDeStock) + ' de bodega</button> ';
@@ -15815,7 +15837,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.10.07-449';
+    var mia = '2026.10.08-450';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
@@ -16121,14 +16143,17 @@
       var g = function (n) { return sb.getAttribute('data-' + n) || ''; };
       var cu = g('cantidad');
       var texto = esStock
-        ? '¿Sacar ' + cu + ' de bodega para ' + g('folio') + '?'
+        ? '¿Sacar ' + cu + ' de bodega para ' + g('folio') + '?' +
+          (g('pedido') ? '\nSale del pedido ' + g('pedido') +
+            (g('proveedor') ? ' · ' + g('proveedor') : '') + '.' : '')
         : '¿Pedir ' + cu + ' a ' + g('proveedor') + ' para ' + g('folio') + '?';
       if (!confirm(texto)) return;
       sb.disabled = true; var antes = sb.textContent; sb.textContent = 'Registrando…';
       api('surtir', { token: state.token, hacer: esStock ? 'stock' : 'pedido',
             folio: g('folio'), cliente: g('cliente'), producto: g('producto'),
             material: g('material'), especificaciones: g('especificaciones'),
-            cantidad: cu, proveedor: g('proveedor'), costo: g('costo') })
+            cantidad: cu, proveedor: g('proveedor'), costo: g('costo'),
+            pedido: g('pedido') })
         .then(function (o) { toast(o.mensaje || 'Listo.', 'ok'); loadSurtir(); })
         .catch(function (err) { fail(err); sb.disabled = false; sb.textContent = antes; });
       return;
