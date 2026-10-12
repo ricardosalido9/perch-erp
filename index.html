@@ -1035,7 +1035,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.12-453</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.12-454</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -6977,7 +6977,10 @@
     document.getElementById('aventaTitulo').textContent = 'Archivos · ' + folio;
     document.getElementById('aventaCuerpo').innerHTML =
       '<div class="state" style="padding:30px 0">Buscando la carpeta en Drive…</div>';
-    document.getElementById('aventaOk').textContent = 'Cerrar';
+    // Aquí las acciones viven en el cuerpo —subir, registrar cobro—, así que el
+    // pie se queda con un solo Cerrar. Antes salían dos botones y los dos decían
+    // lo mismo, que es lo que hacía parecer que no había dónde guardar.
+    document.getElementById('aventaOk').style.display = 'none';
     document.getElementById('aventaCancel').textContent = 'Cerrar';
     document.getElementById('aventaModal').classList.add('on');
     modalModo = 'cerrar';
@@ -7036,11 +7039,18 @@
       '<div class="fld" style="margin:0"><label>Archivo</label>' +
         '<input type="file" id="arcFile"></div>' +
       '<button type="button" id="arcSubir">Subir</button></div>' +
-      // Un comprobante sin monto no sirve para cuadrar contra el banco, así que
-      // se pide aquí mismo en vez de en otra pantalla.
-      '<div id="arcPago" style="display:none;margin-top:10px;padding-top:10px;' +
-      'border-top:1px dashed var(--line)">' +
-        '<div class="s" style="font-weight:700;margin-bottom:8px">Datos del pago</div>' +
+      '<div class="s" style="color:var(--muted);margin-top:6px">Hasta 4 MB. El archivo se ' +
+      'guarda en la carpeta del folio, junto a la cotización.</div></div>' +
+      // Registrar un cobro es su propia acción, no un paso de subir un archivo.
+      //
+      // Estaba pegado al botón "Subir": si el comprobante ya estaba arriba —o si
+      // el intento anterior se cayó a la mitad— no había manera de registrar el
+      // cobro sin volver a subir el archivo. En el pie solo quedaban dos botones
+      // que decían Cerrar.
+      '<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line)">' +
+      '<div id="arcPago">' +
+        '<div class="s" style="font-weight:700;margin-bottom:8px">Registrar un cobro</div>' +
+        '<div id="arcCobros"></div>' +
         '<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">' +
         '<div class="fld" style="width:150px;margin:0"><label>Cuánto pagó</label>' +
           '<input type="number" id="arcMonto" step="0.01" min="0" placeholder="0.00"></div>' +
@@ -7057,20 +7067,88 @@
           '<option value="No">No la necesita</option>' +
           '<option value="Ya facturado">Ya está facturada</option></select></div>' +
         '</div>' +
-        '<div class="s" style="color:var(--amber);margin-top:6px">Queda como cobro ' +
-        'reportado. Cuenta como ingreso hasta que aparezca en el banco.</div>' +
-      '</div>' +
-      '<div class="s" style="color:var(--muted);margin-top:6px">Hasta 4 MB. El archivo se ' +
-      'guarda en la carpeta del folio, junto a la cotización.</div></div>';
+        '<div class="fld" style="width:260px;margin:10px 0 0"><label>Comprobante</label>' +
+          '<select id="arcComp">' +
+          '<option value="">— ninguno / lo subo arriba —</option>' +
+          (d.archivos || []).filter(function (a2) {
+            return /comprobante/i.test(a2.que || '') || /comprobante/i.test(a2.nombre || '');
+          }).map(function (a2) {
+            return '<option value="' + esc(a2.liga || a2.nombre).replace(/"/g, '&quot;') +
+              '">' + esc(a2.nombre) + '</option>';
+          }).join('') + '</select></div>' +
+        '<div style="margin-top:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
+          '<button type="button" class="primary" id="arcGuardarPago">Registrar cobro</button>' +
+          '<span class="s" style="color:var(--amber)">Queda como cobro reportado. ' +
+          'Cuenta como ingreso hasta que aparezca en el banco.</span>' +
+        '</div>' +
+      '</div></div>';
 
     document.getElementById('aventaCuerpo').innerHTML = h;
     document.getElementById('arcSubir').addEventListener('click', subirArchivoFolio);
-    var selTipo = document.getElementById('arcTipo');
-    var verPago = function () {
-      document.getElementById('arcPago').style.display =
-        /comprobante de pago/i.test(selTipo.value) ? '' : 'none';
-    };
-    selTipo.addEventListener('change', verPago); verPago();
+    document.getElementById('arcGuardarPago').addEventListener('click', function () {
+      registrarCobro(this, null);
+    });
+    cargarCobrosDelFolio();
+  }
+
+  // Los cobros que ese folio ya tiene. Se enseñan antes de capturar otro: si el
+  // intento anterior se cayó a la mitad, lo primero que hay que saber es si
+  // quedó o no, para no registrarlo dos veces.
+  function cargarCobrosDelFolio() {
+    var caja = document.getElementById('arcCobros');
+    if (!caja) return;
+    api('pago-cliente', { token: state.token, folio: arcFolio, listar: 1 })
+      .then(function (o) {
+        var c = o.cobros || [];
+        if (!c.length) {
+          caja.innerHTML = '<div class="s" style="color:var(--muted);margin-bottom:8px">' +
+            'Este folio no tiene cobros registrados.</div>';
+          return;
+        }
+        caja.innerHTML = '<div class="s" style="color:var(--slate);margin-bottom:6px">' +
+          'Ya registrados: <b>' + esc(formatMoney(o.total || 0)) + '</b> en ' +
+          fmtNum(c.length) + (c.length === 1 ? ' cobro' : ' cobros') + '</div>' +
+          '<table class="mini-table" style="margin-bottom:10px"><tbody>' +
+          c.map(function (x) {
+            return '<tr><td class="s">' + esc(x.fecha || '') + '</td>' +
+              '<td class="num">' + esc(formatMoney(x.monto)) + '</td>' +
+              '<td class="s" style="color:var(--slate)">' + esc(x.metodo || '') +
+              (x.referencia ? ' · ' + esc(x.referencia) : '') + '</td>' +
+              '<td class="s" style="color:' + (x.banco ? 'var(--success)' : 'var(--amber)') +
+              '">' + (x.banco ? 'en banco' : 'sin confirmar') + '</td></tr>';
+          }).join('') + '</tbody></table>';
+      })
+      .catch(function () { caja.innerHTML = ''; });
+  }
+
+  // Registrar el cobro, con o sin archivo de por medio.
+  function registrarCobro(btn, ligaComprobante) {
+    var monto = (document.getElementById('arcMonto') || {}).value;
+    if (!(Number(monto) > 0)) { toast('Pon cuánto pagó.', 'err'); return; }
+    var fp = document.getElementById('arcFechaPago');
+    var comp = ligaComprobante ||
+      ((document.getElementById('arcComp') || {}).value || '');
+    if (btn) { btn.disabled = true; btn.textContent = 'Registrando…'; }
+    return api('pago-cliente', { token: state.token, folio: arcFolio, cliente: arcCliente,
+        monto: monto,
+        fecha: fp && fp.value ? isoToLargo(fp.value) : '',
+        metodo: (document.getElementById('arcMetodo') || {}).value,
+        referencia: (document.getElementById('arcRef') || {}).value,
+        requiereFactura: (document.getElementById('arcFactura') || {}).value,
+        comprobante: comp })
+      .then(function (o) {
+        toast(o.mensaje || 'Cobro registrado.', 'ok');
+        if (o.nota) avisoFijo('<b>' + esc(o.mensaje || '') + '</b>' +
+          '<div style="margin-top:6px">' + esc(o.nota) + '</div>');
+        cargarArchivos();
+      })
+      .catch(function (e) {
+        avisoFijo('<b>No se registró el cobro.</b><div style="margin-top:6px">' +
+          esc((e && e.message) || '') + '</div>' +
+          (e && e.pista ? '<div class="s" style="margin-top:6px;color:var(--slate)">' +
+            esc(e.pista) + '</div>' : ''));
+        if (btn) { btn.disabled = false; btn.textContent = 'Registrar cobro'; }
+      });
   }
   function subirArchivoFolio() {
     var inp = document.getElementById('arcFile');
@@ -7092,33 +7170,19 @@
                       nombre: nombre, mime: file.type || 'application/octet-stream',
                       data: String(fr.result).split(',')[1] })
         .then(function (out) {
-          if (!/comprobante de pago/i.test(tipo)) {
-            toast('Archivo subido.', 'ok'); inp.value = ''; cargarArchivos(); return;
+          inp.value = '';
+          var liga = (out && out.liga) || (out && out.url) || nombre;
+          var monto = (document.getElementById('arcMonto') || {}).value;
+          // Si es un comprobante y ya hay monto, se aprovecha el viaje. Si no,
+          // el archivo queda subido y el cobro se registra abajo cuando quieran:
+          // ya no es un paso obligado del mismo botón.
+          if (/comprobante de pago/i.test(tipo) && Number(monto) > 0) {
+            return registrarCobro(null, liga);
           }
-          // Mismo paso: se sube el comprobante y se registra el cobro
-          var fp = document.getElementById('arcFechaPago');
-          return api('pago-cliente', { token: state.token, folio: arcFolio,
-              cliente: arcCliente,
-              monto: document.getElementById('arcMonto').value,
-              fecha: fp && fp.value ? isoToLargo(fp.value) : '',
-              metodo: document.getElementById('arcMetodo').value,
-              referencia: document.getElementById('arcRef').value,
-              requiereFactura: document.getElementById('arcFactura').value,
-              comprobante: (out && out.liga) || (out && out.url) || nombre })
-            .then(function (o) {
-              toast(o.mensaje || 'Cobro registrado.', 'ok');
-              inp.value = '';
-              document.getElementById('arcMonto').value = '';
-              document.getElementById('arcRef').value = '';
-              cargarArchivos();
-            })
-            .catch(function (e) {
-              avisoFijo('<b>El comprobante se subió, pero el cobro no se registró.</b>' +
-                '<div style="margin-top:6px">' + esc((e && e.message) || '') + '</div>' +
-                (e && e.pista ? '<div class="s" style="margin-top:6px;color:var(--slate)">' +
-                  esc(e.pista) + '</div>' : ''));
-              cargarArchivos();
-            });
+          toast(/comprobante de pago/i.test(tipo)
+            ? 'Comprobante subido. Abajo puedes registrar el cobro.'
+            : 'Archivo subido.', 'ok');
+          cargarArchivos();
         })
         .catch(function (e) {
           avisoFijo('<b>No se pudo subir el archivo.</b><div style="margin-top:6px">' +
@@ -14885,6 +14949,7 @@
     entradaPedido = null; entradaLineas = []; entradaPend = null;
     var bOk = document.getElementById('aventaOk');
     bOk.textContent = 'Registrar salidas';
+    bOk.style.display = '';
     bOk.disabled = false; bOk.title = ''; bOk.style.opacity = ''; bOk.style.cursor = '';
   }
   // Escribe el folio de la venta en los renglones del pedido que se repartieron.
@@ -16036,7 +16101,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.10.12-453';
+    var mia = '2026.10.12-454';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
