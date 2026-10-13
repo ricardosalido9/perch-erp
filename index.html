@@ -1035,7 +1035,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.13-457</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.13-458</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -12036,6 +12036,24 @@
   // Cómo se enseña y cómo se guarda un porcentaje: siempre con el signo. La hoja
   // guarda 15% como 0.15 y la fórmula del descuento multiplica por esa celda, así
   // que un 15 sin signo se vuelve 1500% y manda el total a negativo.
+  // Cuando la hoja no le baja las fórmulas al renglón nuevo.
+  //
+  // No se ve roto: el ERP calcula el importe por su cuenta y la tarjeta se ve
+  // bien. Pero en la hoja el Total Pedido queda vacío y esa venta suma cero en
+  // el dashboard. Si no se avisa aquí, se descubre semanas después cuadrando.
+  function avisaSinFormulas(out) {
+    if (!out || !(out.sinFormulas || []).length) return false;
+    var f = out.sinFormulas;
+    avisoFijo('<b>El renglón se guardó, pero la hoja no le bajó las fórmulas.</b>' +
+      '<div style="margin-top:6px">Renglón ' + f.join(', ') +
+      ' de la hoja. Mientras no las tenga, el Total Pedido de esa venta queda vacío ' +
+      'y suma cero en el dashboard.</div>' +
+      '<div style="margin-top:6px">Ábrela y arrastra las fórmulas del renglón de ' +
+      'arriba hacia ese, o avísame y lo reviso.</div>' +
+      (out.porque ? '<div class="s" style="margin-top:6px;color:var(--slate)">' +
+        esc(out.porque) + '</div>' : ''));
+    return true;
+  }
   function comoPorcentaje(v) {
     var t = String(v == null ? '' : v).trim();
     if (!t) return '';
@@ -14329,8 +14347,9 @@
       }
     }
     var btn = document.getElementById('saveBtn'); btn.disabled = true; btn.textContent = 'Guardando...';
-    api('add', { token: state.token, key: state.key, record: record }).then(function () {
+    api('add', { token: state.token, key: state.key, record: record }).then(function (out) {
       toast('Registro agregado.', 'ok');
+      avisaSinFormulas(out);
       els.forEach(function (i) { i.value = ''; }); cerrarModalAlta(); loadArea();
     }).catch(function (e) { mostrarErrorAlta(e, state.key); fail(e); }).then(function () { btn.disabled = false; btn.textContent = 'Guardar registro'; });
   }
@@ -14431,6 +14450,7 @@
       var folio = (out && out.folio) ? (' · Folio ' + out.folio) : '';
       toast((esCotiza ? 'Cotización guardada: ' : 'Venta guardada: ') + n +
             (n === 1 ? ' producto' : ' productos') + folio + '.', 'ok');
+      avisaSinFormulas(out);
       state.lineItems = []; envioValor = ''; descPedido = { tipo: '', monto: '' };
     editandoProducto = false; lineaEditando = -1;
     folioDestino = null;
@@ -16154,7 +16174,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.10.13-457';
+    var mia = '2026.10.13-458';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
