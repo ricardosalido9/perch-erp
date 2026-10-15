@@ -1035,7 +1035,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.15-463</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.15-466</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -7141,23 +7141,30 @@
 
   // Mover un cobro al folio que le tocaba. No se borra el renglón: se corrige y
   // queda escrito de dónde venía, quién lo movió y cuándo.
-  function moverCobro(fila) {
-    var nuevo = prompt('¿A qué folio pertenece este cobro?\n\nEstá en ' + arcFolio + '.');
+  function moverCobro(fila, folioActual, recargar) {
+    var nuevo = prompt('¿A qué folio pertenece este cobro?\n\nEstá en ' +
+                       (folioActual || arcFolio) + '.');
     if (nuevo == null) return;
     nuevo = String(nuevo).trim().toUpperCase();
     if (!nuevo) { toast('Escribe el folio.', 'err'); return; }
     api('pago-cliente', { token: state.token, accion: 'mover', fila: fila,
-                          folioNuevo: nuevo, folio: arcFolio })
-      .then(function (o) { toast(o.mensaje || 'Listo.', 'ok'); cargarCobrosDelFolio(); })
+                          folioNuevo: nuevo, folio: folioActual || arcFolio })
+      .then(function (o) {
+        toast(o.mensaje || 'Listo.', 'ok');
+        (recargar || cargarCobrosDelFolio)();
+      })
       .catch(fail);
   }
-  function cancelarCobro(fila, monto) {
+  function cancelarCobro(fila, monto, recargar) {
     if (!confirm('¿Cancelar este cobro de ' + formatMoney(monto) + '?\n\n' +
                  'El renglón se queda con el registro de qué pasó, pero deja de contar.')) return;
     var motivo = prompt('¿Por qué se cancela?') || '';
     api('pago-cliente', { token: state.token, accion: 'cancelar', fila: fila,
                           motivo: motivo, folio: arcFolio })
-      .then(function (o) { toast(o.mensaje || 'Listo.', 'ok'); cargarCobrosDelFolio(); })
+      .then(function (o) {
+        toast(o.mensaje || 'Listo.', 'ok');
+        (recargar || cargarCobrosDelFolio)();
+      })
       .catch(fail);
   }
 
@@ -7887,7 +7894,14 @@
           '<a href="#" class="fac-nota" data-fila="' + f.fila +
           '" data-nota="' + esc(f.notaFactura || '').replace(/"/g, '&quot;') +
           '" style="color:var(--accent)">' +
-          (f.notaFactura ? 'cambiar nota' : 'dejar nota') + '</a></div></td>';
+          (f.notaFactura ? 'cambiar nota' : 'dejar nota') + '</a>' +
+          // Un cobro mal puesto se nota aquí, al ir a facturarlo. Aquí se arregla.
+          ' · <a href="#" class="fac-mover" data-fila="' + f.fila +
+          '" data-folio="' + esc(f.folio).replace(/"/g, '&quot;') +
+          '" style="color:var(--accent)">cambiar de folio</a>' +
+          ' · <a href="#" class="fac-cancelar" data-fila="' + f.fila +
+          '" data-monto="' + f.monto + '" style="color:var(--danger)">no va aquí</a>' +
+          '</div></td>';
       };
       var tabla = function (titulo, nota, filas, extra) {
         if (!filas.length) return '';
@@ -7897,7 +7911,26 @@
           '<th>Fecha del pago</th>' + (extra ? '<th>Factura</th>' : '<th>Seguimiento</th>') +
           '<th style="text-align:right">Monto</th></tr></thead><tbody>' +
           filas.map(function (f) {
-            return '<tr><td>' + esc(f.folio) + '</td><td>' + esc(f.cliente) + '</td>' +
+            return '<tr><td>' + esc(f.folio) + '</td><td>' +
+              // Lo que hay que revisar antes de pedir la factura, junto al nombre
+              esc(f.cliente) +
+              (f.fiscal && f.fiscal.razonSocial &&
+                 norm(f.fiscal.razonSocial) !== norm(f.cliente)
+                ? '<div class="s" style="color:var(--slate)">' + esc(f.fiscal.razonSocial) +
+                  '</div>' : '') +
+              (f.fiscal && f.fiscal.rfc
+                ? '<div class="s" style="color:var(--muted)">' + esc(f.fiscal.rfc) +
+                  (f.fiscal.regimen ? ' · ' + esc(f.fiscal.regimen) : '') +
+                  (f.fiscal.uso ? ' · ' + esc(f.fiscal.uso) : '') + '</div>' : '') +
+              ((f.faltanDatos || []).length
+                ? '<div class="s" style="color:var(--amber)">Falta ' +
+                  esc(f.faltanDatos.join(', ')) + '</div>' : '') +
+              (f.metodo
+                ? '<div class="s"><b>' + esc(f.metodo) + '</b> <span style="color:var(--muted)">· ' +
+                  esc(f.metodoPorque || '') + '</span></div>'
+                : (f.metodoPorque ? '<div class="s" style="color:var(--muted)">' +
+                   esc(f.metodoPorque) + '</div>' : '')) +
+              '</td>' +
               '<td>' + esc(f.fecha) +
               // Quien factura decide si emite ya o espera el dinero, pero lo ve
               (f.enBanco === false
@@ -7932,7 +7965,12 @@
         '<div class="s" style="color:var(--muted);margin-top:16px">Sale de ' +
         fmtNum(L.cobrosLeidos) + ' cobros registrados (' + fmtNum(L.cobrosConfirmados) +
         ' confirmados en banco, ' + fmtNum(L.cobrosSinBanco) + ' todavía no) y ' +
-        fmtNum(L.facturasLeidas) + ' facturas del SAT. El plazo corre desde la fecha del ' +
+        fmtNum(L.facturasLeidas) + ' facturas del SAT. ' +
+        (L.hayColumnaUso === false
+          ? 'La Lista de Clientes no tiene columna "Uso de CFDI": agrégala y se llena por ' +
+            'cliente, que es donde vive ese dato. '
+          : '') +
+        'PUE o PPD no se elige: sale de si la venta ya quedó pagada. El plazo corre desde la fecha del ' +
         'pago, no desde que se concilia el banco, así que los no confirmados también ' +
         'salen aquí, marcados. El CFDI no trae el folio de la venta: se cruzan por cliente ' +
         'y monto, y si no, por monto y fecha cercana.</div>';
@@ -16235,7 +16273,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.10.15-463';
+    var mia = '2026.10.15-466';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
@@ -16565,6 +16603,20 @@
         })
         .catch(function (er) { fail(er); fr.disabled = false;
           fr.textContent = esRev ? 'Condiciones OK' : 'Ya la facturé'; });
+      return;
+    }
+    var fm = e.target.closest('.fac-mover');
+    if (fm) {
+      e.preventDefault();
+      moverCobro(fm.getAttribute('data-fila'), fm.getAttribute('data-folio'),
+                 loadControlFactura);
+      return;
+    }
+    var fc = e.target.closest('.fac-cancelar');
+    if (fc) {
+      e.preventDefault();
+      cancelarCobro(fc.getAttribute('data-fila'), fc.getAttribute('data-monto'),
+                    loadControlFactura);
       return;
     }
     var fn = e.target.closest('.fac-nota');
