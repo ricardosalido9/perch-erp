@@ -1035,7 +1035,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.13-459</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.15-460</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -7840,12 +7840,45 @@
           '<div class="k" style="text-transform:none;letter-spacing:0">el SAT no los tiene</div>' +
           '</div>' : '');
 
+      // El seguimiento, que es lo que antes era pintar la celda de rojo.
+      //
+      // Comercial marca que revisó las condiciones —RFC, razón social, método,
+      // monto— y quien factura marca que ya la emitió. Cada marca queda con
+      // nombre y fecha, y la nota la ven los dos: así el pendiente deja de
+      // vivir en un WhatsApp y vive junto al cobro.
+      var marca = function (v, color) {
+        if (!v) return '';
+        var p = String(v).split('·');
+        return '<div class="s" style="color:' + color + '">\u2713 ' +
+          esc((p[1] || '').trim() || 'listo') +
+          (p[2] ? '<div style="color:var(--muted)">' + esc(p[2].trim()) + '</div>' : '') + '</div>';
+      };
+      var seguimiento = function (f) {
+        var rev = String(f.revisado || ''), fac = String(f.facturado || '');
+        return '<td style="min-width:230px">' +
+          '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">' +
+          (rev ? marca(rev, 'var(--success)')
+               : '<button type="button" class="row-btn fac-revisar" data-fila="' + f.fila +
+                 '" data-folio="' + esc(f.folio).replace(/"/g, '&quot;') +
+                 '">Condiciones OK</button>') +
+          (fac ? marca(fac, 'var(--accent)')
+               : '<button type="button" class="row-btn fac-emitida" data-fila="' + f.fila +
+                 '" data-folio="' + esc(f.folio).replace(/"/g, '&quot;') +
+                 '">Ya la facturé</button>') +
+          '</div>' +
+          '<div class="s" style="margin-top:4px">' +
+          (f.notaFactura ? '<span style="color:var(--slate)">' + esc(f.notaFactura) + '</span> ' : '') +
+          '<a href="#" class="fac-nota" data-fila="' + f.fila +
+          '" data-nota="' + esc(f.notaFactura || '').replace(/"/g, '&quot;') +
+          '" style="color:var(--accent)">' +
+          (f.notaFactura ? 'cambiar nota' : 'dejar nota') + '</a></div></td>';
+      };
       var tabla = function (titulo, nota, filas, extra) {
         if (!filas.length) return '';
         return '<h3 style="margin:22px 0 6px;font-size:15px">' + esc(titulo) + '</h3>' +
           '<div class="s" style="color:var(--slate);margin-bottom:8px">' + esc(nota) + '</div>' +
           '<table class="mini-table"><thead><tr><th>Folio</th><th>Cliente</th>' +
-          '<th>Fecha del pago</th>' + (extra ? '<th>Factura</th>' : '') +
+          '<th>Fecha del pago</th>' + (extra ? '<th>Factura</th>' : '<th>Seguimiento</th>') +
           '<th style="text-align:right">Monto</th></tr></thead><tbody>' +
           filas.map(function (f) {
             return '<tr><td>' + esc(f.folio) + '</td><td>' + esc(f.cliente) + '</td>' +
@@ -7854,7 +7887,8 @@
                  ? esc(f.fechaFactura || '') + ' · ' + esc(String(f.uuid).slice(0, 8)) + '…' +
                    (f.cuadroPor && f.cuadroPor !== 'folio'
                      ? '<div style="color:var(--muted)">cuadró por ' + esc(f.cuadroPor) + '</div>' : '')
-                 : '<span style="color:var(--amber)">marcada a mano, sin CFDI</span>') + '</td>' : '') +
+                 : '<span style="color:var(--amber)">marcada a mano, sin CFDI</span>') + '</td>'
+                    : seguimiento(f)) +
               '<td class="num">' + esc(fmtMoney(f.monto)) + '</td></tr>';
           }).join('') + '</tbody></table>';
       };
@@ -16174,7 +16208,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.10.13-459';
+    var mia = '2026.10.15-460';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
@@ -16479,6 +16513,47 @@
       return;
     }
     // Surtir de bodega o mandar el pedido, desde la misma pantalla
+    // Seguimiento de facturación: las tres acciones escriben sobre el mismo
+    // renglón del cobro, para que Comercial y quien factura vean lo del otro.
+    var fr = e.target.closest('.fac-revisar') || e.target.closest('.fac-emitida');
+    if (fr) {
+      var esRev = fr.classList.contains('fac-revisar');
+      var fol = fr.getAttribute('data-folio') || '';
+      if (!confirm(esRev
+            ? '¿Marcar que ya revisaste las condiciones de ' + fol + '?\n\n' +
+              'RFC y razón social, método de pago, uso del CFDI y monto.'
+            : '¿Marcar ' + fol + ' como ya facturada?')) return;
+      fr.disabled = true; fr.textContent = 'Guardando…';
+      api('pago-cliente', { token: state.token,
+            accion: esRev ? 'revisar' : 'facturada',
+            fila: fr.getAttribute('data-fila'),
+            revisado: 'si', facturada: 'si' })
+        .then(function (o) {
+          toast(o.mensaje || 'Listo.', 'ok');
+          if ((o.columnasCreadas || []).length) {
+            toast('Se crearon las columnas ' + o.columnasCreadas.join(' y ') +
+                  ' en la pestaña de cobros.', 'ok');
+          }
+          loadControlFactura();
+        })
+        .catch(function (er) { fail(er); fr.disabled = false;
+          fr.textContent = esRev ? 'Condiciones OK' : 'Ya la facturé'; });
+      return;
+    }
+    var fn = e.target.closest('.fac-nota');
+    if (fn) {
+      e.preventDefault();
+      var previa = fn.getAttribute('data-nota') || '';
+      var nota = prompt('Nota para esta factura. La ven Comercial y quien factura.\n\n' +
+                        'Ej: falta la constancia · el cliente pidió cambio de razón social · ' +
+                        'va con complemento de pago', previa);
+      if (nota == null) return;
+      api('pago-cliente', { token: state.token, accion: 'nota',
+            fila: fn.getAttribute('data-fila'), nota: nota })
+        .then(function () { toast('Nota guardada.', 'ok'); loadControlFactura(); })
+        .catch(fail);
+      return;
+    }
     var sa = e.target.closest('.surtir-abrir');
     if (sa) {
       var fol = sa.getAttribute('data-folio'), pr = sa.getAttribute('data-producto'),
