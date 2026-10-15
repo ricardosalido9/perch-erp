@@ -1035,7 +1035,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.15-460</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.15-461</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -7835,6 +7835,10 @@
         '<div class="sum-card"><div class="k">Ya facturado</div><div class="v">' +
           fmtMoney(t.facturado) + '</div><div class="k" style="text-transform:none;letter-spacing:0">' +
           fmtNum(t.nFacturado) + ' cobros</div></div>' +
+        (t.sinConfirmarEnBanco ? '<div class="sum-card"><div class="k">Sin confirmar en banco</div>' +
+          '<div class="v" style="color:var(--amber)">' + fmtNum(t.sinConfirmarEnBanco) + '</div>' +
+          '<div class="k" style="text-transform:none;letter-spacing:0">el pago está reportado, ' +
+          'el banco no lo ha cuadrado</div></div>' : '') +
         (t.marcadoSinCfdi ? '<div class="sum-card"><div class="k">Marcados sin CFDI</div>' +
           '<div class="v" style="color:var(--amber)">' + fmtNum(t.marcadoSinCfdi) + '</div>' +
           '<div class="k" style="text-transform:none;letter-spacing:0">el SAT no los tiene</div>' +
@@ -7882,7 +7886,11 @@
           '<th style="text-align:right">Monto</th></tr></thead><tbody>' +
           filas.map(function (f) {
             return '<tr><td>' + esc(f.folio) + '</td><td>' + esc(f.cliente) + '</td>' +
-              '<td>' + esc(f.fecha) + '</td>' +
+              '<td>' + esc(f.fecha) +
+              // Quien factura decide si emite ya o espera el dinero, pero lo ve
+              (f.enBanco === false
+                ? '<div class="s" style="color:var(--amber)">sin confirmar en banco</div>' : '') +
+              '</td>' +
               (extra ? '<td class="s">' + (f.uuid
                  ? esc(f.fechaFactura || '') + ' · ' + esc(String(f.uuid).slice(0, 8)) + '…' +
                    (f.cuadroPor && f.cuadroPor !== 'folio'
@@ -7903,12 +7911,19 @@
           d.conFactura || [], true);
 
       document.getElementById('tableWrap').innerHTML = (h ||
-        '<div class="state" style="padding:40px 0">Ningún cobro pide factura todavía.</div>') +
+        '<div class="state" style="padding:40px 0">Ningún cobro pide factura todavía.' +
+        (L.cobrosLeidos ? '<div class="s" style="margin-top:8px;color:var(--slate)">Hay ' +
+          fmtNum(L.cobrosLeidos) + ' cobros registrados, pero ninguno tiene ' +
+          '"Requiere factura" en Sí. Se marca al registrar el cobro, en el expediente ' +
+          'de la venta.</div>' : '<div class="s" style="margin-top:8px;color:var(--slate)">' +
+          'Todavía no hay cobros registrados.</div>') + '</div>') +
         '<div class="s" style="color:var(--muted);margin-top:16px">Sale de ' +
-        fmtNum(L.cobrosConfirmados) + ' cobros confirmados y ' + fmtNum(L.facturasLeidas) +
-        ' facturas del SAT. El CFDI no trae el folio de la venta, así que se cruzan por ' +
-        'cliente y monto, y si no, por monto y fecha cercana. Las que cuadraron así salen ' +
-        'marcadas para poder revisarlas.</div>';
+        fmtNum(L.cobrosLeidos) + ' cobros registrados (' + fmtNum(L.cobrosConfirmados) +
+        ' confirmados en banco, ' + fmtNum(L.cobrosSinBanco) + ' todavía no) y ' +
+        fmtNum(L.facturasLeidas) + ' facturas del SAT. El plazo corre desde la fecha del ' +
+        'pago, no desde que se concilia el banco, así que los no confirmados también ' +
+        'salen aquí, marcados. El CFDI no trae el folio de la venta: se cruzan por cliente ' +
+        'y monto, y si no, por monto y fecha cercana.</div>';
     }).catch(fail);
   }
 
@@ -16208,7 +16223,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.10.15-460';
+    var mia = '2026.10.15-461';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
