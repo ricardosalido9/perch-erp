@@ -1035,7 +1035,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.15-461</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.15-463</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -6974,6 +6974,7 @@
   var arcFolio = null, arcCliente = '';
   function abrirArchivos(folio, cliente) {
     arcFolio = folio; arcCliente = cliente || '';
+    cobroForzar = false;   // no se arrastra el "regístralo igual" de otro folio
     document.getElementById('aventaTitulo').textContent = 'Archivos · ' + folio;
     document.getElementById('aventaCuerpo').innerHTML =
       '<div class="state" style="padding:30px 0">Buscando la carpeta en Drive…</div>';
@@ -7161,6 +7162,7 @@
   }
 
   // Registrar el cobro, con o sin archivo de por medio.
+  var cobroForzar = false;
   function registrarCobro(btn, ligaComprobante) {
     var monto = (document.getElementById('arcMonto') || {}).value;
     if (!(Number(monto) > 0)) { toast('Pon cuánto pagó.', 'err'); return; }
@@ -7174,14 +7176,24 @@
         metodo: (document.getElementById('arcMetodo') || {}).value,
         referencia: (document.getElementById('arcRef') || {}).value,
         requiereFactura: (document.getElementById('arcFactura') || {}).value,
-        comprobante: comp })
+        comprobante: comp, forzar: cobroForzar ? 1 : 0 })
       .then(function (o) {
+        cobroForzar = false;
         toast(o.mensaje || 'Cobro registrado.', 'ok');
         if (o.nota) avisoFijo('<b>' + esc(o.mensaje || '') + '</b>' +
           '<div style="margin-top:6px">' + esc(o.nota) + '</div>');
         cargarArchivos();
       })
       .catch(function (e) {
+        // El mismo pago registrado dos veces: se avisa y se deja seguir, porque
+        // dos anticipos iguales el mismo día sí pueden ser dos cobros.
+        if (e && e.sePuedeForzar) {
+          if (btn) { btn.disabled = false; btn.textContent = 'Sí, registrarlo de todos modos'; }
+          avisoFijo('<b>' + esc((e && e.message) || 'Revisa esto antes de seguir.') +
+            '</b><div style="margin-top:6px">' + esc(e.pista || '') + '</div>');
+          cobroForzar = true;
+          return;
+        }
         avisoFijo('<b>No se registró el cobro.</b><div style="margin-top:6px">' +
           esc((e && e.message) || '') + '</div>' +
           (e && e.pista ? '<div class="s" style="margin-top:6px;color:var(--slate)">' +
@@ -16223,7 +16235,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.10.15-461';
+    var mia = '2026.10.15-463';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
