@@ -1035,7 +1035,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.15-466</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.20-467</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -7901,7 +7901,14 @@
           '" style="color:var(--accent)">cambiar de folio</a>' +
           ' · <a href="#" class="fac-cancelar" data-fila="' + f.fila +
           '" data-monto="' + f.monto + '" style="color:var(--danger)">no va aquí</a>' +
-          '</div></td>';
+          '</div>' +
+          // El expediente del folio, desde aquí. Quien factura necesita ver la
+          // cotización y la constancia antes de emitir, y hasta ahora para llegar
+          // a ellas había que entrar a Ventas, que es un área que no tiene.
+          '<div style="margin-top:5px"><button type="button" class="row-btn fac-expediente" ' +
+          'data-folio="' + esc(f.folio).replace(/"/g, '&quot;') +
+          '" data-cli="' + esc(f.cliente).replace(/"/g, '&quot;') +
+          '">Ver cotización y archivos</button></div></td>';
       };
       var tabla = function (titulo, nota, filas, extra) {
         if (!filas.length) return '';
@@ -16273,7 +16280,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.10.15-466';
+    var mia = '2026.10.20-467';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
@@ -16603,6 +16610,11 @@
         })
         .catch(function (er) { fail(er); fr.disabled = false;
           fr.textContent = esRev ? 'Condiciones OK' : 'Ya la facturé'; });
+      return;
+    }
+    var fe = e.target.closest('.fac-expediente');
+    if (fe) {
+      abrirArchivos(fe.getAttribute('data-folio'), fe.getAttribute('data-cli'));
       return;
     }
     var fm = e.target.closest('.fac-mover');
