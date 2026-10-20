@@ -1035,7 +1035,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.20-467</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.20-468</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -7381,6 +7381,18 @@
           ' · se sacan ' + fmtNum(n) + '</span></span></label>';
       }).join('');
     }
+    // El costo con el que se escribe la salida. Si el pedido lo trae, viene puesto;
+    // si no, se propone el último conocido para que nadie tenga que salirse de
+    // aquí a buscarlo en el pedido.
+    if (lotes.length) {
+      var cs = lotes[0].costo || 0;
+      h += '<div class="fld" style="width:190px;margin:8px 0 0"><label>Costo unitario</label>' +
+        '<input id="suCostoStock" type="number" step="0.01" value="' + (cs || '') + '"></div>' +
+        '<div class="s" style="color:var(--muted);margin-top:2px">' +
+        (lotes[0].costoDelPedido ? 'Es el costo de ese pedido.'
+                                 : 'Es el último costo conocido de esta pieza: revísalo.') +
+        '</div>';
+    }
     h += '</div>';
 
     // --- Pedir a proveedor ---
@@ -7459,7 +7471,9 @@
       if (!l) { toast('Elige de qué pedido sale.', 'err'); return; }
       datos.hacer = 'stock';
       datos.cantidad = Math.min(l.disponibles, c.falta);
-      datos.pedido = l.pedido; datos.proveedor = l.proveedor || ''; datos.costo = l.costo || 0;
+      datos.pedido = l.pedido; datos.proveedor = l.proveedor || '';
+      var ci = document.getElementById('suCostoStock');
+      datos.costo = ci && ci.value !== '' ? Number(ci.value) : (l.costo || 0);
     } else {
       var sel = document.getElementById('suPedSel');
       var nuevo = document.getElementById('suPedNuevo');
@@ -7557,7 +7571,12 @@
         (t.sinProveedor ? '<div class="sum-card"><div class="k">Sin proveedor conocido</div>' +
           '<div class="v" style="color:var(--amber)">' + fmtNum(t.sinProveedor) + '</div>' +
           '<div class="k" style="text-transform:none;letter-spacing:0">nadie las ha hecho</div>' +
-          '</div>' : '');
+          '</div>' : '') +
+        // Piezas que el catálogo tiene en varias variantes y la venta no dice cuál.
+        (t.sinVariante ? '<div class="sum-card"><div class="k">Falta la variante</div>' +
+          '<div class="v" style="color:var(--amber)">' + fmtNum(t.sinVariante) + '</div>' +
+          '<div class="k" style="text-transform:none;letter-spacing:0">la venta no dice ' +
+          'cuál surtir</div></div>' : '');
 
       var h = (d.ventas || []).map(function (v) {
         return '<h3 style="margin:22px 0 8px;font-size:15px">' + esc(v.folio) +
@@ -7587,6 +7606,14 @@
                 (p.completa
                   ? '<div class="s" style="color:var(--success)">\u2713 ya asignada</div>' : '') +
               '</div>' +
+              // Si el catálogo tiene varias variantes y la venta no dice cuál, el
+              // panel no la inventa: lo dice y lista las opciones.
+              ((p.faltaVariante || []).length
+                ? '<div class="s" style="color:var(--amber);margin:2px 0 8px">' +
+                  '<b>Falta decir cuál es:</b> ' + esc(p.faltaVariante.join(' · ')) +
+                  '. La venta no trae Material Extra, así que no se sabe qué variante ' +
+                  'surtir. Corrígelo en la venta.</div>'
+                : '') +
               p.partes.map(function (c) {
                 var datos = 'data-folio="' + esc(p.folio).replace(/"/g, '&quot;') +
                   '" data-cliente="' + esc(p.cliente).replace(/"/g, '&quot;') +
@@ -16280,7 +16307,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.10.20-467';
+    var mia = '2026.10.20-468';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
