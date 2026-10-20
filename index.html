@@ -1035,7 +1035,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.20-472</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.20-474</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -7582,12 +7582,15 @@
       (f.notas ? '<div style="grid-column:1/-1" class="s">' + esc(f.notas) + '</div>' : '') +
       '</div>';
   }
+  // Lo ya surtido no se borra, se guarda. Sin esto, una venta desaparecía al
+  // quedar completa y no había desde dónde consultar qué se le había mandado.
+  var surtirVerTodas = false;
   function loadSurtir() {
     document.getElementById('tableWrap').innerHTML =
       '<div class="state" style="padding:50px 0">Viendo qué falta por surtir…</div>';
     document.getElementById('summary').innerHTML = '';
     mostrarAlta(false);
-    api('surtir', { token: state.token }).then(function (d) {
+    api('surtir', { token: state.token, todas: surtirVerTodas ? 1 : 0 }).then(function (d) {
       surtirDatos = d;
       var t = d.totales || {};
       var box = document.getElementById('summary');
@@ -7749,8 +7752,21 @@
           }).join('');
       }).join('');
 
-      document.getElementById('tableWrap').innerHTML = h ||
-        '<div class="state" style="padding:40px 0">Todas las ventas están surtidas.</div>';
+      // El interruptor para consultar lo ya surtido de una venta vieja.
+      var barra = '<div style="display:flex;justify-content:flex-end;margin-bottom:6px">' +
+        '<label class="s" style="display:flex;gap:7px;align-items:center;cursor:pointer;' +
+        'color:var(--slate)"><input type="checkbox" id="suVerTodas"' +
+        (surtirVerTodas ? ' checked' : '') + '>Ver también las ya surtidas' +
+        (d.yaSurtidas ? ' (' + fmtNum(d.yaSurtidas) + ')' : '') + '</label></div>';
+
+      document.getElementById('tableWrap').innerHTML = barra + (h ||
+        '<div class="state" style="padding:40px 0">' +
+        (surtirVerTodas ? 'No hay ventas que mostrar.'
+                        : 'Todas las ventas están surtidas.') + '</div>');
+      var vt = document.getElementById('suVerTodas');
+      if (vt) vt.addEventListener('change', function () {
+        surtirVerTodas = this.checked; loadSurtir();
+      });
     }).catch(fail);
   }
 
@@ -11368,7 +11384,14 @@
               '<td class="num">' + esc(formatMoney(cu * c * 1.16)) + '</td>' +
               '<td>' + pillHTML(d) +
               ' <button type="button" class="row-btn ed-abrir" data-row="' + r._row +
-              '" title="Corregir este producto">Editar</button></td></tr>';
+              '" title="Corregir este producto">Editar</button>' +
+              // Faltaba. Un renglón capturado dos veces solo se podía bajar a
+              // cero, y un cero sigue ocupando lugar en el pedido.
+              (sePuedeQuitar() ? ' <button type="button" class="row-btn quitar-reng" data-row="' +
+                r._row + '" data-prod="' +
+                esc(cIt ? (r[cIt] || 'este producto') : 'este producto').replace(/"/g, '&quot;') +
+                '" title="Quitar este producto del pedido">Quitar</button>' : '') +
+              '</td></tr>';
           }).join('') + '</tbody></table>' +
           '<div class="cot-acciones">' +
             '<button type="button" class="primary llegaron-btn" data-ped="' +
@@ -16385,7 +16408,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.10.20-472';
+    var mia = '2026.10.20-474';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
