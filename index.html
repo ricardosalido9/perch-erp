@@ -1035,7 +1035,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.20-469</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.20-470</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -7511,13 +7511,24 @@
       if (!datos.proveedor) { toast('Elige el proveedor.', 'err'); return; }
     }
     btn.disabled = true; btn.textContent = 'Registrando…';
+    var listo = function (o) {
+      toast(o.mensaje || 'Listo.', 'ok');
+      cerrarMandarAVenta();
+      loadSurtir();
+    };
     api('surtir', datos)
-      .then(function (o) {
-        toast(o.mensaje || 'Listo.', 'ok');
-        cerrarMandarAVenta();
-        loadSurtir();
+      .then(listo)
+      .catch(function (e) {
+        // Esa pieza ya tiene pedido para esta venta. Se pregunta en vez de
+        // registrar en silencio: un pedido de más es dinero con el proveedor.
+        if (e && e.sePuedeForzar) {
+          if (!confirm((e.error || '') + '\n\n' + (e.pista || '') +
+                       '\n\n¿Agregar de todos modos?')) return;
+          datos.forzar = 1;
+          return api('surtir', datos).then(listo).catch(fail);
+        }
+        fail(e);
       })
-      .catch(fail)
       .then(function () { btn.disabled = false; btn.textContent = 'Registrar'; });
   }
 
@@ -7593,6 +7604,14 @@
           '<div class="v" style="color:var(--amber)">' + fmtNum(t.sinProveedor) + '</div>' +
           '<div class="k" style="text-transform:none;letter-spacing:0">nadie las ha hecho</div>' +
           '</div>' : '') +
+        (t.yaPedidas ? '<div class="sum-card"><div class="k">Ya pedidas</div><div class="v">' +
+          fmtNum(t.yaPedidas) + '</div><div class="k" style="text-transform:none;' +
+          'letter-spacing:0">esperando al proveedor</div></div>' : '') +
+        // Se pidió más de lo vendido: casi siempre es un pedido duplicado.
+        (t.deMas ? '<div class="sum-card"><div class="k">Pedidas de más</div>' +
+          '<div class="v" style="color:var(--danger)">' + fmtNum(t.deMas) + '</div>' +
+          '<div class="k" style="text-transform:none;letter-spacing:0">revisa esos ' +
+          'pedidos</div></div>' : '') +
         // Piezas que el catálogo tiene en varias variantes y la venta no dice cuál.
         (t.sinVariante ? '<div class="sum-card"><div class="k">Falta la variante</div>' +
           '<div class="v" style="color:var(--amber)">' + fmtNum(t.sinVariante) + '</div>' +
@@ -7604,7 +7623,14 @@
           (v.cliente ? ' <span class="s" style="color:var(--slate)">· ' + esc(v.cliente) +
             '</span>' : '') +
           (v.fecha ? ' <span class="s" style="color:var(--muted);font-weight:400">· ' +
-            esc(v.fecha) + '</span>' : '') + '</h3>' +
+            esc(v.fecha) + '</span>' : '') +
+          // Ya no hay nada que hacer con ella: está pedida y se espera al proveedor.
+          (!v.pendiente && v.enCamino
+            ? ' <span class="s" style="color:var(--success);font-weight:400">· todo ' +
+              'pedido, esperando al proveedor</span>' : '') +
+          (v.sobran
+            ? ' <span class="s" style="color:var(--danger);font-weight:600">· se pidió ' +
+              'de más</span>' : '') + '</h3>' +
           // Quien surte también despacha: a quién le entrega, dónde y cuándo.
           // Antes había que salirse a Clientes a buscarlo.
           fichaEnvio(v) +
@@ -7625,7 +7651,10 @@
                   ? '<div class="s" style="color:var(--muted)">' + fmtNum(p.renglones) +
                     ' renglones iguales en la venta</div>' : '') +
                 (p.completa
-                  ? '<div class="s" style="color:var(--success)">\u2713 ya asignada</div>' : '') +
+                  // Pedida no es lo mismo que asignada: una est\u00e1 en camino y la
+                  // otra ya sali\u00f3 de bodega hacia esta venta.
+                  ? '<div class="s" style="color:var(--success)">\u2713 ' +
+                    (p.enCamino ? 'ya pedida' : 'ya asignada') + '</div>' : '') +
               '</div>' +
               // Si el catálogo tiene varias variantes y la venta no dice cuál, el
               // panel no la inventa: lo dice y lista las opciones.
@@ -7664,15 +7693,31 @@
                 // Lo que ya se consiguió no desaparece: se queda marcado. Si se
                 // borra en cuanto se asigna, quien surte no sabe si lo hizo él o
                 // si se le pasó.
+                // Lo ya encargado al proveedor, con su n\u00famero de pedido. Antes no
+                // se ve\u00eda en ning\u00fan lado y se volv\u00eda a pedir lo mismo.
+                var elPedido = (c.pedidos || []).map(function (q) {
+                  return '<div class="s" style="color:var(--slate)">\u2192 ' +
+                    fmtNum(q.cantidad) + ' en <b>' + esc(q.pedido || '(sin n\u00famero)') + '</b>' +
+                    (q.proveedor ? ' \u00b7 ' + esc(q.proveedor) : '') +
+                    (q.llega ? ' \u00b7 llega ' + esc(q.llega)
+                             : (q.fecha ? ' \u00b7 pedido el ' + esc(q.fecha) : '')) +
+                    (q.status ? ' \u00b7 ' + esc(q.status) : '') + '</div>';
+                }).join('');
                 if (c.listo) {
                   return '<div style="margin-top:12px;padding-top:10px;border-top:1px dashed ' +
-                    'var(--line);display:flex;gap:12px;align-items:baseline;flex-wrap:wrap;' +
-                    'opacity:.72">' +
+                    'var(--line);opacity:.78">' +
+                    '<div style="display:flex;gap:12px;align-items:baseline;flex-wrap:wrap">' +
                     '<div style="font-weight:600;color:var(--success)">\u2713 ' +
                       esc(c.componente || 'Sin material') + '</div>' +
-                    '<div class="s" style="color:var(--slate)">' + fmtNum(c.surtidas) +
-                      (c.surtidas === 1 ? ' pieza asignada' : ' piezas asignadas') + '</div>' +
-                    '</div>';
+                    (c.surtidas ? '<div class="s" style="color:var(--slate)">' +
+                      fmtNum(c.surtidas) +
+                      (c.surtidas === 1 ? ' pieza asignada' : ' piezas asignadas') +
+                      '</div>' : '') +
+                    (c.pedidas ? '<div class="s" style="color:var(--slate)">' +
+                      fmtNum(c.pedidas) + ' ya pedidas al proveedor</div>' : '') +
+                    (c.sobran ? '<div class="s" style="color:var(--amber)">' +
+                      fmtNum(c.sobran) + ' de m\u00e1s: revisa el pedido</div>' : '') +
+                    '</div>' + elPedido + '</div>';
                 }
                 return '<div style="margin-top:12px;padding-top:10px;border-top:1px dashed ' +
                   'var(--line)">' +
@@ -7682,9 +7727,11 @@
                     (c.surtidas ? '<div class="s" style="color:var(--success)">\u2713 ' +
                       fmtNum(c.surtidas) + ' ya asignada' + (c.surtidas === 1 ? '' : 's') +
                       '</div>' : '') +
+                    (c.pedidas ? '<div class="s" style="color:var(--slate)">' +
+                      fmtNum(c.pedidas) + ' ya pedidas</div>' : '') +
                     (c.enBodega ? '<div class="s" style="color:var(--success)">En bodega: ' +
                       fmtNum(c.enBodega) + '</div>' : '') +
-                  '</div>' +
+                  '</div>' + elPedido +
                   '<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">' + acciones +
                   '</div></div>';
               }).join('') +
@@ -16328,7 +16375,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.10.20-469';
+    var mia = '2026.10.20-470';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
