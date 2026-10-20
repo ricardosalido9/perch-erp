@@ -1035,7 +1035,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.20-468</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.20-469</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -7022,10 +7022,19 @@
             'class="row-btn">Abrir</a></td></tr>';
         }).join('') + '</tbody></table>';
     }
-    // Lo que falta, dicho por su nombre
+    // Lo que falta, dicho por su nombre. La cotización es la única que el ERP
+    // puede poner solo, así que ahí mismo va el botón en vez de mandar a nadie
+    // a otra pantalla a buscarla.
     if ((d.falta || []).length) {
-      h += '<div class="s" style="color:var(--amber);margin-top:10px">Todavía no hay: ' +
-        esc(d.falta.join(' · ')) + '</div>';
+      var faltaCot = d.falta.some(function (t) { return t === 'Cotización'; });
+      h += '<div class="s" style="color:var(--amber);margin-top:10px;display:flex;gap:10px;' +
+        'align-items:center;flex-wrap:wrap"><span>Todavía no hay: ' +
+        esc(d.falta.join(' · ')) + '</span>' +
+        (faltaCot ? '<button type="button" id="arcGenCot" class="row-btn">' +
+          'Generar la cotización y guardarla aquí</button>' : '') + '</div>' +
+        (faltaCot ? '<div class="s" style="color:var(--muted);margin-top:4px">' +
+          'La cotización solo se guarda sola cuando se genera su PDF desde el ERP. ' +
+          'Si la hicieron aparte, súbela abajo como <b>Cotización</b>.</div>' : '');
     }
     // Subir un archivo a esta misma carpeta
     h += '<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line)">' +
@@ -7033,8 +7042,8 @@
       '<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">' +
       '<div class="fld" style="width:210px;margin:0"><label>Qué es</label>' +
         '<select id="arcTipo">' +
-        ['Comprobante de pago', 'Constancia de situación fiscal', 'Nota de remisión',
-         'Factura', 'Otro'].map(function (t) {
+        ['Comprobante de pago', 'Cotización', 'Constancia de situación fiscal',
+         'Orden de compra', 'Nota de remisión', 'Factura', 'Otro'].map(function (t) {
           return '<option value="' + esc(t) + '">' + esc(t) + '</option>'; }).join('') +
         '</select></div>' +
       '<div class="fld" style="margin:0"><label>Archivo</label>' +
@@ -7086,6 +7095,18 @@
 
     document.getElementById('aventaCuerpo').innerHTML = h;
     document.getElementById('arcSubir').addEventListener('click', subirArchivoFolio);
+    var bg = document.getElementById('arcGenCot');
+    if (bg) bg.addEventListener('click', function () {
+      var b = this;
+      b.disabled = true; b.textContent = 'Generando...';
+      // Es la misma generación de siempre: el PDF se guarda en esta carpeta.
+      generarPdfCotizacion(arcFolio, true, true, 'nuevo')
+        .then(function () { toast('Cotización guardada en la carpeta.', 'ok'); cargarArchivos(); })
+        .catch(function (e) {
+          b.disabled = false; b.textContent = 'Generar la cotización y guardarla aquí';
+          toast((e && e.message) || 'No se pudo generar la cotización.', 'err');
+        });
+    });
     document.getElementById('arcGuardarPago').addEventListener('click', function () {
       registrarCobro(this, null);
     });
@@ -16307,7 +16328,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.10.20-468';
+    var mia = '2026.10.20-469';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
