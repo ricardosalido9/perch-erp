@@ -1040,7 +1040,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.21-475</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.21-476</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1376,7 +1376,10 @@
               'ventas_despachos', 'inventario', 'log_calendario'].indexOf(key) !== -1;
     }
     if (r === 'operativo') {
-      return ['prov_pedidos', 'prov_entradas', 'prov_salidas'].indexOf(key) !== -1;
+      // Envíos lo captura quien despacha, que es este rol: tenía la pantalla en
+      // solo lectura y había que pedirle a alguien más que capturara cada envío.
+      return ['prov_pedidos', 'prov_entradas', 'prov_salidas',
+              'op_envios'].indexOf(key) !== -1;
     }
     return true;
   }
@@ -7589,14 +7592,20 @@
   }
   // Lo ya surtido no se borra, se guarda. Sin esto, una venta desaparecía al
   // quedar completa y no había desde dónde consultar qué se le había mandado.
-  var surtirVerTodas = false;
+  // Las ventas se traen todas y se filtran aquí: cambiar de pestaña es inmediato
+  // y nadie se queda pensando si el ERP "perdió" un pedido.
+  var surtirFiltro = 'pendientes';
   function loadSurtir() {
     document.getElementById('tableWrap').innerHTML =
       '<div class="state" style="padding:50px 0">Viendo qué falta por surtir…</div>';
     document.getElementById('summary').innerHTML = '';
     mostrarAlta(false);
-    api('surtir', { token: state.token, todas: surtirVerTodas ? 1 : 0 }).then(function (d) {
-      surtirDatos = d;
+    api('surtir', { token: state.token, todas: 1 })
+      .then(function (d) { surtirDatos = d; pintarListaSurtir(d); })
+      .catch(fail);
+  }
+  // Pintar va aparte de pedir: cambiar de pestaña no vuelve a llamar al servidor.
+  function pintarListaSurtir(d) {
       var t = d.totales || {};
       var box = document.getElementById('summary');
       box.style.display = 'flex';
@@ -7626,7 +7635,21 @@
           '<div class="k" style="text-transform:none;letter-spacing:0">la venta no dice ' +
           'cuál surtir</div></div>' : '');
 
-      var h = (d.ventas || []).map(function (v) {
+      // En qué estado está cada venta. Una venta cae en uno solo, y en ese orden:
+      // si le falta algo es "por surtir", aunque parte ya esté pedida.
+      var estadoDe = function (v) {
+        if (v.pendiente) return 'pendientes';
+        if (v.enCamino) return 'pedidas';
+        return 'surtidas';
+      };
+      var todasLas = d.ventas || [];
+      var cuenta = { pendientes: 0, pedidas: 0, surtidas: 0, todas: todasLas.length };
+      todasLas.forEach(function (v) { cuenta[estadoDe(v)]++; });
+      var h = todasLas
+        .filter(function (v) {
+          return surtirFiltro === 'todas' || estadoDe(v) === surtirFiltro;
+        })
+        .map(function (v) {
         return '<h3 style="margin:22px 0 8px;font-size:15px">' + esc(v.folio) +
           (v.cliente ? ' <span class="s" style="color:var(--slate)">· ' + esc(v.cliente) +
             '</span>' : '') +
@@ -7757,22 +7780,36 @@
           }).join('');
       }).join('');
 
-      // El interruptor para consultar lo ya surtido de una venta vieja.
-      var barra = '<div style="display:flex;justify-content:flex-end;margin-bottom:6px">' +
-        '<label class="s" style="display:flex;gap:7px;align-items:center;cursor:pointer;' +
-        'color:var(--slate)"><input type="checkbox" id="suVerTodas"' +
-        (surtirVerTodas ? ' checked' : '') + '>Ver también las ya surtidas' +
-        (d.yaSurtidas ? ' (' + fmtNum(d.yaSurtidas) + ')' : '') + '</label></div>';
+      // Las pestañas. Ninguna venta se esconde: cambian de lugar, no desaparecen.
+      var PESTANAS = [
+        ['pendientes', 'Por surtir'],
+        ['pedidas', 'Ya pedidas'],
+        ['surtidas', 'Ya surtidas'],
+        ['todas', 'Todas']
+      ];
+      var barra = '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">' +
+        PESTANAS.map(function (p) {
+          var act = surtirFiltro === p[0];
+          return '<button type="button" class="row-btn su-filtro' + (act ? ' primary' : '') +
+            '" data-f="' + p[0] + '">' + esc(p[1]) +
+            ' <span style="opacity:.65">' + fmtNum(cuenta[p[0]] || 0) + '</span></button>';
+        }).join('') + '</div>';
 
+      var VACIO = {
+        pendientes: 'No falta surtir nada. Mira "Ya pedidas" para lo que viene en camino.',
+        pedidas: 'No hay nada esperando al proveedor.',
+        surtidas: 'Todavía no hay ventas surtidas por completo.',
+        todas: 'No hay ventas que mostrar.'
+      };
       document.getElementById('tableWrap').innerHTML = barra + (h ||
-        '<div class="state" style="padding:40px 0">' +
-        (surtirVerTodas ? 'No hay ventas que mostrar.'
-                        : 'Todas las ventas están surtidas.') + '</div>');
-      var vt = document.getElementById('suVerTodas');
-      if (vt) vt.addEventListener('change', function () {
-        surtirVerTodas = this.checked; loadSurtir();
+        '<div class="state" style="padding:40px 0">' + esc(VACIO[surtirFiltro]) + '</div>');
+      document.querySelectorAll('.su-filtro').forEach(function (b) {
+        b.addEventListener('click', function () {
+          surtirFiltro = this.getAttribute('data-f');
+          // Ya están todas en memoria: se vuelve a pintar, no se vuelve a pedir.
+          pintarListaSurtir(surtirDatos);
+        });
       });
-    }).catch(fail);
   }
 
   // De dónde salió cada pieza y a dónde fue: el pedido y el proveedor de un lado,
@@ -16413,7 +16450,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.10.21-475';
+    var mia = '2026.10.21-476';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
