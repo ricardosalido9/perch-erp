@@ -1040,7 +1040,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.22-477</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.22-478</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -11155,6 +11155,9 @@
     var cProd = findHeaderByName('Producto'), cMat = findHeaderByName('Material');
     var cCant = findHeaderByName('Cantidad'), cPU = findHeaderByName('Precio Unitario');
     var cEnv = findHeaderByName('Envio') || findHeaderByName('Envío');
+    // El segundo material. Hace falta en las dos vistas de la tarjeta —la normal
+    // y la de edición—, así que se resuelve una sola vez aquí arriba.
+    var cExt2 = findHeaderByName('Material Extra');
 
     var g = {}, orden = [];
     rows.forEach(function (r) {
@@ -11253,6 +11256,27 @@
                 .map(function (v) { return '<option value="' + esc(v) + '">'; }).join('');
               document.body.appendChild(dl);
             }
+            // Las opciones de segundo material QUE EXISTEN para ese producto y
+            // esa madera: para el Sillón Alondra en Nogal, Tela y Piel. Así se
+            // escribe lo que el catálogo entiende y no un texto libre.
+            if (cExt2) {
+              var dle = document.getElementById('listaMatExtraEd');
+              if (!dle) {
+                dle = document.createElement('datalist');
+                dle.id = 'listaMatExtraEd';
+                document.body.appendChild(dle);
+              }
+              var cas = cascadeLU();
+              var ops = [];
+              try {
+                if (cas && cas.levels && cas.levels.length > 2) {
+                  ops = cascDistinct(cas, [r[cProd] || '', cMat ? (r[cMat] || '') : ''], 2)
+                    .filter(function (v) { return v && !/^(n\/?a|no aplica|\(vac)/i.test(v); });
+                }
+              } catch (e) { ops = []; }
+              dle.innerHTML = ops.map(function (v) {
+                return '<option value="' + esc(v) + '">'; }).join('');
+            }
             h += '<tr class="fila-edit">' +
               '<td><input class="row-input ed-campo" list="listaProductosEd" data-col="' +
                 esc(cProd || '') + '" value="' + esc(r[cProd] || '') +
@@ -11271,6 +11295,12 @@
             // Segundo renglón: descuento y textos, que no caben arriba
             h += '<tr class="fila-edit"><td colspan="7" style="padding-top:0">' +
               '<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">' +
+              // El segundo material va primero, pegado al de arriba: es parte de
+              // lo que se vendió, no una nota.
+              (cExt2 ? '<div><label class="k">Material extra</label><br>' +
+                '<input class="row-input ed-campo" list="listaMatExtraEd" data-col="' +
+                esc(cExt2) + '" value="' + esc(r[cExt2] || '') +
+                '" placeholder="Tela, Piel, Vela chica…" style="width:170px"></div>' : '') +
               // Un 15 pelón en esta celda la hoja lo lee como 1500%. Se escribe
               // siempre con el signo, igual que en el alta.
               (cPct ? '<div><label class="k">% descuento</label><br>' +
@@ -11290,7 +11320,14 @@
                 esc(r[cEsp] || '') + '" style="width:100%"></div>' : '') +
               '</div></td></tr>';
           } else {
-            h += '<tr><td>' + esc(r[cProd] || '') + '</td><td>' + esc(cMat ? (r[cMat] || '') : '') + '</td>' +
+            // El segundo material va junto al primero: "Nogal · Piel". Antes no
+            // se veía por ningún lado y nadie notaba que estaba vacío.
+            var ext = cExt2 ? String(r[cExt2] || '').trim() : '';
+            if (/^(n\/?a|no aplica|ninguno|ninguna|-)$/i.test(ext)) ext = '';
+            h += '<tr><td>' + esc(r[cProd] || '') + '</td>' +
+              '<td>' + esc(cMat ? (r[cMat] || '') : '') +
+                (ext ? ' <span class="s" style="color:var(--slate)">· ' + esc(ext) +
+                  '</span>' : '') + '</td>' +
               '<td class="num">' + fmtNum(c) + '</td><td class="num">' + esc(formatMoney(p)) + '</td>' +
               '<td class="num s"' + (importeDeRenglon(r).pct ? ' style="color:var(--success)"' : '') + '>' +
                 esc(importeDeRenglon(r).pct ? '-' + importeDeRenglon(r).pct + '%' : '—') + '</td>' +
@@ -16462,7 +16499,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.10.22-477';
+    var mia = '2026.10.22-478';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
