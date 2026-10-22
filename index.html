@@ -1040,7 +1040,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.22-485</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.22-486</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -13891,6 +13891,17 @@
             '. Se cobra ' + esc(formatMoney(c.ivaNoCobrado)) + ' menos por pagar ' +
             (c.todoEfectivo ? 'todo ' : 'parte ') + 'en efectivo.</div>'
           : '') +
+        // En una COTIZACIÓN esto no sale en el PDF, y es la trampa en la que se
+        // cae: Camila puso aquí el 8% que pidió Pau y el PDF salió sin nada.
+        // Esto dice en qué se traduce y dónde va lo que el cliente sí debe ver.
+        (state.key === 'cotizaciones' && c.ivaNoCobrado
+          ? '<div class="s" style="color:var(--amber);margin-top:6px">' +
+            '<b>Esto no sale en el PDF de la cotización.</b> Es cómo se va a pagar, ' +
+            'no un descuento: equivale a <b>' +
+            esc((Math.round((c.ivaNoCobrado / (totalSinIVA * 1.16)) * 1000) / 10) + '%') +
+            '</b> menos sobre el total. Si quieres que el cliente lo vea, ponlo en ' +
+            '<b>Descuento</b> aquí arriba.</div>'
+          : '') +
       '</div>';
   }
   // El total del pedido sin IVA, sumando los productos capturados
@@ -16702,7 +16713,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.10.22-485';
+    var mia = '2026.10.22-486';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
