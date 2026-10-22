@@ -1040,7 +1040,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.22-483</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.22-485</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1733,6 +1733,12 @@
                         'padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600">con nota</span>'
                       : '')) +
                 '<span class="s">' + esc(d2.fecha) + (d2.estimada ? ' · estimada ' + esc(d2.estimada) : '') + '</span>' +
+                // Un pedido anterior al corte se ve, pero su dinero ya está dentro
+                // del saldo inicial: si no se dijera, parecería que falta sumarlo.
+                (d2.antesDelCorte
+                  ? ' <span class="s" style="background:var(--linea);color:var(--slate);' +
+                    'padding:2px 8px;border-radius:20px;font-size:11px">antes del corte · ' +
+                    'su dinero ya está en el saldo inicial</span>' : '') +
                 '<span>' + esc(formatMoney(d2.costo)) + ' · pagado ' + esc(formatMoney(d2.pagado)) +
                 ' · <b' + (d2.porPagar > 0.5 ? ' style="color:var(--danger)"' : '') + '>por pagar ' +
                 esc(formatMoney(d2.porPagar)) + '</b></span>' +
@@ -7392,7 +7398,10 @@
     var orden = yaLaHicieron.concat(todos.filter(function (x) {
       return yaLaHicieron.map(norm).indexOf(norm(x)) === -1;
     }));
-    var costoSug = (c.proveedores || [])[0] ? ((c.proveedores || [])[0].costo || 0) : 0;
+    // Lo último que cobró quien la hizo; si nadie la ha hecho, el del catálogo.
+    // Antes se quedaba vacío y había que ir a buscarlo.
+    var costoSug = ((c.proveedores || [])[0] && (c.proveedores || [])[0].costo) ||
+                   c.costoSugerido || c.costoCatalogo || 0;
 
     var h = '<div class="s" style="color:var(--slate);margin-bottom:14px">' +
       esc(p.producto) + (c.componente ? ' · <b>' + esc(c.componente) + '</b>' : '') +
@@ -7460,9 +7469,11 @@
       '<div class="fld" style="flex:1;min-width:120px"><label>Costo unitario</label>' +
       '<input id="suCosto" type="number" step="0.01" value="' + (costoSug || '') + '"></div>' +
       '</div>' +
+      // Caja alta y de ancho completo: aquí va lo que Ursula escribió del mueble
+      // —medidas, acabado, tela— y en un renglón de una línea no se leía.
       '<div class="fld"><label>Especificaciones</label>' +
-      '<input id="suEsp" value="' + esc(p.especificaciones || '').replace(/"/g, '&quot;') +
-      '"></div></div>';
+      '<textarea id="suEsp" rows="3" style="width:100%;resize:vertical;min-height:70px">' +
+      esc(p.especificaciones || '') + '</textarea></div></div>';
 
     document.getElementById('aventaCuerpo').innerHTML = h;
 
@@ -7505,7 +7516,12 @@
     var yo = c ? (c.proveedores || []).filter(function (q) {
       return norm(q.proveedor) === norm(prov.value); })[0] : null;
     var ci = document.getElementById('suCosto');
-    if (yo && yo.costo && ci) ci.value = yo.costo;
+    if (ci) {
+      // Si ese proveedor ya la hizo, su último costo; si no, el que se conozca
+      // de la pieza. Cambiar de proveedor no debe dejar el campo en blanco.
+      var cc = (yo && yo.costo) || (c && (c.costoSugerido || c.costoCatalogo)) || 0;
+      if (cc) ci.value = cc;
+    }
     verPedidoNuevo();
   }
   function verPedidoNuevo() {
@@ -11667,6 +11683,12 @@
             esc(k).replace(/"/g, '&quot;') + '">Cliente y fecha por mueble</button>' +
             '<button type="button" class="oc-btn" data-ped="' +
             esc(k).replace(/"/g, '&quot;') + '">Orden de compra (PDF)</button>' +
+            // Sumarle un mueble a un pedido que ya existe. Antes había que dar
+            // de alta un renglón suelto y volver a escribir proveedor, fecha y
+            // número de pedido a mano.
+            (esSoloLectura(state.key) ? '' :
+              '<button type="button" class="row-btn add-a-folio" data-folio="' +
+              esc(k).replace(/"/g, '&quot;') + '">+ Agregar producto</button>') +
             '<span class="s" style="color:var(--muted)">Asigna piezas de este pedido a folios de venta</span>' +
           '</div></div>';
       }
@@ -14774,8 +14796,15 @@
     });
   }
 
+  // Cómo se llama "el folio" en cada área. En Pedidos a proveedores el que
+  // agrupa es el NÚMERO DE PEDIDO, no el folio del cliente: un pedido puede
+  // llevar muebles de varias ventas.
+  function columnaQueAgrupa() {
+    if (state.key === 'prov_pedidos') return findHeaderByName('Pedido Proveedor');
+    return findHeaderByName('No. de Referencia') || findHeaderByName('Folio');
+  }
   function agregarAFolio(folio) {
-    var cRef = findHeaderByName('No. de Referencia') || findHeaderByName('Folio');
+    var cRef = columnaQueAgrupa();
     if (!cRef) { toast('Esta área no maneja folios.', 'err'); return; }
     var base = (state.rows || []).filter(function (r) {
       return String(r[cRef] || '').trim() === folio;
@@ -16673,7 +16702,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.10.22-483';
+    var mia = '2026.10.22-485';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
