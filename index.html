@@ -1040,7 +1040,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.22-486</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.22-487</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -13561,6 +13561,20 @@
       if (v && el.type === 'date') v = isoToLargo(v);
       rec[real] = v;
     });
+    // ¿Este producto trae SU PROPIO descuento?
+    //
+    // Hacía falta saberlo: el descuento del pedido pisaba el de cada renglón —y
+    // si el del pedido estaba vacío, los borraba todos—, así que un descuento
+    // por producto nunca sobrevivía. Camila capturaba 10% en uno y 8% en otro y
+    // al guardar quedaban los dos iguales o los dos en blanco.
+    var dcfg = specialCfg();
+    if (dcfg && dcfg.descuento) {
+      var rp = findHeaderByName(dcfg.descuento.pct);
+      var rv = findHeaderByName(dcfg.descuento.val);
+      if ((rp && String(rec[rp] || '').trim()) || (rv && String(rec[rv] || '').trim())) {
+        rec.__descLinea = true;
+      }
+    }
     // ¿tiene al menos Producto y Cantidad?
     var prod = fieldEl(c.producto || 'Producto'), cant = fieldEl('Cantidad');
     if (prod && (prod.value || '').trim()) tienePrincipales = true;
@@ -13784,20 +13798,23 @@
     var items = lista || state.lineItems || [];
     if (!items.length) return;
     var monto = parseFloat(descPedido.monto || '0') || 0;
+    // El que trae su propio descuento se respeta: el del pedido es para los demás.
+    var suyo = function (r) { return !!r.__descLinea; };
+    var otros = items.filter(function (r) { return !suyo(r); });
     if (!descPedido.tipo || !monto) {
-      items.forEach(function (r) { if (cPct) r[cPct] = ''; if (cVal) r[cVal] = ''; });
+      otros.forEach(function (r) { if (cPct) r[cPct] = ''; if (cVal) r[cVal] = ''; });
       return;
     }
     if (descPedido.tipo === 'pct') {
-      // El mismo porcentaje a cada producto
-      items.forEach(function (r) {
+      // El mismo porcentaje a cada producto que no traiga el suyo
+      otros.forEach(function (r) {
         if (cPct) r[cPct] = monto + '%';
         if (cVal) r[cVal] = '';
       });
     } else {
-      // Un monto fijo se reparte a prorrata según lo que pesa cada producto
-      var total = items.reduce(function (a, r) { return a + lineTotalBruto(r); }, 0);
-      items.forEach(function (r) {
+      // Un monto fijo se reparte a prorrata entre los que no traen el suyo
+      var total = otros.reduce(function (a, r) { return a + lineTotalBruto(r); }, 0);
+      otros.forEach(function (r) {
         var parte = total ? (lineTotalBruto(r) / total) * monto : 0;
         if (cVal) r[cVal] = Math.round(parte * 100) / 100;
         if (cPct) r[cPct] = '';
@@ -16713,7 +16730,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.10.22-486';
+    var mia = '2026.10.22-487';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
