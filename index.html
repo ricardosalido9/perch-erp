@@ -1040,7 +1040,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.22-482</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.22-483</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -7831,6 +7831,21 @@
         surtidas: 'Todavía no hay ventas surtidas por completo.',
         todas: 'No hay ventas que mostrar.'
       };
+      // Las ventas que no están en ninguna pestaña, y por qué. Sin esto, un
+      // folio que falta manda a buscarlo a la hoja sin saber qué se busca.
+      var sobra = (d.fuera || []);
+      if (sobra.length) {
+        barra += '<div class="s" style="color:var(--muted);margin:-6px 0 10px">' +
+          'No salen en ninguna pestaña ' + fmtNum(sobra.length) +
+          (sobra.length === 1 ? ' venta: ' : ' ventas: ') +
+          sobra.slice(0, 12).map(function (x) {
+            return '<b>' + esc(x.folio) + '</b> <span style="color:var(--slate)">(' +
+              esc((x.porque || []).join(', ')) + ')</span>';
+          }).join(' · ') +
+          (sobra.length > 12 ? ' · y ' + fmtNum(sobra.length - 12) + ' más' : '') +
+          '</div>';
+      }
+
       document.getElementById('tableWrap').innerHTML = barra + (h ||
         '<div class="state" style="padding:40px 0">' + esc(VACIO[surtirFiltro]) + '</div>');
       document.querySelectorAll('.su-filtro').forEach(function (b) {
@@ -16658,7 +16673,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.10.22-482';
+    var mia = '2026.10.22-483';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
