@@ -1040,7 +1040,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.22-481</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.22-482</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -7966,79 +7966,92 @@
         };
 
         if (trazaVista === 'venta' && (d.ventas || []).length) {
-          // La historia de cada venta: qué se vendió, qué costó y qué dejó.
-          // Salen TODAS, de la más nueva a la más vieja, aunque no se les haya
-          // surtido nada todavía: antes solo existían las que ya tenían salidas
-          // y el orden era alfabético.
-          var dinero = function (v, signo) {
-            return '<span style="color:var(--' + signo + ')">' +
-              esc(formatMoney(v)) + '</span>';
-          };
+          // La historia de cada venta, con la misma tarjeta de la vista por
+          // pedido: foto, pieza, de dónde viene y a dónde va. Salen TODAS, de la
+          // más nueva a la más vieja; la que no se ha surtido sale igual, con el
+          // lado del proveedor vacío. Antes solo existían las que ya tenían
+          // salidas y el orden era alfabético.
           h += d.ventas.map(function (v) {
             var t = v.totales || {};
-            return '<div class="panel" style="margin-bottom:14px;padding:14px 16px">' +
-              '<div style="display:flex;gap:12px;align-items:baseline;flex-wrap:wrap;' +
-              'margin-bottom:10px">' +
-                '<div style="font-weight:600;font-size:15px">' + esc(v.folio) + '</div>' +
-                (v.cliente ? '<div class="s" style="color:var(--slate)">' + esc(v.cliente) +
-                  '</div>' : '') +
-                (v.fecha ? '<div class="s" style="color:var(--muted)">' + esc(v.fecha) +
-                  '</div>' : '') +
-                (v.status ? pillHTML(v.status) : '') +
-                '<div style="margin-left:auto;display:flex;gap:14px;align-items:baseline;' +
-                'flex-wrap:wrap">' +
-                  '<span class="s" style="color:var(--muted)">Venta</span>' +
-                  '<b>' + esc(formatMoney(t.venta)) + '</b>' +
-                  '<span class="s" style="color:var(--muted)">Costo</span>' +
-                  '<b>' + esc(formatMoney(t.costo)) + '</b>' +
-                  '<span class="s" style="color:var(--muted)">Utilidad</span>' +
-                  '<b>' + dinero(t.utilidad, t.utilidad >= 0 ? 'success' : 'danger') + '</b>' +
-                  '<span class="s" style="color:var(--slate)">' + fmtNum(t.margen) + '%</span>' +
-                '</div>' +
-              '</div>' +
+            return '<h3 style="margin:22px 0 8px;font-size:15px;display:flex;gap:12px;' +
+              'align-items:baseline;flex-wrap:wrap">' + esc(v.folio) +
+              (v.cliente ? ' <span class="s" style="color:var(--slate);font-weight:400">' +
+                esc(v.cliente) + '</span>' : '') +
+              (v.fecha ? ' <span class="s" style="color:var(--muted);font-weight:400">' +
+                esc(v.fecha) + '</span>' : '') +
+              (v.status ? pillHTML(v.status) : '') +
+              // El dinero de la venta, a la derecha del folio
+              '<span style="margin-left:auto;display:flex;gap:12px;align-items:baseline;' +
+              'flex-wrap:wrap;font-weight:400">' +
+                '<span class="s" style="color:var(--muted)">Venta</span>' +
+                '<b>' + esc(formatMoney(t.venta)) + '</b>' +
+                '<span class="s" style="color:var(--muted)">Costo</span>' +
+                '<b>' + esc(formatMoney(t.costo)) +
+                  (t.estimado ? '<span style="color:var(--amber)"> ~</span>' : '') + '</b>' +
+                '<span class="s" style="color:var(--muted)">Utilidad</span>' +
+                '<b style="color:var(--' + (t.utilidad >= 0 ? 'success' : 'danger') + ')">' +
+                  esc(formatMoney(t.utilidad)) + '</b>' +
+                '<span class="s" style="color:var(--slate)">' + fmtNum(t.margen) + '%</span>' +
+              '</span></h3>' +
               // Una utilidad a medias tiene que decir que lo está
-              (t.estimado ? '<div class="s" style="color:var(--amber);margin-bottom:8px">' +
-                'Falta surtir parte de esta venta: el costo de lo que falta está ' +
-                'estimado con el catálogo, así que la utilidad es aproximada.</div>' : '') +
-              '<table class="mini-table"><thead><tr><th>Producto</th><th>Material</th>' +
-              '<th style="text-align:right">Vendidas</th>' +
-              '<th style="text-align:right">Surtidas</th>' +
-              '<th style="text-align:right">Importe</th>' +
-              '<th style="text-align:right">Costo</th>' +
-              '<th style="text-align:right">Utilidad</th><th></th></tr></thead><tbody>' +
+              (t.estimado ? '<div class="s" style="color:var(--amber);margin:-4px 0 8px">' +
+                'Falta surtir parte de esta venta: el costo de lo que falta está estimado ' +
+                'con el catálogo, así que la utilidad es aproximada.</div>' : '') +
               (v.productos || []).map(function (p) {
                 var ext = String(p.materialExtra || '').trim();
                 if (/^(n\/?a|no aplica|ninguno|ninguna|-)$/i.test(ext)) ext = '';
-                return '<tr><td>' + esc(p.producto) + '</td>' +
-                  '<td>' + esc(p.material || '') +
-                    (ext ? ' <span class="s" style="color:var(--slate)">· ' + esc(ext) +
-                      '</span>' : '') + '</td>' +
-                  '<td class="num">' + fmtNum(p.vendidas) + '</td>' +
-                  '<td class="num"' + (p.surtidas < p.vendidas
-                    ? ' style="color:var(--amber)"' : '') + '>' + fmtNum(p.surtidas) + '</td>' +
-                  '<td class="num">' + esc(formatMoney(p.importe)) + '</td>' +
-                  '<td class="num">' + esc(formatMoney(p.costo)) +
-                    (p.costoEstimado ? ' <span class="s" style="color:var(--amber)">~</span>'
-                                     : '') + '</td>' +
-                  '<td class="num" style="color:var(--' +
+                var falta = (p.vendidas || 0) - (p.surtidas || 0);
+                return '<div class="panel" style="margin-bottom:10px;padding:14px 16px;' +
+                  'display:grid;grid-template-columns:72px minmax(150px,1fr) ' +
+                  'minmax(200px,1.1fr) minmax(200px,1.2fr);gap:16px;align-items:center">' +
+                  fotoDe(p) +
+                  // La pieza: qué es, en qué material y cuánto dejó
+                  '<div style="min-width:0"><div style="font-weight:600">' +
+                    esc(p.producto) + '</div>' +
+                    '<div class="s" style="color:var(--slate)">' + esc(p.material || '') +
+                    (ext ? ' · ' + esc(ext) : '') +
+                    ' · ' + fmtNum(p.vendidas) +
+                    (p.vendidas === 1 ? ' pieza' : ' piezas') + '</div>' +
+                    '<div class="s" style="color:var(--muted);margin-top:4px">' +
+                    esc(formatMoney(p.importe)) + ' · costo ' + esc(formatMoney(p.costo)) +
+                    (p.costoEstimado ? '<span style="color:var(--amber)"> ~</span>' : '') +
+                    ' · <span style="color:var(--' +
                     (p.utilidad >= 0 ? 'success' : 'danger') + ')">' +
-                    esc(formatMoney(p.utilidad)) + '</td>' +
-                  '<td class="s" style="color:var(--slate)">' +
-                    (p.origenes || []).map(function (o) {
-                      return esc(o.proveedor || '') +
-                        (o.pedido ? ' · ' + esc(o.pedido) : '');
-                    }).join('<br>') + '</td></tr>';
-              }).join('') + '</tbody></table>' +
-              // Surtir desde aquí: se abre Surtir Ventas en esa venta, que es
-              // donde vive el diálogo con la bodega, los lotes y los proveedores.
+                    esc(formatMoney(p.utilidad)) + '</span></div></div>' +
+                  // De dónde salió. Vacío cuando todavía no se surte.
+                  '<div style="min-width:0"><div class="s" style="color:var(--muted)">' +
+                    'PROVEEDOR</div>' +
+                    ((p.origenes || []).length
+                      ? p.origenes.map(function (o) {
+                          return '<div><b>' + esc(o.proveedor || 'Sin proveedor') + '</b>' +
+                            '<div class="s" style="color:var(--slate)">' +
+                            esc(o.pedido || '') +
+                            (o.costoUnitario ? ' · ' + esc(formatMoney(o.costoUnitario)) : '') +
+                            ' · ' + fmtNum(o.cantidad) + '</div></div>';
+                        }).join('')
+                      : '<div class="s" style="color:var(--muted)">sin surtir</div>') +
+                  '</div>' +
+                  // A dónde va: cuánto se le asignó y cuánto falta
+                  '<div style="min-width:0"><div class="s" style="color:var(--muted)">' +
+                    'DESTINO</div>' +
+                    (p.surtidas
+                      ? '<div><b>' + esc(v.cliente || v.folio) + '</b> <span class="s">· ' +
+                        fmtNum(p.surtidas) + '</span></div>' : '') +
+                    (falta > 0
+                      ? '<div style="color:var(--amber)">Falta surtir · ' + fmtNum(falta) +
+                        '</div>'
+                      : '<div class="s" style="color:var(--success)">\u2713 completa</div>') +
+                  '</div></div>';
+              }).join('') +
+              // Surtir desde aquí lleva a Surtir Ventas, a esa venta: el diálogo
+              // con la bodega, los lotes y los proveedores vive allá.
               (v.faltaSurtir
-                ? '<div class="cot-acciones"><button type="button" class="primary ir-surtir" ' +
-                  'data-folio="' + esc(v.folio).replace(/"/g, '&quot;') + '">Surtir esta venta' +
-                  '</button><span class="s" style="color:var(--muted)">Faltan ' +
-                  fmtNum((t.vendidas || 0) - (t.surtidas || 0)) + ' piezas por surtir</span></div>'
-                : '<div class="s" style="color:var(--success);margin-top:8px">✓ ' +
-                  'Surtida completa</div>') +
-              '</div>';
+                ? '<div style="margin:-4px 0 14px"><button type="button" class="row-btn ' +
+                  'ir-surtir" data-folio="' + esc(v.folio).replace(/"/g, '&quot;') + '">' +
+                  'Surtir esta venta</button> <span class="s" style="color:var(--muted)">' +
+                  'Faltan ' + fmtNum((t.vendidas || 0) - (t.surtidas || 0)) +
+                  ' piezas</span></div>'
+                : '');
           }).join('');
         } else if (trazaVista === 'venta') {
           // Al revés: cada venta con sus muebles, y debajo de cada mueble de qué
@@ -16645,7 +16658,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.10.22-481';
+    var mia = '2026.10.22-482';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
