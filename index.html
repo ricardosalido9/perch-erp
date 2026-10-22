@@ -1040,7 +1040,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.22-479</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.22-480</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1378,8 +1378,9 @@
     if (r === 'operativo') {
       // Envíos lo captura quien despacha, que es este rol: tenía la pantalla en
       // solo lectura y había que pedirle a alguien más que capturara cada envío.
+      // Pagos por hacer es donde pide los anticipos a proveedor.
       return ['prov_pedidos', 'prov_entradas', 'prov_salidas',
-              'op_envios'].indexOf(key) !== -1;
+              'op_envios', 'pagos_pedidos'].indexOf(key) !== -1;
     }
     return true;
   }
@@ -3943,9 +3944,14 @@
               '<button type="button" class="pdf-relacion" data-prov="' +
               esc(p.proveedor).replace(/"/g, '&quot;') + '">Relación de pedidos</button>' +
               '<button type="button" class="pdf-entregas" data-prov="' +
-              esc(p.proveedor).replace(/"/g, '&quot;') + '">Relación para el proveedor</button>' +
+              esc(p.proveedor).replace(/"/g, '&quot;') + '">Relación para el proveedor' +
+              (provSolo === 'abiertos' ? ' (solo por entregar)' : '') + '</button>' +
               '<span class="s" style="color:var(--muted)">La de pedidos lleva costos y es ' +
-              'interna. La otra es la que se le manda a él.</span></div>' +
+              'interna. La otra es la que se le manda a él' +
+              (provSolo === 'abiertos'
+                ? ', y con este filtro va solo lo que falta por entregar.'
+                : '. Con el filtro "Solo activos" va solo lo pendiente.') +
+              '</span></div>' +
             '</div>';
         }
         h += '</div>';
@@ -3992,7 +3998,12 @@
           e.stopPropagation();
           var prov = b.getAttribute('data-prov');
           b.disabled = true; b.textContent = 'Armando...';
+          // El filtro de arriba manda también en el PDF: si en pantalla estás
+          // viendo "Solo activos", al proveedor le llega solo lo que falta por
+          // entregar. Antes el PDF salía siempre completo, con todo lo entregado
+          // desde enero, y había que explicarle al proveedor qué mirar.
           api('entregas-pdf', { token: state.token, proveedor: prov,
+                                soloPendientes: (provSolo === 'abiertos') ? 1 : 0,
                                 hechoPor: (state.usuario || '') })
             .then(function (o) {
               if (!o.pdf) throw new Error('El servidor no devolvió el PDF.');
@@ -4013,7 +4024,11 @@
                 (err && err.pista ? '<div class="s" style="margin-top:6px;color:var(--slate)">' +
                   esc(err.pista) + '</div>' : '') + '</div>');
             })
-            .then(function () { b.disabled = false; b.textContent = 'Relación para el proveedor'; });
+            .then(function () {
+              b.disabled = false;
+              b.textContent = 'Relación para el proveedor' +
+                (provSolo === 'abiertos' ? ' (solo por entregar)' : '');
+            });
         });
       });
       document.querySelectorAll('#tableWrap .pdf-relacion').forEach(function (b) {
@@ -7607,6 +7622,8 @@
   // Las ventas se traen todas y se filtran aquí: cambiar de pestaña es inmediato
   // y nadie se queda pensando si el ERP "perdió" un pedido.
   var surtirFiltro = 'pendientes';
+  // La venta a la que hay que ir cuando se llega desde el Historial
+  var surtirFoco = '';
   function loadSurtir() {
     document.getElementById('tableWrap').innerHTML =
       '<div class="state" style="padding:50px 0">Viendo qué falta por surtir…</div>';
@@ -7662,7 +7679,8 @@
           return surtirFiltro === 'todas' || estadoDe(v) === surtirFiltro;
         })
         .map(function (v) {
-        return '<h3 style="margin:22px 0 8px;font-size:15px">' + esc(v.folio) +
+        return '<h3 class="su-folio" data-folio="' + esc(v.folio).replace(/"/g, '&quot;') +
+          '" style="margin:22px 0 8px;font-size:15px">' + esc(v.folio) +
           (v.cliente ? ' <span class="s" style="color:var(--slate)">· ' + esc(v.cliente) +
             '</span>' : '') +
           (v.fecha ? ' <span class="s" style="color:var(--muted);font-weight:400">· ' +
@@ -7822,6 +7840,20 @@
           pintarListaSurtir(surtirDatos);
         });
       });
+      // Si se llegó aquí desde el Historial, esa venta se pone a la vista y se
+      // resalta un momento: en una lista de veinte ventas, aterrizar arriba del
+      // todo es lo mismo que no haber llegado.
+      if (surtirFoco) {
+        var destino = document.querySelector('h3.su-folio[data-folio="' +
+          String(surtirFoco).replace(/"/g, '') + '"]');
+        surtirFoco = '';
+        if (destino) {
+          destino.scrollIntoView({ block: 'start', behavior: 'smooth' });
+          destino.style.transition = 'background .4s';
+          destino.style.background = 'var(--linea, #e3e2d6)';
+          setTimeout(function () { destino.style.background = ''; }, 1400);
+        }
+      }
   }
 
   // De dónde salió cada pieza y a dónde fue: el pedido y el proveedor de un lado,
@@ -7933,7 +7965,82 @@
               '<div class="s" style="color:var(--muted)">sin asignar</div>') + '</div>';
         };
 
-        if (trazaVista === 'venta') {
+        if (trazaVista === 'venta' && (d.ventas || []).length) {
+          // La historia de cada venta: qué se vendió, qué costó y qué dejó.
+          // Salen TODAS, de la más nueva a la más vieja, aunque no se les haya
+          // surtido nada todavía: antes solo existían las que ya tenían salidas
+          // y el orden era alfabético.
+          var dinero = function (v, signo) {
+            return '<span style="color:var(--' + signo + ')">' +
+              esc(formatMoney(v)) + '</span>';
+          };
+          h += d.ventas.map(function (v) {
+            var t = v.totales || {};
+            return '<div class="panel" style="margin-bottom:14px;padding:14px 16px">' +
+              '<div style="display:flex;gap:12px;align-items:baseline;flex-wrap:wrap;' +
+              'margin-bottom:10px">' +
+                '<div style="font-weight:600;font-size:15px">' + esc(v.folio) + '</div>' +
+                (v.cliente ? '<div class="s" style="color:var(--slate)">' + esc(v.cliente) +
+                  '</div>' : '') +
+                (v.fecha ? '<div class="s" style="color:var(--muted)">' + esc(v.fecha) +
+                  '</div>' : '') +
+                (v.status ? pillHTML(v.status) : '') +
+                '<div style="margin-left:auto;display:flex;gap:14px;align-items:baseline;' +
+                'flex-wrap:wrap">' +
+                  '<span class="s" style="color:var(--muted)">Venta</span>' +
+                  '<b>' + esc(formatMoney(t.venta)) + '</b>' +
+                  '<span class="s" style="color:var(--muted)">Costo</span>' +
+                  '<b>' + esc(formatMoney(t.costo)) + '</b>' +
+                  '<span class="s" style="color:var(--muted)">Utilidad</span>' +
+                  '<b>' + dinero(t.utilidad, t.utilidad >= 0 ? 'success' : 'danger') + '</b>' +
+                  '<span class="s" style="color:var(--slate)">' + fmtNum(t.margen) + '%</span>' +
+                '</div>' +
+              '</div>' +
+              // Una utilidad a medias tiene que decir que lo está
+              (t.estimado ? '<div class="s" style="color:var(--amber);margin-bottom:8px">' +
+                'Falta surtir parte de esta venta: el costo de lo que falta está ' +
+                'estimado con el catálogo, así que la utilidad es aproximada.</div>' : '') +
+              '<table class="mini-table"><thead><tr><th>Producto</th><th>Material</th>' +
+              '<th style="text-align:right">Vendidas</th>' +
+              '<th style="text-align:right">Surtidas</th>' +
+              '<th style="text-align:right">Importe</th>' +
+              '<th style="text-align:right">Costo</th>' +
+              '<th style="text-align:right">Utilidad</th><th></th></tr></thead><tbody>' +
+              (v.productos || []).map(function (p) {
+                var ext = String(p.materialExtra || '').trim();
+                if (/^(n\/?a|no aplica|ninguno|ninguna|-)$/i.test(ext)) ext = '';
+                return '<tr><td>' + esc(p.producto) + '</td>' +
+                  '<td>' + esc(p.material || '') +
+                    (ext ? ' <span class="s" style="color:var(--slate)">· ' + esc(ext) +
+                      '</span>' : '') + '</td>' +
+                  '<td class="num">' + fmtNum(p.vendidas) + '</td>' +
+                  '<td class="num"' + (p.surtidas < p.vendidas
+                    ? ' style="color:var(--amber)"' : '') + '>' + fmtNum(p.surtidas) + '</td>' +
+                  '<td class="num">' + esc(formatMoney(p.importe)) + '</td>' +
+                  '<td class="num">' + esc(formatMoney(p.costo)) +
+                    (p.costoEstimado ? ' <span class="s" style="color:var(--amber)">~</span>'
+                                     : '') + '</td>' +
+                  '<td class="num" style="color:var(--' +
+                    (p.utilidad >= 0 ? 'success' : 'danger') + ')">' +
+                    esc(formatMoney(p.utilidad)) + '</td>' +
+                  '<td class="s" style="color:var(--slate)">' +
+                    (p.origenes || []).map(function (o) {
+                      return esc(o.proveedor || '') +
+                        (o.pedido ? ' · ' + esc(o.pedido) : '');
+                    }).join('<br>') + '</td></tr>';
+              }).join('') + '</tbody></table>' +
+              // Surtir desde aquí: se abre Surtir Ventas en esa venta, que es
+              // donde vive el diálogo con la bodega, los lotes y los proveedores.
+              (v.faltaSurtir
+                ? '<div class="cot-acciones"><button type="button" class="primary ir-surtir" ' +
+                  'data-folio="' + esc(v.folio).replace(/"/g, '&quot;') + '">Surtir esta venta' +
+                  '</button><span class="s" style="color:var(--muted)">Faltan ' +
+                  fmtNum((t.vendidas || 0) - (t.surtidas || 0)) + ' piezas por surtir</span></div>'
+                : '<div class="s" style="color:var(--success);margin-top:8px">✓ ' +
+                  'Surtida completa</div>') +
+              '</div>';
+          }).join('');
+        } else if (trazaVista === 'venta') {
           // Al revés: cada venta con sus muebles, y debajo de cada mueble de qué
           // pedido salió cada pieza.
           //
@@ -8004,6 +8111,16 @@
         var a = document.getElementById('trzPed'), b = document.getElementById('trzPrv');
         if (a) a.addEventListener('change', function () { trazaPedido = a.value; loadTraza(); });
         if (b) b.addEventListener('change', function () { trazaProv = b.value; loadTraza(); });
+        // Surtir desde el Historial: lleva a Surtir Ventas y deja esa venta
+        // arriba, resaltada. El diálogo de surtir vive allá, con la bodega, los
+        // lotes y los proveedores; duplicarlo aquí sería mantener dos.
+        document.querySelectorAll('.ir-surtir').forEach(function (bt) {
+          bt.addEventListener('click', function () {
+            surtirFoco = bt.getAttribute('data-folio') || '';
+            surtirFiltro = 'todas';
+            selectArea('surtir', LABELS.surtir || 'Surtir ventas', true);
+          });
+        });
       }).catch(fail);
   }
 
@@ -16528,7 +16645,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.10.22-479';
+    var mia = '2026.10.22-480';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
