@@ -1040,7 +1040,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.22-488</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.23-490</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -7610,7 +7610,7 @@
     if (tel) {
       partes.push(dato('Teléfono', '<a href="tel:' +
         esc(tel.replace(/[^0-9+]/g, '')) + '" style="color:var(--accent)">' +
-        esc(tel) + '</a>'));
+        esc(formatTelefono(tel)) + '</a>'));
     }
     if (dir) {
       partes.push(dato('Dirección de envío' + (f.especial ? ' · de esta venta' : ''),
@@ -8273,6 +8273,15 @@
                 ? '<div class="s" style="color:var(--muted)">' + esc(f.fiscal.rfc) +
                   (f.fiscal.regimen ? ' · ' + esc(f.fiscal.regimen) : '') +
                   (f.fiscal.uso ? ' · ' + esc(f.fiscal.uso) : '') + '</div>' : '') +
+              // El uso de CFDI de su última factura timbrada, cuando la ficha del
+              // cliente todavía no lo tiene. Se dice de qué factura salió: es
+              // para confirmarlo, no para darlo por hecho.
+              (f.fiscal && !f.fiscal.uso && f.fiscal.usoPrevio
+                ? '<div class="s" style="color:var(--slate)">Uso de CFDI: <b>' +
+                  esc(f.fiscal.usoPrevio) + '</b> <span style="color:var(--muted)">· ' +
+                  'es con el que se le facturó la vez pasada' +
+                  (f.fiscal.usoPrevioDe ? ' (' + esc(f.fiscal.usoPrevioDe) + ')' : '') +
+                  '</span></div>' : '') +
               ((f.faltanDatos || []).length
                 ? '<div class="s" style="color:var(--amber)">Falta ' +
                   esc(f.faltanDatos.join(', ')) + '</div>' : '') +
@@ -8537,8 +8546,8 @@
           '</div>' +
           (e.direccion ? '<div class="s">' + esc(e.direccion) +
             ' <span style="color:var(--muted)">· ' + esc(e.zona) + '</span></div>' : '') +
-          (e.telefono ? '<div class="s"><a href="tel:' + esc(e.telefono) + '">' +
-            esc(e.telefono) + '</a></div>' : '') +
+          (e.telefono ? '<div class="s"><a href="tel:' + esc(soloDigitos(e.telefono)) + '">' +
+            esc(formatTelefono(e.telefono)) + '</a></div>' : '') +
           '<div class="s" style="margin-top:4px">' + esc(e.muebles.map(function (m) {
             return m.cantidad + ' ' + m.producto + (m.material ? ' (' + m.material + ')' : ''); })
             .join(' · ')) + '</div>' +
@@ -8899,6 +8908,37 @@
   function isRightCol(h) {
     var s = norm(h);
     return RIGHT_FIELDS.some(function (c) { return norm(c) === s; });
+  }
+  // Un teléfono no es un monto.
+  //
+  // Google Sheets convierte "5541350553" en NÚMERO al guardarlo, y entonces la
+  // hoja lo devuelve con separador de miles —"5,541,350,553"—, que es como lo
+  // vio Camila. Los que se capturaron con espacios ("52 55 5431 6018") se
+  // salvaron porque Google los dejó como texto.
+  //
+  // Al pintarlo se quitan los separadores y se agrupa como se lee en México. Si
+  // no son 10 dígitos —ni 12/13 con lada 52— se muestran los dígitos tal cual:
+  // un teléfono mal capturado se ve mal capturado, no se arregla a la fuerza.
+  function esColumnaTelefono(h) {
+    var s = norm(h);
+    return s.indexOf('telefono') === 0 || s === 'tel' || s === 'celular' ||
+           s === 'whatsapp' || s === 'movil' || s === 'contacto telefono';
+  }
+  function soloDigitos(v) { return String(v == null ? '' : v).replace(/[^\d]/g, ''); }
+  function formatTelefono(v) {
+    var s = String(v == null ? '' : v).trim();
+    if (!s) return '';
+    // Ya viene legible (espacios, guiones, paréntesis, +): se respeta como está.
+    if (/[\s\-()+]/.test(s)) return s;
+    // Solo se toca lo que es puro número con separadores de miles o de decimales.
+    if (!/^[\d.,]+$/.test(s)) return s;
+    var d = soloDigitos(s);
+    if (d.length === 10) return d.slice(0, 2) + ' ' + d.slice(2, 6) + ' ' + d.slice(6);
+    if (d.length === 12 && d.slice(0, 2) === '52')
+      return '52 ' + d.slice(2, 4) + ' ' + d.slice(4, 8) + ' ' + d.slice(8);
+    if (d.length === 13 && d.slice(0, 3) === '521')
+      return '52 1 ' + d.slice(3, 5) + ' ' + d.slice(5, 9) + ' ' + d.slice(9);
+    return d;
   }
   function formatMoney(v) {
     var n = parseNumber(v);
@@ -11894,7 +11934,8 @@
         } else {
           var raw = r[h];
           var shown = isMoneyCol(h) ? formatMoney(raw)
-                    : (isDateCol(h) ? formatDateCell(raw) : (raw == null ? '' : raw));
+                    : (esColumnaTelefono(h) ? formatTelefono(raw)
+                    : (isDateCol(h) ? formatDateCell(raw) : (raw == null ? '' : raw)));
           var e = esc(shown);
           var cuerpo;
           if (esColumnaFoto(h)) {
@@ -16738,7 +16779,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.10.22-488';
+    var mia = '2026.10.23-490';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
