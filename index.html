@@ -1040,7 +1040,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.23-490</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.23-491</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1211,6 +1211,57 @@
       <div class="modal-foot">
         <button id="facSkip" type="button" class="grow">Después lo veo</button>
         <button class="primary" id="facSave" type="button">Guardar facturación</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Los datos fiscales del cliente, desde donde se factura.
+       Antes había que salirse a Lista de Clientes para capturar un RFC, y el
+       uso de CFDI no se podía editar en ninguna parte. -->
+  <div class="modal" id="fisModal">
+    <div class="modal-card" style="max-width:620px">
+      <div class="modal-head">
+        <h3>Datos fiscales</h3>
+        <button class="modal-x" id="fisClose" type="button" aria-label="Cerrar">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="fisResumen" style="background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:14px;font-size:14px"></div>
+        <button type="button" id="fisLeerCsf" class="grow" style="margin-bottom:14px">
+          Traer de la constancia del expediente</button>
+        <div id="fisNota" style="font-size:12px;color:var(--muted);margin-bottom:14px"></div>
+        <div class="form-grid">
+          <div class="fld"><label>Razón Social</label><input type="text" id="fisRazon"></div>
+          <div class="fld"><label>RFC</label><input type="text" id="fisRfc" style="text-transform:uppercase"></div>
+          <div class="fld">
+            <label>Tipo de Persona</label>
+            <select id="fisTipo">
+              <option value="">— elegir —</option>
+              <option value="Física">Física</option>
+              <option value="Moral">Moral</option>
+            </select>
+          </div>
+          <div class="fld"><label>Régimen fiscal</label><input type="text" id="fisRegimen"></div>
+          <div class="fld" style="grid-column:1/-1">
+            <label>Uso de CFDI</label>
+            <input type="text" id="fisUso" list="dl-uso-cfdi-2" placeholder="G03 - Gastos en general">
+            <datalist id="dl-uso-cfdi-2">
+              <option value="G01 - Adquisición de mercancías"></option>
+              <option value="G03 - Gastos en general"></option>
+              <option value="I08 - Otra maquinaria y equipo"></option>
+              <option value="D10 - Pagos por servicios educativos"></option>
+              <option value="S01 - Sin efectos fiscales"></option>
+              <option value="CP01 - Pagos"></option>
+            </datalist>
+            <div style="font-size:12px;color:var(--muted);margin-top:4px">
+              Lo elige el cliente: la constancia no lo trae. Se guarda en su ficha
+              y desde ahí sale para todas sus facturas.
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button id="fisCancel" type="button" class="grow">Cancelar</button>
+        <button class="primary" id="fisSave" type="button">Guardar en la ficha</button>
       </div>
     </div>
   </div>
@@ -8282,9 +8333,19 @@
                   'es con el que se le facturó la vez pasada' +
                   (f.fiscal.usoPrevioDe ? ' (' + esc(f.fiscal.usoPrevioDe) + ')' : '') +
                   '</span></div>' : '') +
-              ((f.faltanDatos || []).length
-                ? '<div class="s" style="color:var(--amber)">Falta ' +
-                  esc(f.faltanDatos.join(', ')) + '</div>' : '') +
+              // Lo que falta se arregla desde aquí mismo, y lo que ya está
+              // también se corrige: el RFC mal escrito se ve al ir a facturar.
+              '<div class="s"><a href="#" class="fac-fiscal" ' +
+                'data-cliente="' + esc(f.cliente).replace(/"/g, '&quot;') + '" ' +
+                'data-folio="' + esc(f.folio).replace(/"/g, '&quot;') + '" ' +
+                'data-razon="' + esc((f.fiscal || {}).razonSocial || '').replace(/"/g, '&quot;') + '" ' +
+                'data-rfc="' + esc((f.fiscal || {}).rfc || '').replace(/"/g, '&quot;') + '" ' +
+                'data-regimen="' + esc((f.fiscal || {}).regimen || '').replace(/"/g, '&quot;') + '" ' +
+                'data-uso="' + esc((f.fiscal || {}).uso || (f.fiscal || {}).usoPrevio || '').replace(/"/g, '&quot;') + '" ' +
+                'style="color:' + ((f.faltanDatos || []).length ? 'var(--amber)' : 'var(--accent)') + '">' +
+                ((f.faltanDatos || []).length
+                  ? 'Falta ' + esc(f.faltanDatos.join(', ')) + ' — capturar'
+                  : 'datos fiscales') + '</a></div>' +
               (f.metodo
                 ? '<div class="s"><b>' + esc(f.metodo) + '</b> <span style="color:var(--muted)">· ' +
                   esc(f.metodoPorque || '') + '</span></div>'
@@ -16606,6 +16667,90 @@
   }
   // Sube la CSF a la carpeta del pedido. Devuelve el link de la carpeta (o '' si no hay archivo).
   // Guarda en la Lista de Clientes lo que se leyó de la CSF
+  // ===== Datos fiscales del cliente, desde la pantalla de facturación =====
+  //
+  // Dos cosas que no se podían hacer en ninguna parte: editar el uso de CFDI
+  // —que no sale de la constancia, lo elige el cliente— y aprovechar la CSF que
+  // ya está guardada en la carpeta del pedido. Camila las veía en Drive y el
+  // panel seguía diciendo "falta RFC, razón social, régimen fiscal".
+  var fiscalDe = null;
+  function abrirFiscal(a) {
+    fiscalDe = {
+      cliente: a.getAttribute('data-cliente') || '',
+      folio: a.getAttribute('data-folio') || ''
+    };
+    document.getElementById('fisResumen').innerHTML =
+      '<b>' + esc(fiscalDe.cliente) + '</b>' +
+      (fiscalDe.folio ? ' <span style="color:var(--muted)">· ' + esc(fiscalDe.folio) + '</span>' : '');
+    document.getElementById('fisRazon').value = a.getAttribute('data-razon') || '';
+    document.getElementById('fisRfc').value = a.getAttribute('data-rfc') || '';
+    document.getElementById('fisRegimen').value = a.getAttribute('data-regimen') || '';
+    document.getElementById('fisUso').value = a.getAttribute('data-uso') || '';
+    var rfc = (a.getAttribute('data-rfc') || '').trim();
+    document.getElementById('fisTipo').value =
+      rfc.length === 12 ? 'Moral' : (rfc.length === 13 ? 'Física' : '');
+    document.getElementById('fisNota').textContent = '';
+    document.getElementById('fisModal').classList.add('on');
+  }
+  function cerrarFiscal() {
+    document.getElementById('fisModal').classList.remove('on');
+    fiscalDe = null;
+  }
+  function leerCsfDelExpediente() {
+    if (!fiscalDe || !fiscalDe.folio) return;
+    var nota = document.getElementById('fisNota');
+    nota.style.color = 'var(--muted)';
+    nota.textContent = 'Buscando la constancia en la carpeta de ' + fiscalDe.folio + '…';
+    api('csf', { token: state.token, folio: fiscalDe.folio }).then(function (o) {
+      if (!o.ok || !o.datos) { nota.style.color = 'var(--amber)';
+        nota.textContent = o.motivo || 'La constancia no se pudo leer.'; return; }
+      var d = o.datos;
+      var puso = [];
+      var pon = function (id, v) {
+        if (!v) return;
+        document.getElementById(id).value = v; puso.push(v);
+      };
+      pon('fisRazon', d['Razón Social']);
+      pon('fisRfc', d['RFC']);
+      pon('fisRegimen', d['Régimen fiscal']);
+      if (d['Tipo de Persona']) document.getElementById('fisTipo').value = d['Tipo de Persona'];
+      nota.style.color = puso.length ? 'var(--success)' : 'var(--amber)';
+      nota.textContent = puso.length
+        ? 'Leído de ' + (o.archivo || 'la constancia') + '. Revísalo y guarda. ' +
+          'El uso de CFDI no viene ahí: ese lo pones tú.'
+        : 'La constancia se abrió pero no se pudo sacar nada en claro.';
+    }).catch(function (e) {
+      nota.style.color = 'var(--amber)';
+      nota.textContent = (e && e.message) || 'No se encontró la constancia en la carpeta.';
+    });
+  }
+  function guardarFiscal() {
+    if (!fiscalDe || !fiscalDe.cliente) return;
+    var set = {};
+    var v = function (id) { return (document.getElementById(id).value || '').trim(); };
+    if (v('fisRazon')) set['Razón Social'] = v('fisRazon');
+    if (v('fisRfc')) set['RFC'] = v('fisRfc').toUpperCase();
+    if (v('fisTipo')) set['Tipo de Persona'] = v('fisTipo');
+    if (v('fisRegimen')) set['Régimen fiscal'] = v('fisRegimen');
+    if (v('fisUso')) set['Uso de CFDI'] = v('fisUso');
+    if (!Object.keys(set).length) { toast('No hay nada que guardar.', 'err'); return; }
+    var cliente = fiscalDe.cliente;
+    api('fill', { token: state.token, key: 'ventas_clientes',
+      match: { col: 'Cliente',
+               colAlt: ['Nombre/Razón Social', 'Nombre/Razon Social', 'Razón Social', 'Contacto'],
+               value: cliente },
+      // Si el cliente todavía no está en la lista, se da de alta con lo que se
+      // acaba de capturar: guardar en silencio sería peor.
+      set: set, crear: true })
+      .then(function (o) {
+        toast(o && o.creada
+          ? 'Ficha de ' + cliente + ' creada con sus datos fiscales.'
+          : 'Datos fiscales guardados.', 'ok');
+        cerrarFiscal();
+        loadControlFactura();
+      }).catch(fail);
+  }
+
   function guardarFiscalDelCliente(cliente) {
     if (!csfLeida || !cliente) return Promise.resolve();
     var set = {};
@@ -16779,7 +16924,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.10.23-490';
+    var mia = '2026.10.23-491';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
@@ -16899,6 +17044,10 @@
   document.getElementById('facClose').addEventListener('click', cerrarPasoFactura);
   document.getElementById('facSkip').addEventListener('click', cerrarPasoFactura);
   document.getElementById('facSave').addEventListener('click', guardarPedidoCxc);
+  document.getElementById('fisClose').addEventListener('click', cerrarFiscal);
+  document.getElementById('fisCancel').addEventListener('click', cerrarFiscal);
+  document.getElementById('fisSave').addEventListener('click', guardarFiscal);
+  document.getElementById('fisLeerCsf').addEventListener('click', leerCsfDelExpediente);
   document.getElementById('facQuiere').addEventListener('change', function () {
     var si = (this.value === 'Si');
     document.getElementById('facFiscal').style.display = si ? 'grid' : 'none';
@@ -17144,6 +17293,8 @@
                     loadControlFactura);
       return;
     }
+    var ff = e.target.closest('.fac-fiscal');
+    if (ff) { e.preventDefault(); abrirFiscal(ff); return; }
     var fn = e.target.closest('.fac-nota');
     if (fn) {
       e.preventDefault();
