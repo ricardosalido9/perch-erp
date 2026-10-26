@@ -1040,7 +1040,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.26-499</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.26-500</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -7182,7 +7182,11 @@
           '<select id="arcFactura"><option value="">— elegir —</option>' +
           '<option value="Sí">Sí, la necesita</option>' +
           '<option value="No">No la necesita</option>' +
-          '<option value="Ya facturado">Ya está facturada</option></select></div>' +
+          // Una venta PPD ya tiene su factura: lo que falta por cada pago es el
+          // complemento, no otra factura. Sin esta opción el cobro se marcaba
+          // "Ya facturado" y el complemento se perdía de vista.
+          '<option value="Complemento de pago">Ya facturada · falta el complemento (PPD)</option>' +
+          '<option value="Ya facturado">Ya está facturada y su complemento</option></select></div>' +
         '</div>' +
         '<div class="fld" style="width:260px;margin:10px 0 0"><label>Comprobante</label>' +
           '<select id="arcComp">' +
@@ -7308,16 +7312,21 @@
   // no había dónde corregirlo: aquí sí.
   function cambiarRequiereFactura(fila, actual, recargar) {
     var r = prompt('¿Este cobro requiere factura?\n\n' +
-                   'Escribe: Si · No · Ya facturado\n\n' +
+                   'Escribe:\n' +
+                   '  Si — hay que emitir la factura\n' +
+                   '  No — no lleva\n' +
+                   '  Complemento — ya está facturada (PPD) y falta el complemento de este pago\n' +
+                   '  Ya — facturada y con su complemento\n\n' +
                    'Sin respuesta, el cobro no sale en "Qué falta facturar".',
                    actual || '');
     if (r == null) return;
     r = String(r).trim();
-    if (!r) { toast('Escribe Si, No o Ya facturado.', 'err'); return; }
-    if (/^s/i.test(r)) r = 'Sí';
+    if (!r) { toast('Escribe Si, No, Complemento o Ya.', 'err'); return; }
+    if (/^c/i.test(r)) r = 'Complemento de pago';
+    else if (/^s/i.test(r)) r = 'Sí';
     else if (/^n/i.test(r)) r = 'No';
     else if (/^y/i.test(r)) r = 'Ya facturado';
-    else { toast('Solo vale Si, No o Ya facturado.', 'err'); return; }
+    else { toast('Solo vale Si, No, Complemento o Ya.', 'err'); return; }
     api('pago-cliente', { token: state.token, accion: 'requiere-factura',
                           fila: fila, requiereFactura: r, folio: arcFolio })
       .then(function (o) {
@@ -8466,6 +8475,32 @@
           fmtNum(t.diasQueQuedan) + ' días del mes.', d.delMes || []) +
         tabla('Ya facturado', 'Tienen su CFDI en el SAT o se marcaron como facturados.',
           d.conFactura || [], true) +
+        // Pagos de ventas PPD: la factura ya está, falta el complemento de cada
+        // pago. El plazo es el día 5 del mes siguiente.
+        ((d.complementos || []).length
+          ? '<div style="margin-top:18px;border:1px solid var(--line);border-radius:12px;' +
+            'padding:14px 16px">' +
+            '<div style="font-weight:700;margin-bottom:4px">Falta el complemento de pago</div>' +
+            '<div class="s" style="color:var(--slate);margin-bottom:10px">Son ventas que ya ' +
+            'tienen su factura PPD. Por cada pago hay que emitir el complemento, ' +
+            '<b>a más tardar el día 5 del mes siguiente</b>. No se les vuelve a facturar.</div>' +
+            d.complementos.map(function (x) {
+              return '<div class="s" style="display:flex;gap:10px;align-items:center;' +
+                'flex-wrap:wrap;padding:4px 0">' +
+                '<b>' + esc(x.folio) + '</b>' +
+                '<span style="color:var(--slate)">' + esc(x.cliente || '') + '</span>' +
+                '<span style="color:var(--muted)">pago del ' + esc(x.fecha || '') + '</span>' +
+                '<span>' + esc(fmtMoney(x.monto)) + '</span>' +
+                (x.vence ? '<span style="color:' + (x.vencido ? 'var(--danger)' : 'var(--amber)') +
+                  '">' + (x.vencido ? 'se venció el ' : 'vence el ') + esc(x.vence) + '</span>' : '') +
+                (x.enBanco === false
+                  ? '<span class="s" style="color:var(--amber)">sin confirmar en banco</span>' : '') +
+                '<button type="button" class="row-btn fac-expediente" data-folio="' +
+                  esc(x.folio).replace(/"/g, '&quot;') + '" data-cli="' +
+                  esc(x.cliente || '').replace(/"/g, '&quot;') + '">Archivos y cobros</button>' +
+                '</div>';
+            }).join('') + '</div>'
+          : '') +
         // Cobrados y sin decir si llevan factura. No se pueden dar por buenos
         // —sería inventar—, pero tampoco pueden desaparecer de la pantalla.
         ((d.sinDefinir || []).length
@@ -17197,7 +17232,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.10.26-499';
+    var mia = '2026.10.26-500';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
