@@ -1040,7 +1040,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.23-493</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.26-495</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -7063,7 +7063,7 @@
   function abrirArchivos(folio, cliente) {
     arcFolio = folio; arcCliente = cliente || '';
     cobroForzar = false;   // no se arrastra el "regístralo igual" de otro folio
-    document.getElementById('aventaTitulo').textContent = 'Archivos · ' + folio;
+    document.getElementById('aventaTitulo').textContent = 'Archivos y cobros · ' + folio;
     document.getElementById('aventaCuerpo').innerHTML =
       '<div class="state" style="padding:30px 0">Buscando la carpeta en Drive…</div>';
     // Aquí las acciones viven en el cuerpo —subir, registrar cobro—, así que el
@@ -7230,12 +7230,31 @@
               '<td class="s" style="color:' +
                 (x.cancelado ? 'var(--muted)' : x.banco ? 'var(--success)' : 'var(--amber)') +
               '">' + (x.cancelado ? 'cancelado' : x.banco ? 'en banco' : 'sin confirmar') + '</td>' +
+              // Si requiere factura o no: se ve y se corrige aquí. Sin respuesta,
+              // el cobro no sale en "Qué falta facturar" y nadie se entera.
+              '<td class="s">' + (x.cancelado ? '' :
+                (/^s[ií]/i.test(x.requiereFactura || '')
+                  ? '<span style="color:var(--slate)">con factura</span>'
+                  : /^no/i.test(x.requiereFactura || '')
+                    ? '<span style="color:var(--muted)">sin factura</span>'
+                    : /^ya/i.test(x.requiereFactura || '')
+                      ? '<span style="color:var(--muted)">ya facturada</span>'
+                      : '<b style="color:var(--amber)">falta decirlo</b>') +
+                ' <a href="#" class="cobro-rf" data-fila="' + x.fila +
+                '" data-rf="' + esc(x.requiereFactura || '').replace(/"/g, '&quot;') +
+                '" style="color:var(--accent)">cambiar</a>') + '</td>' +
               '<td>' + (x.cancelado ? '' :
                 '<button type="button" class="row-btn cobro-mover" data-fila="' + x.fila +
                   '">Cambiar de folio</button> ' +
                 '<button type="button" class="row-btn cobro-cancelar" data-fila="' + x.fila +
                   '" data-monto="' + x.monto + '">Cancelar</button>') + '</td></tr>';
           }).join('') + '</tbody></table>';
+        caja.querySelectorAll('.cobro-rf').forEach(function (b) {
+          b.addEventListener('click', function (ev) {
+            ev.preventDefault();
+            cambiarRequiereFactura(b.getAttribute('data-fila'), b.getAttribute('data-rf'));
+          });
+        });
         caja.querySelectorAll('.cobro-mover').forEach(function (b) {
           b.addEventListener('click', function () { moverCobro(b.getAttribute('data-fila')); });
         });
@@ -7264,6 +7283,30 @@
       })
       .catch(fail);
   }
+  // Si el cobro requiere factura o no. Se pregunta al registrarlo, pero antes se
+  // podía dejar en blanco y entonces el cobro no salía en "Qué falta facturar",
+  // sin que nada lo dijera. Las pantallas de cobros son de solo lectura, así que
+  // no había dónde corregirlo: aquí sí.
+  function cambiarRequiereFactura(fila, actual, recargar) {
+    var r = prompt('¿Este cobro requiere factura?\n\n' +
+                   'Escribe: Si · No · Ya facturado\n\n' +
+                   'Sin respuesta, el cobro no sale en "Qué falta facturar".',
+                   actual || '');
+    if (r == null) return;
+    r = String(r).trim();
+    if (!r) { toast('Escribe Si, No o Ya facturado.', 'err'); return; }
+    if (/^s/i.test(r)) r = 'Sí';
+    else if (/^n/i.test(r)) r = 'No';
+    else if (/^y/i.test(r)) r = 'Ya facturado';
+    else { toast('Solo vale Si, No o Ya facturado.', 'err'); return; }
+    api('pago-cliente', { token: state.token, accion: 'requiere-factura',
+                          fila: fila, requiereFactura: r, folio: arcFolio })
+      .then(function (o) {
+        toast(o.mensaje || 'Listo.', 'ok');
+        (recargar || cargarCobrosDelFolio)();
+      })
+      .catch(fail);
+  }
   function cancelarCobro(fila, monto, recargar) {
     if (!confirm('¿Cancelar este cobro de ' + formatMoney(monto) + '?\n\n' +
                  'El renglón se queda con el registro de qué pasó, pero deja de contar.')) return;
@@ -7282,6 +7325,17 @@
   function registrarCobro(btn, ligaComprobante) {
     var monto = (document.getElementById('arcMonto') || {}).value;
     if (!(Number(monto) > 0)) { toast('Pon cuánto pagó.', 'err'); return; }
+    // Sin esta respuesta el cobro se guardaba igual, con la casilla en blanco, y
+    // entonces NUNCA aparecía en lo que falta facturar: es lo que le pasó a
+    // Camila con la O15-26 y la O17-26. No es un dato opcional.
+    var rf = (document.getElementById('arcFactura') || {}).value;
+    if (!rf) {
+      toast('Falta decir si el cliente requiere factura. Sin eso el cobro no sale en ' +
+            '"Qué falta facturar".', 'err');
+      var selRf = document.getElementById('arcFactura');
+      if (selRf) { selRf.style.borderColor = 'var(--amber)'; selRf.focus(); }
+      return;
+    }
     var fp = document.getElementById('arcFechaPago');
     var comp = ligaComprobante ||
       ((document.getElementById('arcComp') || {}).value || '');
@@ -8311,7 +8365,7 @@
           '<div style="margin-top:5px"><button type="button" class="row-btn fac-expediente" ' +
           'data-folio="' + esc(f.folio).replace(/"/g, '&quot;') +
           '" data-cli="' + esc(f.cliente).replace(/"/g, '&quot;') +
-          '">Ver cotización y archivos</button></div></td>';
+          '">Archivos y cobros</button></div></td>';
       };
       var tabla = function (titulo, nota, filas, extra) {
         if (!filas.length) return '';
@@ -8384,7 +8438,29 @@
           'Cobrados, confirmados en banco y pendientes. Quedan ' +
           fmtNum(t.diasQueQuedan) + ' días del mes.', d.delMes || []) +
         tabla('Ya facturado', 'Tienen su CFDI en el SAT o se marcaron como facturados.',
-          d.conFactura || [], true);
+          d.conFactura || [], true) +
+        // Cobrados y sin decir si llevan factura. No se pueden dar por buenos
+        // —sería inventar—, pero tampoco pueden desaparecer de la pantalla.
+        ((d.sinDefinir || []).length
+          ? '<div style="margin-top:18px;border:1px solid var(--amber);border-radius:12px;' +
+            'padding:14px 16px;background:var(--paper)">' +
+            '<div style="font-weight:700;margin-bottom:4px">Falta decir si llevan factura</div>' +
+            '<div class="s" style="color:var(--slate);margin-bottom:10px">Están cobrados, pero ' +
+            'nadie contestó si el cliente pide factura, así que no salen en ninguna lista de ' +
+            'arriba. Entra al folio y dilo en <b>Archivos y cobros</b>.</div>' +
+            d.sinDefinir.map(function (x) {
+              return '<div class="s" style="display:flex;gap:10px;align-items:center;' +
+                'flex-wrap:wrap;padding:4px 0">' +
+                '<b>' + esc(x.folio) + '</b>' +
+                '<span style="color:var(--slate)">' + esc(x.cliente || '') + '</span>' +
+                '<span style="color:var(--muted)">' + esc(x.fecha || '') + '</span>' +
+                '<span>' + esc(fmtMoney(x.monto)) + '</span>' +
+                '<button type="button" class="row-btn fac-expediente" data-folio="' +
+                  esc(x.folio).replace(/"/g, '&quot;') + '" data-cli="' +
+                  esc(x.cliente || '').replace(/"/g, '&quot;') + '">Archivos y cobros</button>' +
+                '</div>';
+            }).join('') + '</div>'
+          : '');
 
       document.getElementById('tableWrap').innerHTML = (h ||
         '<div class="state" style="padding:40px 0">Ningún cobro pide factura todavía.' +
@@ -11699,7 +11775,7 @@
                 'recibir">Remisión de entrega</button>' : '') +
             '<button type="button" class="archivos-btn" data-folio="' + esc(k).replace(/"/g, '&quot;') +
               '" data-cli="' + esc(r0[cCli] || '').replace(/"/g, '&quot;') +
-              '">Archivos del folio</button>' +
+              '">Archivos y cobros</button>' +
             (state.key === 'cotizaciones' && !esSoloLectura(state.key)
               ? '<button type="button" class="dup-cot" data-folio="' + esc(k).replace(/"/g, '&quot;') +
                 '">Hacer una versión nueva</button>' : '') +
@@ -13147,7 +13223,9 @@
     // navegador solo salta a lo que EMPIEZA con lo que tecleas, y los productos se
     // llaman "Silla Chara", así que escribir "chara" no encuentra nada. Se le pone
     // un buscador que filtra por cualquier parte del nombre.
-    if (opts.length >= 8) hacerBuscable(sel);
+    // Con el campo abierto siempre va el buscador: es el único que deja escribir
+    // un material que el catálogo no tiene.
+    if (opts.length >= 8 || sel._libre) hacerBuscable(sel);
     else quitarBuscador(sel);
   }
 
@@ -13210,6 +13288,23 @@
     var pintar = function () {
       var res = filtrar(inp.value);
       marcado = -1;
+      // En un campo abierto, lo escrito vale aunque no esté en el catálogo: se
+      // ofrece arriba de todo para que quede claro que se va a guardar así.
+      var escrito = (inp.value || '').trim();
+      if (sel._libre && escrito &&
+          !res.some(function (o) { return norm(o) === norm(escrito); })) {
+        lista.innerHTML = '<div data-nuevo="1" style="padding:8px 12px;cursor:pointer;' +
+          'font-size:13.5px;border-bottom:1px solid var(--line)">Usar <b>' + esc(escrito) +
+          '</b> <span style="color:var(--muted)">· no está en el catálogo</span></div>' +
+          res.map(function (o, i) {
+            return '<div data-i="' + i + '" style="padding:8px 12px;cursor:pointer;font-size:13.5px">' +
+              esc(o) + '</div>';
+          }).join('');
+        lista._res = res; lista._nuevo = escrito;
+        lista.style.display = 'block';
+        return;
+      }
+      lista._nuevo = '';
       if (!res.length) {
         lista.innerHTML = '<div style="padding:10px 12px;color:var(--muted);font-size:13px">' +
           'Nada coincide con “' + esc(inp.value) + '”' +
@@ -13229,6 +13324,15 @@
       lista.style.display = 'block';
     };
     var elegir = function (txt2) {
+      // Un valor que no está en el desplegable no se puede asignar: primero se
+      // agrega como opción. Si no, sel.value se quedaría vacío y el renglón se
+      // guardaría sin material.
+      if (txt2 && !Array.prototype.slice.call(sel.options)
+            .some(function (o) { return norm(o.value || o.textContent) === norm(txt2); })) {
+        var op = document.createElement('option');
+        op.value = txt2; op.textContent = txt2;
+        sel.appendChild(op);
+      }
       sel.value = txt2;
       inp.value = txt2;
       lista.style.display = 'none';
@@ -13251,11 +13355,14 @@
       else if (e.key === 'ArrowUp') { e.preventDefault(); marcado = Math.max(0, marcado - 1); resaltar(); }
       else if (e.key === 'Enter') {
         e.preventDefault();
-        if (n === 1) elegir(lista._res[0]);              // si solo queda una, ésa
-        else if (marcado >= 0) elegir(lista._res[marcado]);
+        if (marcado >= 0 && lista._res[marcado]) elegir(lista._res[marcado]);
+        else if (lista._nuevo) elegir(lista._nuevo);     // campo abierto: vale lo escrito
+        else if (n === 1) elegir(lista._res[0]);         // si solo queda una, ésa
       } else if (e.key === 'Escape') { lista.style.display = 'none'; }
     });
     lista.addEventListener('mousedown', function (e) {
+      var nv = e.target.closest('[data-nuevo]');
+      if (nv) { e.preventDefault(); elegir(lista._nuevo || ''); return; }
       var d = e.target.closest('[data-i]'); if (!d) return;
       e.preventDefault();
       elegir((lista._res || [])[+d.getAttribute('data-i')]);
@@ -13263,9 +13370,14 @@
     inp.addEventListener('blur', function () {
       setTimeout(function () {
         lista.style.display = 'none';
-        // Lo escrito a medias no vale: o se eligió algo de la lista o se limpia.
-        // Dejarlo escrito haría creer que quedó elegido cuando no.
-        if (norm(inp.value) !== norm(sel.value || '')) inp.value = sel.value || '';
+        if (norm(inp.value) === norm(sel.value || '')) return;
+        // En un campo abierto lo escrito se queda: es un producto que el
+        // catálogo no describe y el material lo pone quien captura.
+        var escrito2 = (inp.value || '').trim();
+        if (sel._libre && escrito2) { elegir(escrito2); return; }
+        // Si no, lo escrito a medias no vale: o se eligió algo de la lista o se
+        // limpia. Dejarlo escrito haría creer que quedó elegido cuando no.
+        inp.value = sel.value || '';
       }, 150);
     });
   }
@@ -13274,6 +13386,19 @@
   // vacía. Si el vacío no se ofrece, esas variantes no se pueden elegir y el
   // precio nunca aparece. Se muestra como "NA".
   var VACIO = 'NA';
+  // Todos los valores que ese nivel toma en el catálogo, sin filtrar por lo
+  // elegido arriba. Es lo que se ofrece cuando el producto no está en el
+  // catálogo y, aun así, hay que decir de qué material es.
+  function cascTodos(c, level) {
+    var seen = {}, out = [];
+    c.rows.forEach(function (r) {
+      var v = valorNivel(r, c.levels[level]);
+      if (!v) return;
+      if (!seen[norm(v)]) { seen[norm(v)] = 1; out.push(v); }
+    });
+    out.sort(function (a, b) { return a.localeCompare(b, 'es'); });
+    return out;
+  }
   function cascDistinct(c, chosen, level) {
     var seen = {}, out = [];
     c.rows.forEach(function (r) {
@@ -13299,10 +13424,28 @@
       var e0 = cascElem(k);
       elegidos[k] = e0 ? e0.value : '';
     }
+    // Un producto que el catálogo no describe —"Producto Especial", "Sobre
+    // Diseño", uno recién inventado— no tiene materiales ahí. El desplegable
+    // quedaba con una sola opción, NA, y entonces no había forma de ponerle el
+    // Mármol Negro Monterrey que sí lleva. Cuando pasa eso se ofrecen todos los
+    // materiales del catálogo Y se puede escribir uno que no exista.
+    //
+    // Se decide por el MATERIAL (nivel 1): un mueble siempre lleva uno. Un NA en
+    // Material Extra sí es una respuesta del catálogo —la Banca Coa Tejida/Kraft
+    // no lleva segundo material— y ése no se abre.
+    var fueraDelCatalogo = false;
+    if (c.levels.length > 1) {
+      var op1 = cascDistinct(c, elegidos, 1);
+      fueraDelCatalogo = !op1.length ||
+                         (op1.length === 1 && norm(op1[0]) === norm(VACIO));
+    }
     for (var d = level + 1; d < c.levels.length; d++) {
       var sel = cascElem(d);
       var opts = cascDistinct(c, elegidos, d);
-      if (sel) { fillOptions(sel, opts); sel.value = ''; sincronizarBuscador(sel);
+      var libre = fueraDelCatalogo && d >= 1;
+      if (libre) opts = [VACIO].concat(cascTodos(c, d));
+      if (sel) { sel._libre = libre;
+                 fillOptions(sel, opts); sel.value = ''; sincronizarBuscador(sel);
                  showFld(sel, opts.length > 0); }
     }
     resolveCascadeFills();
@@ -16953,7 +17096,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.10.23-493';
+    var mia = '2026.10.26-495';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
