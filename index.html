@@ -1040,7 +1040,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.26-497</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.26-498</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -8433,7 +8433,15 @@
                 ? '<div class="s"><b>' + esc(f.metodo) + '</b> <span style="color:var(--muted)">· ' +
                   esc(f.metodoPorque || '') + '</span></div>'
                 : (f.metodoPorque ? '<div class="s" style="color:var(--muted)">' +
-                   esc(f.metodoPorque) + '</div>' : '')) +
+                   esc(f.metodoPorque) +
+                   // Sin Total Pedido no se puede saber si la factura va PUE o
+                   // PPD. Casi siempre es que a ese renglón no le bajaron las
+                   // fórmulas, y eso se arregla desde aquí en un clic.
+                   (/no encontr[ée] el total/i.test(f.metodoPorque)
+                     ? ' · <a href="#" class="fac-formulas" data-folio="' +
+                       esc(f.folio).replace(/"/g, '&quot;') +
+                       '" style="color:var(--accent)">arreglar el total</a>' : '') +
+                   '</div>' : '')) +
               '</td>' +
               '<td>' + esc(f.fecha) +
               // Quien factura decide si emite ya o espera el dinero, pero lo ve
@@ -12838,10 +12846,28 @@
       '<div style="margin-top:6px">Renglón ' + f.join(', ') +
       ' de la hoja. Mientras no las tenga, el Total Pedido de esa venta queda vacío ' +
       'y suma cero en el dashboard.</div>' +
-      '<div style="margin-top:6px">Ábrela y arrastra las fórmulas del renglón de ' +
-      'arriba hacia ese, o avísame y lo reviso.</div>' +
+      // Antes decía "ábrela y arrastra las fórmulas": trabajo a mano en la hoja
+      // del cliente, que nadie hace. Ahora es un botón.
+      '<div style="margin-top:8px"><button type="button" class="primary" id="arreglaForm" ' +
+      'data-filas="' + esc(f.join(',')) + '" data-key="' + esc(state.key) + '">' +
+      'Bajarle las fórmulas ahora</button></div>' +
       (out.porque ? '<div class="s" style="margin-top:6px;color:var(--slate)">' +
         esc(out.porque) + '</div>' : ''));
+    var ba = document.getElementById('arreglaForm');
+    if (ba) ba.addEventListener('click', function () {
+      var filas = (ba.getAttribute('data-filas') || '').split(',')
+        .map(function (x) { return parseInt(x, 10); }).filter(Boolean);
+      ba.disabled = true; ba.textContent = 'Bajándolas…';
+      api('formulas', { token: state.token, key: ba.getAttribute('data-key'), filas: filas })
+        .then(function (o) {
+          toast(o.mensaje || 'Listo.', 'ok');
+          document.getElementById('avisoFijo').classList.remove('on');
+          loadArea();
+        })
+        .catch(function (err) {
+          fail(err); ba.disabled = false; ba.textContent = 'Bajarle las fórmulas ahora';
+        });
+    });
     return true;
   }
   function comoPorcentaje(v) {
@@ -17171,7 +17197,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.10.26-497';
+    var mia = '2026.10.26-498';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
@@ -17542,6 +17568,19 @@
     }
     var ff = e.target.closest('.fac-fiscal');
     if (ff) { e.preventDefault(); abrirFiscal(ff); return; }
+    var fform = e.target.closest('.fac-formulas');
+    if (fform) {
+      e.preventDefault();
+      var folF = fform.getAttribute('data-folio');
+      fform.textContent = 'arreglando…';
+      api('formulas', { token: state.token, key: 'ventas_registro', folio: folF })
+        .then(function (o) {
+          toast(o.mensaje || 'Listo.', 'ok');
+          loadControlFactura();
+        })
+        .catch(function (err) { fail(err); fform.textContent = 'arreglar el total'; });
+      return;
+    }
     var fn = e.target.closest('.fac-nota');
     if (fn) {
       e.preventDefault();
