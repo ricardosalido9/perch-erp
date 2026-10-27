@@ -1040,7 +1040,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.27-505</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.27-506</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -7219,8 +7219,13 @@
     if (bg) bg.addEventListener('click', function () {
       var b = this;
       b.disabled = true; b.textContent = 'Generando...';
-      // Es la misma generación de siempre: el PDF se guarda en esta carpeta.
-      generarPdfCotizacion(arcFolio, true, true, 'nuevo')
+      // Es la misma generación de siempre, pero guardada EN ESTA carpeta: la
+      // que la ventana ya tiene abierta. Y el folio dice qué es: COT- es
+      // cotización, lo demás es venta. Antes iba fijo como venta y con el área
+      // de la pantalla donde estuviera el usuario, así que el servidor leía la
+      // hoja equivocada y la cotización nunca se guardaba.
+      var esVentaFolio = !/^cot-/i.test(String(arcFolio || ''));
+      generarPdfCotizacion(arcFolio, esVentaFolio, true, 'nuevo', (d || {}).carpetaId)
         .then(function () { toast('Cotización guardada en la carpeta.', 'ok'); cargarArchivos(); })
         .catch(function (e) {
           b.disabled = false; b.textContent = 'Generar la cotización y guardarla aquí';
@@ -16727,12 +16732,21 @@
     return (MESES_ES[m - 1] || '') + ' ' + a;
   }
   // Genera el PDF en el servidor y lo guarda en Drive. Si Drive no está listo, lo descarga.
-  function generarPdfCotizacion(folio, esVenta, silencioso, formato) {
+  function generarPdfCotizacion(folio, esVenta, silencioso, formato, carpetaId) {
     if (!silencioso) toast('Generando el PDF...', 'ok');
     // El formato de diseño es el único que se manda al cliente. El viejo sigue
     // ahí pero solo como respaldo automático: si el nuevo fallara, el servidor
     // cae a él y avisa, en vez de dejar a alguien sin cotización que mandar.
-    return api('quote-pdf', { token: state.token, key: state.key, folio: folio,
+    //
+    // El área: desde la ventana de archivos, `state.key` es la pantalla donde
+    // está parado el usuario —Qué falta facturar, CxC, el calendario—, no la
+    // hoja de la venta. El servidor ya lo corrige, pero mandar el área de verdad
+    // evita el viaje en balde. Y `carpetaId` es la carpeta que esa ventana ya
+    // tiene abierta: ahí va el PDF, junto al resto del expediente.
+    var areaOk = (state.key === 'ventas_registro' || state.key === 'cotizaciones')
+      ? state.key : (esVenta ? 'ventas_registro' : 'cotizaciones');
+    return api('quote-pdf', { token: state.token, key: areaOk, folio: folio,
+                              carpetaId: carpetaId || '',
                               venta: !!esVenta, formato: formato || 'nuevo' })
       .then(function (out) {
         // La columna de descuento solo se dibuja si algún renglón trae descuento.
@@ -17282,7 +17296,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.10.27-505';
+    var mia = '2026.10.27-506';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
