@@ -1040,7 +1040,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.26-501</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.27-502</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -4357,6 +4357,15 @@
                       '<td class="num">' + esc(formatMoney(g.monto)) + '</td></tr>';
                   }).join('') + '</tbody></table>'
                 : '<div class="s" style="color:var(--muted);margin-top:4px">Sin pagos en INGRESOS con este folio.</div>') +
+              // Desde aquí se registra el pago: esta es la pantalla donde se ve
+              // la deuda, y hasta ahora había que ir a buscar el folio a Ventas
+              // para poder abonarle algo.
+              '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">' +
+                '<button type="button" class="row-btn' + (v.porCobrar > 1 ? ' primary' : '') +
+                  ' archivos-btn" data-folio="' + esc(v.folio).replace(/"/g, '&quot;') +
+                  '" data-cli="' + esc(c.cliente).replace(/"/g, '&quot;') + '">' +
+                  (v.porCobrar > 1 ? 'Registrar un pago' : 'Archivos y cobros') + '</button>' +
+              '</div>' +
               '</div>';
           });
           h += '</div>';
@@ -7241,37 +7250,50 @@
         caja.innerHTML = '<div class="s" style="color:var(--slate);margin-bottom:6px">' +
           'Ya registrados: <b>' + esc(formatMoney(o.total || 0)) + '</b> en ' +
           fmtNum(c.length) + (c.length === 1 ? ' cobro' : ' cobros') + '</div>' +
-          '<table class="mini-table" style="margin-bottom:10px"><tbody>' +
+          // Cada cobro es un bloque, no un renglón de tabla.
+          //
+          // Con tabla, al agregar la columna de "¿requiere factura?" la fila se
+          // salió del ancho de la ventana y el botón de Cancelar quedó cortado
+          // detrás de unos puntos suspensivos: Camila creyó que se lo habían
+          // quitado. Así los botones bajan solos cuando no caben, y en el
+          // celular también.
           c.map(function (x) {
-            // Un cobro mal capturado se corrige aquí. Antes era definitivo: si
-            // caía en el folio equivocado había que entrarle a la hoja a mano.
-            return '<tr' + (x.cancelado ? ' style="opacity:.5"' : '') + '>' +
-              '<td class="s">' + esc(x.fecha || '') + '</td>' +
-              '<td class="num">' + esc(formatMoney(x.monto)) + '</td>' +
-              '<td class="s" style="color:var(--slate)">' + esc(x.metodo || '') +
-              (x.referencia ? ' · ' + esc(x.referencia) : '') + '</td>' +
-              '<td class="s" style="color:' +
-                (x.cancelado ? 'var(--muted)' : x.banco ? 'var(--success)' : 'var(--amber)') +
-              '">' + (x.cancelado ? 'cancelado' : x.banco ? 'en banco' : 'sin confirmar') + '</td>' +
-              // Si requiere factura o no: se ve y se corrige aquí. Sin respuesta,
-              // el cobro no sale en "Qué falta facturar" y nadie se entera.
-              '<td class="s">' + (x.cancelado ? '' :
-                (/^s[ií]/i.test(x.requiereFactura || '')
-                  ? '<span style="color:var(--slate)">con factura</span>'
-                  : /^no/i.test(x.requiereFactura || '')
-                    ? '<span style="color:var(--muted)">sin factura</span>'
-                    : /^ya/i.test(x.requiereFactura || '')
-                      ? '<span style="color:var(--muted)">ya facturada</span>'
-                      : '<b style="color:var(--amber)">falta decirlo</b>') +
-                ' <a href="#" class="cobro-rf" data-fila="' + x.fila +
-                '" data-rf="' + esc(x.requiereFactura || '').replace(/"/g, '&quot;') +
-                '" style="color:var(--accent)">cambiar</a>') + '</td>' +
-              '<td>' + (x.cancelado ? '' :
-                '<button type="button" class="row-btn cobro-mover" data-fila="' + x.fila +
-                  '">Cambiar de folio</button> ' +
-                '<button type="button" class="row-btn cobro-cancelar" data-fila="' + x.fila +
-                  '" data-monto="' + x.monto + '">Cancelar</button>') + '</td></tr>';
-          }).join('') + '</tbody></table>';
+            var estado = x.cancelado ? 'cancelado' : x.banco ? 'en banco' : 'sin confirmar';
+            var color = x.cancelado ? 'var(--muted)' : x.banco ? 'var(--success)' : 'var(--amber)';
+            return '<div style="border:1px solid var(--line);border-radius:10px;' +
+              'padding:10px 12px;margin-bottom:8px' + (x.cancelado ? ';opacity:.55' : '') + '">' +
+              '<div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap">' +
+                '<b>' + esc(formatMoney(x.monto)) + '</b>' +
+                '<span class="s" style="color:var(--slate)">' + esc(x.fecha || '') + '</span>' +
+                '<span class="s" style="color:var(--slate)">' + esc(x.metodo || '') +
+                  (x.referencia ? ' · ' + esc(x.referencia) : '') + '</span>' +
+                '<span class="s" style="color:' + color + '">' + estado + '</span>' +
+              '</div>' +
+              (x.cancelado ? '' :
+                '<div class="s" style="margin-top:4px">' +
+                  (/^s[ií]/i.test(x.requiereFactura || '')
+                    ? '<span style="color:var(--slate)">con factura</span>'
+                    : /^no/i.test(x.requiereFactura || '')
+                      ? '<span style="color:var(--muted)">sin factura</span>'
+                      : /^complemento/i.test(x.requiereFactura || '')
+                        ? '<span style="color:var(--slate)">falta su complemento</span>'
+                        : /^ya/i.test(x.requiereFactura || '')
+                          ? '<span style="color:var(--muted)">ya facturada</span>'
+                          : '<b style="color:var(--amber)">falta decir si lleva factura</b>') +
+                  ' <a href="#" class="cobro-rf" data-fila="' + x.fila +
+                  '" data-rf="' + esc(x.requiereFactura || '').replace(/"/g, '&quot;') +
+                  '" style="color:var(--accent)">cambiar</a>' +
+                '</div>' +
+                '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">' +
+                  '<button type="button" class="row-btn cobro-mover" data-fila="' + x.fila +
+                    '">Cambiar de folio</button>' +
+                  '<button type="button" class="row-btn cobro-cancelar" data-fila="' + x.fila +
+                    '" data-monto="' + x.monto + '">Cancelar este cobro</button>' +
+                '</div>') +
+              (x.notas ? '<div class="s" style="color:var(--muted);margin-top:6px">' +
+                esc(x.notas) + '</div>' : '') +
+              '</div>';
+          }).join('');
         caja.querySelectorAll('.cobro-rf').forEach(function (b) {
           b.addEventListener('click', function (ev) {
             ev.preventDefault();
@@ -11637,9 +11659,15 @@
             return '<tr><td style="color:var(--muted);width:230px">' + esc(x) + '</td>' +
               '<td>' + esc(String(r[x] == null ? '' : r[x])) + '</td></tr>';
           }).join('') + '</tbody></table>' +
-          (esSoloLectura(state.key) ? '' :
-            '<div class="cot-acciones"><button type="button" class="ed-abrir" data-row="' +
-            r._row + '">Editar</button></div>') +
+          // Registrar el abono desde la lista de deuda, que es donde se mira.
+          '<div class="cot-acciones">' +
+            '<button type="button" class="row-btn primary archivos-btn" data-folio="' +
+              esc(folio).replace(/"/g, '&quot;') + '" data-cli="' +
+              esc(cCli ? (r[cCli] || '') : '').replace(/"/g, '&quot;') +
+              '">Registrar un pago</button>' +
+            (esSoloLectura(state.key) ? '' :
+              ' <button type="button" class="ed-abrir" data-row="' + r._row + '">Editar</button>') +
+          '</div>' +
           '</div>';
       }
       h += '</div>';
@@ -17232,7 +17260,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.10.26-501';
+    var mia = '2026.10.27-502';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
