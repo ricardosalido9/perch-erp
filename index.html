@@ -1040,7 +1040,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.27-502</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.27-505</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -7882,6 +7882,11 @@
               '<div style="display:flex;gap:14px;align-items:baseline;flex-wrap:wrap">' +
                 '<div style="font-weight:600">' + esc(p.producto) + '</div>' +
                 '<div class="s" style="color:var(--slate)">' + esc(variante(p)) + '</div>' +
+                // Dos partidas del mismo mueble y material en la misma venta: la
+                // medida es lo único que las distingue, así que va al frente.
+                (p.mismaPieza && p.especificaciones
+                  ? '<div class="s" style="font-weight:600">' +
+                    esc(String(p.especificaciones).slice(0, 70)) + '</div>' : '') +
                 '<div class="s">' + fmtNum(p.vendidas) +
                   (p.vendidas === 1 ? ' pieza vendida' : ' piezas vendidas') + '</div>' +
                 (p.variosComponentes
@@ -8022,15 +8027,32 @@
       // folio que falta manda a buscarlo a la hoja sin saber qué se busca.
       var sobra = (d.fuera || []);
       if (sobra.length) {
+        // Agrupado por el motivo, no una lista de 300 folios.
+        //
+        // Al dejar fuera las ventas ya entregadas, este renglón pasó de media
+        // docena de folios a cientos: "ya entregada" se dice una vez con su
+        // número, y los casos que sí hay que arreglar —sin folio, sin producto—
+        // siguen saliendo con nombre y apellido, que son los que importan.
+        var porMotivo = {};
+        sobra.forEach(function (x) {
+          (x.porque || ['sin motivo']).forEach(function (m) {
+            if (!porMotivo[m]) porMotivo[m] = [];
+            porMotivo[m].push(x.folio);
+          });
+        });
         barra += '<div class="s" style="color:var(--muted);margin:-6px 0 10px">' +
           'No salen en ninguna pestaña ' + fmtNum(sobra.length) +
-          (sobra.length === 1 ? ' venta: ' : ' ventas: ') +
-          sobra.slice(0, 12).map(function (x) {
-            return '<b>' + esc(x.folio) + '</b> <span style="color:var(--slate)">(' +
-              esc((x.porque || []).join(', ')) + ')</span>';
-          }).join(' · ') +
-          (sobra.length > 12 ? ' · y ' + fmtNum(sobra.length - 12) + ' más' : '') +
-          '</div>';
+          (sobra.length === 1 ? ' venta' : ' ventas') + ': ' +
+          Object.keys(porMotivo).sort(function (a, b) {
+            return porMotivo[b].length - porMotivo[a].length;
+          }).map(function (m) {
+            var f = porMotivo[m];
+            // Hasta seis folios se dicen; de ahí en adelante basta el número.
+            return '<b>' + fmtNum(f.length) + '</b> ' + esc(m) +
+              (f.length <= 6
+                ? ' <span style="color:var(--slate)">(' + esc(f.join(', ')) + ')</span>'
+                : '');
+          }).join(' · ') + '</div>';
       }
 
       document.getElementById('tableWrap').innerHTML = barra + (h ||
@@ -17260,7 +17282,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.10.27-502';
+    var mia = '2026.10.27-505';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
