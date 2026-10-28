@@ -289,6 +289,15 @@
   .mini-table th { color:var(--muted); font-weight:600; font-size:11px; text-transform:uppercase;
     letter-spacing:.5px; background:transparent; position:static; text-align:left; }
   .mini-table td.num { text-align:right; font-variant-numeric:tabular-nums; }
+  /* En el teléfono, una tabla más ancha que la pantalla se quedaba cortada y sin
+     manera de llegar a lo de la derecha: las tarjetas recortan lo que se sale
+     —es lo que les da las esquinas redondeadas— y estas tablas no tenían dónde
+     arrastrarse. Camila: "no me deja moverme de ahí a la derecha". Aquí la tabla
+     se arrastra sola de lado. La tarjeta de un pedido no usa esto: ahí cada
+     producto se vuelve una ficha, que se lee mejor que arrastrar. */
+  @media (max-width:640px) {
+    .mini-table { display:block; width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  }
   .dash-empty { color:var(--muted); font-size:13px; padding:8px 0; }
 
   /* Estados financieros. La tabla es ancha a fuerza: doce meses más totales. Se
@@ -804,7 +813,14 @@
   .cat-body .mini-table { background:var(--surface); border-radius:10px; }
   .cat-edit { border-bottom:0; }
   .cat-edit .form-grid { grid-template-columns:1fr 1fr; gap:12px; }
-  @media (max-width:640px) { .cat-edit .form-grid { grid-template-columns:1fr; } }
+  @media (max-width:640px) {
+    .cat-edit .form-grid { grid-template-columns:1fr; }
+    /* La tarjeta recorta lo que se sale —es lo que le da las esquinas
+       redondeadas—, así que una tabla más ancha que el teléfono quedaba cortada
+       y sin manera de llegar a ella. Aquí el contenido de la tarjeta se puede
+       arrastrar de lado. */
+    .cat-body { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  }
 
   /* ---------- Cotizaciones agrupadas ---------- */
   .cot-grid { display:flex; flex-direction:column; gap:10px; padding:4px; }
@@ -823,6 +839,44 @@
   .cot-body tr.fila-edit { background:var(--amber-bg); }
   .cot-body .row-btn { padding:3px 9px; font-size:12px; }
   .cot-acciones { display:flex; gap:10px; align-items:center; margin-top:12px; flex-wrap:wrap; }
+  .cot-pie-lbl { text-align:right; }
+
+  /* En el celular la tabla del pedido no cabe.
+     Son siete columnas con los textos sin cortar, así que en un teléfono se veían
+     tres y media: el precio, el descuento, el importe y los botones de cada
+     renglón quedaban fuera de la pantalla, sin manera de llegar a ellos. Camila y
+     Val revisan las cotizaciones desde el teléfono.
+     Aquí cada producto se vuelve una ficha: el nombre arriba y debajo sus datos,
+     cada uno con el nombre de su columna (el `data-th` del renglón). En la
+     computadora no cambia nada. */
+  @media (max-width:640px) {
+    .cot-body { padding:10px 10px; }
+    .cot-body .mini-table thead { display:none; }
+    .cot-body .mini-table,
+    .cot-body .mini-table tbody,
+    .cot-body .mini-table tr,
+    .cot-body .mini-table td { display:block; width:auto; max-width:none; }
+    .cot-body .mini-table tr { padding:10px 12px; border-bottom:1px solid var(--line); }
+    .cot-body .mini-table tr:last-child { border-bottom:0; }
+    .cot-body .mini-table td { border:0; padding:2px 0; white-space:normal;
+      overflow:visible; text-overflow:clip; text-align:left; }
+    .cot-body .mini-table td.num { text-align:left; }
+    /* El dato va precedido de su columna, en chiquito */
+    .cot-body .mini-table td[data-th]::before { content:attr(data-th) ": ";
+      color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.5px; }
+    .cot-body .mini-table td.cot-prod { font-weight:600; font-size:14px; padding-bottom:4px; }
+    .cot-body .mini-table td.cot-prod::before { content:none; }
+    .cot-body .mini-table td.cot-importe { font-weight:600; }
+    .cot-body .mini-table td:empty { display:none; }
+    .cot-body .mini-table td.cot-acc-reng { padding-top:8px; }
+    /* Envío, fecha de entrega y CP: etiqueta y campo, uno debajo del otro */
+    .cot-body .mini-table tr.cot-pie { display:flex; flex-wrap:wrap; gap:8px;
+      align-items:center; }
+    .cot-body .mini-table tr.cot-pie td { padding:0; }
+    .cot-body .mini-table td.cot-pie-lbl { text-align:left; color:var(--muted);
+      font-size:11px; text-transform:uppercase; letter-spacing:.5px; flex:1 0 100%; }
+    .cot-acciones .row-btn, .cot-acciones .pdf-btn, .cot-acciones button { flex:1 1 auto; }
+  }
   .prov-cifras { display:flex; gap:26px; flex:none; }
   .prov-cifras > div { text-align:right; min-width:110px; display:flex; flex-direction:column; gap:2px; }
   .prov-cifras .k { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; }
@@ -1040,7 +1094,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.27-506</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.28-508</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -11880,15 +11934,22 @@
             // se veía por ningún lado y nadie notaba que estaba vacío.
             var ext = cExt2 ? String(r[cExt2] || '').trim() : '';
             if (/^(n\/?a|no aplica|ninguno|ninguna|-)$/i.test(ext)) ext = '';
-            h += '<tr><td>' + esc(r[cProd] || '') + '</td>' +
-              '<td>' + esc(cMat ? (r[cMat] || '') : '') +
+            // El `data-th` es el nombre de la columna. En el celular la tabla se
+            // vuelve una ficha por producto y cada dato se presenta con él: sin
+            // eso, tres números en fila no dicen cuál es el precio y cuál el
+            // importe. En la computadora no se ve, manda el encabezado.
+            h += '<tr><td data-th="Producto" class="cot-prod">' + esc(r[cProd] || '') + '</td>' +
+              '<td data-th="Material">' + esc(cMat ? (r[cMat] || '') : '') +
                 (ext ? ' <span class="s" style="color:var(--slate)">· ' + esc(ext) +
                   '</span>' : '') + '</td>' +
-              '<td class="num">' + fmtNum(c) + '</td><td class="num">' + esc(formatMoney(p)) + '</td>' +
-              '<td class="num s"' + (importeDeRenglon(r).pct ? ' style="color:var(--success)"' : '') + '>' +
+              '<td class="num" data-th="Cantidad">' + fmtNum(c) +
+              '</td><td class="num" data-th="Precio unitario">' + esc(formatMoney(p)) + '</td>' +
+              '<td class="num s" data-th="Descuento"' +
+                (importeDeRenglon(r).pct ? ' style="color:var(--success)"' : '') + '>' +
                 esc(importeDeRenglon(r).pct ? '-' + importeDeRenglon(r).pct + '%' : '—') + '</td>' +
-              '<td class="num">' + esc(formatMoney(importeDeRenglon(r).importe)) + '</td>' +
-              '<td style="white-space:nowrap">' +
+              '<td class="num cot-importe" data-th="Importe">' +
+                esc(formatMoney(importeDeRenglon(r).importe)) + '</td>' +
+              '<td class="cot-acc-reng" style="white-space:nowrap">' +
               '<button type="button" class="row-btn ed-abrir" data-row="' + r._row +
                 '" title="Corregir este producto">Editar</button> ' +
               '<button type="button" class="row-btn quitar-reng" data-row="' + r._row +
@@ -11901,7 +11962,7 @@
         // pedido y se acordaba a mano; había que abrir la hoja para tocarlo, o
         // darlo de alta como si fuera un producto del catálogo.
         if (!esSoloLectura(state.key) && cEnv) {
-          h += '<tr><td colspan="4" style="text-align:right">Envío del pedido</td>' +
+          h += '<tr class="cot-pie"><td colspan="4" class="cot-pie-lbl">Envío del pedido</td>' +
                '<td class="num"><input class="row-input env-folio" data-folio="' +
                  esc(k).replace(/"/g, '&quot;') + '" data-row="' + (r0._row || '') +
                  '" type="number" step="0.01" min="0" style="width:110px;text-align:right" ' +
@@ -11912,7 +11973,7 @@
                      findHeaderByName('Fecha de Entrega Acordada') ||
                      findHeaderByName('Fecha de entrega');
           if (cFEA) {
-            h += '<tr><td colspan="4" style="text-align:right">' + esc(cFEA) + '</td>' +
+            h += '<tr class="cot-pie"><td colspan="4" class="cot-pie-lbl">' + esc(cFEA) + '</td>' +
                  '<td class="num"><input class="row-input fea-folio" data-folio="' +
                    esc(k).replace(/"/g, '&quot;') + '" type="date" style="width:150px" value="' +
                    esc(largoToIso(r0[cFEA])) + '"></td>' +
@@ -11921,14 +11982,14 @@
           }
           var cCPt = cpCampo();
           if (cCPt) {
-            h += '<tr><td colspan="4" style="text-align:right">CP de destino</td>' +
+            h += '<tr class="cot-pie"><td colspan="4" class="cot-pie-lbl">CP de destino</td>' +
                  '<td class="num"><input class="row-input cp-folio" data-folio="' +
                    esc(k).replace(/"/g, '&quot;') + '" type="text" inputmode="numeric" ' +
                    'maxlength="5" style="width:110px;text-align:right" value="' +
                    esc(limpiaCP(r0[cCPt])) + '" placeholder="00000"></td><td></td></tr>';
           }
         } else if (envio) {
-          h += '<tr><td colspan="4" style="text-align:right">Envío del pedido</td>' +
+          h += '<tr class="cot-pie"><td colspan="4" class="cot-pie-lbl">Envío del pedido</td>' +
                '<td class="num">' + esc(formatMoney(envio)) + '</td><td></td></tr>';
         }
         h += '</tbody></table>' +
@@ -17296,7 +17357,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.10.27-506';
+    var mia = '2026.10.28-508';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
