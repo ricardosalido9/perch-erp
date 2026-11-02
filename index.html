@@ -1094,7 +1094,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.29-510</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.30-512</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1757,13 +1757,30 @@
   // ===== Estado de cuenta por proveedor (vista propia, no es una hoja) =====
   // Todos los pedidos que están en la pestaña. El filtro de activos es opcional.
   var provAbierto = {}, provSolo = 'todos', provSaldo = false;
+  // Pagos ya solicitados, por número de pedido
+  var provProgramados = {};
   function loadProveedores() {
     document.getElementById('driveProvBtn').style.display = '';
     document.getElementById('tableWrap').innerHTML =
       '<div class="state" style="padding:50px 0">Armando el estado de cuenta…</div>';
     document.getElementById('summary').innerHTML = '';
     mostrarAlta(false);
-    api('proveedores', { token: state.token }).then(function (d) {
+    // Junto con el estado de cuenta se traen los pagos ya solicitados, para
+    // marcar en cada pedido si ya tiene uno programado y no pedirlo dos veces.
+    Promise.all([
+      api('proveedores', { token: state.token }),
+      api('pagos', { token: state.token }).catch(function () { return {}; })
+    ]).then(function (res) {
+      var d = res[0];
+      provProgramados = {};
+      ((res[1] || {}).grupos || []).forEach(function (g) {
+        (g.pagos || []).forEach(function (x) {
+          var k = norm(x.pedido);
+          if (!k) return;
+          var o = provProgramados[k] = provProgramados[k] || { monto: 0, n: 0 };
+          o.monto += x.monto || 0; o.n++;
+        });
+      });
       var provs = d.proveedores || [];
       var conSaldoLista = provs.filter(function (p) {
         var x = (provSolo === 'abiertos' && p.abiertos) ? p.abiertos : p.totales;
@@ -1856,6 +1873,7 @@
           h += '<div class="cot-body">';
           p.pedidos.filter(function (d2) { return provSolo !== 'abiertos' || d2.abierto; })
                    .forEach(function (d2) {
+            var yaProg = provProgramados[norm(d2.pedido)];
             h += '<div style="margin-bottom:14px">' +
               '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:6px">' +
                 '<b>' + esc(d2.pedido) + '</b>' + (d2.status ? ' ' + pillHTML(d2.status) : '') +
@@ -1876,6 +1894,26 @@
                 '<span>' + esc(formatMoney(d2.costo)) + ' · pagado ' + esc(formatMoney(d2.pagado)) +
                 ' · <b' + (d2.porPagar > 0.5 ? ' style="color:var(--danger)"' : '') + '>por pagar ' +
                 esc(formatMoney(d2.porPagar)) + '</b></span>' +
+                // Programar el pago desde aquí.
+                //
+                // Nico: "esto me sale en el estado de cuenta, pero en pagos por
+                // hacer no me salen en Pendientes por pagar". Son dos mundos: el
+                // estado de cuenta se calcula con los pedidos contra EGRESOS, y
+                // Pagos por hacer es la cola que alguien tiene que pedir. Lo que
+                // faltaba era el puente, y pedirlo donde se ve la deuda.
+                (yaProg
+                  ? '<span class="s" style="background:var(--amber-bg);color:var(--amber);' +
+                    'padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600">' +
+                    'pago programado · ' + esc(formatMoney(yaProg.monto)) + '</span>'
+                  : '') +
+                (d2.porPagar > 0.5 && !d2.antesDelCorte
+                  ? '<button type="button" class="row-btn prog-pago" ' +
+                    'data-prov="' + esc(p.proveedor).replace(/"/g, '&quot;') + '" ' +
+                    'data-pedido="' + esc(d2.pedido).replace(/"/g, '&quot;') + '" ' +
+                    'data-porpagar="' + (Math.round(d2.porPagar * 100) / 100) + '" ' +
+                    'data-saldoprov="' + (Math.round(t.porPagar * 100) / 100) + '">' +
+                    (yaProg ? 'Programar otro pago' : 'Programar pago') + '</button>'
+                  : '') +
               '</div>' +
               (d2.notaAjuste
                 ? '<div class="s" style="margin:-4px 0 8px;padding:6px 10px;border-radius:8px;' +
@@ -1920,6 +1958,14 @@
       });
       document.querySelectorAll('#tableWrap [data-saldo]').forEach(function (b) {
         b.addEventListener('click', function () { provSaldo = b.getAttribute('data-saldo') === '1'; loadProveedores(); });
+      });
+      document.querySelectorAll('#tableWrap .prog-pago').forEach(function (b) {
+        b.addEventListener('click', function (ev) {
+          ev.stopPropagation();
+          abrirProgramarPago(b.getAttribute('data-prov'), b.getAttribute('data-pedido'),
+                             Number(b.getAttribute('data-porpagar')) || 0,
+                             Number(b.getAttribute('data-saldoprov')) || 0);
+        });
       });
     }).catch(function (e) {
       document.getElementById('tableWrap').innerHTML =
@@ -6089,6 +6135,73 @@
     document.getElementById('aventaModal').classList.add('on');
     aventaPedido = null; entradaPedido = null;
   }
+  // Programar el pago desde el estado de cuenta del proveedor.
+  //
+  // Es lo que pidió Nico: pedirlo donde se ve la deuda, y ver cuánto le queda
+  // debiendo al proveedor con el monto que está escribiendo. El pago cae en la
+  // misma cola de "Pagos por hacer" que si se pidiera desde allá.
+  var progDesdeProveedores = false;
+  function abrirProgramarPago(prov, pedido, porPagar, saldoProv) {
+    progDesdeProveedores = true;
+    var h = '<div class="s" style="color:var(--slate);margin-bottom:14px">' +
+      'Pedido <b>' + esc(pedido) + '</b> de <b>' + esc(prov) + '</b> · por pagar <b>' +
+      esc(formatMoney(porPagar)) + '</b>. Hoy le debes <b>' + esc(formatMoney(saldoProv)) +
+      '</b> en total.</div>' +
+      '<div style="display:flex;gap:12px;flex-wrap:wrap">' +
+      '<div class="fld" style="width:170px"><label>Cuánto se le paga *</label>' +
+        '<input id="pp_monto" type="number" step="0.01" min="0" value="' +
+        (Math.round(porPagar * 100) / 100) + '"></div>' +
+      '<div class="fld" style="width:150px"><label>Urgencia</label>' +
+        '<select id="pp_urgencia"><option value="">Normal</option>' +
+        '<option>Urgente</option><option>Alta</option></select></div>' +
+      '<div class="fld" style="width:170px"><label>Para cuándo</label>' +
+        '<input id="pp_para" type="date"></div>' +
+      '</div>' +
+      '<div class="fld"><label>Concepto</label>' +
+        '<input id="pp_concepto" placeholder="Anticipo, finiquito, material…"></div>' +
+      '<div class="fld"><label>Comentarios</label>' +
+        '<input id="pp_com" placeholder="Lo que Pau necesita saber"></div>' +
+      '<div class="panel" id="pp_queda" style="padding:12px 14px;margin-top:4px"></div>' +
+      '<input type="hidden" id="pp_prov" value="' + esc(prov).replace(/"/g, '&quot;') + '">' +
+      '<input type="hidden" id="pp_pedido" value="' + esc(pedido).replace(/"/g, '&quot;') + '">';
+    modalModo = 'pedirPago';
+    document.getElementById('aventaTitulo').textContent = 'Programar un pago';
+    document.getElementById('aventaCuerpo').innerHTML = h;
+    document.getElementById('aventaOk').textContent = 'Programar el pago';
+    document.getElementById('aventaCancel').textContent = 'Cancelar';
+    document.getElementById('aventaModal').classList.add('on');
+    aventaPedido = null; entradaPedido = null;
+
+    // Cuánto quedaría debiendo, mientras escribe
+    var pinta = function () {
+      var m = Number((document.getElementById('pp_monto') || {}).value || 0);
+      var quedaPed = Math.round((porPagar - m) * 100) / 100;
+      var quedaProv = Math.round((saldoProv - m) * 100) / 100;
+      var caja = document.getElementById('pp_queda');
+      if (!caja) return;
+      caja.innerHTML =
+        '<div style="display:flex;gap:26px;flex-wrap:wrap">' +
+        '<div><span class="k">De este pedido quedaría</span><br><b style="font-size:16px;color:' +
+          (quedaPed > 0.5 ? 'var(--danger)' : 'var(--success)') + '">' +
+          esc(formatMoney(Math.abs(quedaPed))) + '</b>' +
+          (quedaPed < -0.5 ? '<span class="s" style="color:var(--success)"> a favor</span>' :
+           (quedaPed <= 0.5 ? '<span class="s" style="color:var(--success)"> · queda saldado</span>' : '')) +
+        '</div>' +
+        '<div><span class="k">Al proveedor le quedarías debiendo</span><br>' +
+          '<b style="font-size:16px;color:' +
+          (quedaProv > 0.5 ? 'var(--danger)' : 'var(--success)') + '">' +
+          esc(formatMoney(Math.abs(quedaProv))) + '</b>' +
+          (quedaProv < -0.5 ? '<span class="s" style="color:var(--success)"> a favor</span>' : '') +
+        '</div></div>' +
+        (m > porPagar + 0.5
+          ? '<div class="s" style="color:var(--amber);margin-top:8px">Es más de lo que ' +
+            'debe este pedido. Si es para abonar a otros, está bien; si no, revísalo.</div>'
+          : '');
+    };
+    var inp = document.getElementById('pp_monto');
+    if (inp) inp.addEventListener('input', pinta);
+    pinta();
+  }
   function guardarPedirPago() {
     var v = function (id) { var e = document.getElementById(id); return e ? e.value : ''; };
     var prov = String(v('pp_prov') || '').trim();
@@ -6103,8 +6216,13 @@
       comentarios: v('pp_com')
     }}).then(function (d) {
       toast(d.mensaje || 'Pago solicitado.', 'ok');
+      // De dónde venía, ANTES de cerrar: cerrar el diálogo limpia la bandera.
+      var volverAProveedores = progDesdeProveedores;
       cerrarMandarAVenta();
-      loadPagos();
+      // Si se pidió desde el estado de cuenta, se vuelve ahí: ahí es donde
+      // estaba trabajando, y el pedido ya queda marcado como programado.
+      if (volverAProveedores) loadProveedores();
+      else loadPagos();
     }).catch(fail).then(function () {
       btn.disabled = false; btn.textContent = 'Solicitar el pago';
     });
@@ -7624,12 +7742,19 @@
     var p = surtirPieza.p, c = surtirPieza.c;
     var d = surtirDatos || {};
     var lotes = c.lotes || [];
+    // Arriba, SOLO los que hacen esta pieza.
+    //
+    // La lista traía a los 40 proveedores de la casa y había que buscar entre
+    // carpinteros, tapiceros y marmoleros al que hace la silla. Nico pidió
+    // volver a lo de antes. Los demás no desaparecen —a veces hay que estrenar
+    // proveedor— pero se van abajo, a su propio grupo, y al final está la opción
+    // de dar de alta uno nuevo sin salir de aquí.
     var yaLaHicieron = (c.proveedores || []).map(function (x) { return x.proveedor; });
     var todos = (d.proveedoresTodos || []).map(function (x) { return x.proveedor; });
-    // El que ya la hizo primero: sabe cómo se hace
-    var orden = yaLaHicieron.concat(todos.filter(function (x) {
+    var otros = todos.filter(function (x) {
       return yaLaHicieron.map(norm).indexOf(norm(x)) === -1;
-    }));
+    });
+    var orden = yaLaHicieron.length ? yaLaHicieron : otros;
     // Lo último que cobró quien la hizo; si nadie la ha hecho, el del catálogo.
     // Antes se quedaba vacío y había que ir a buscarlo.
     var costoSug = ((c.proveedores || [])[0] && (c.proveedores || [])[0].costo) ||
@@ -7728,7 +7853,21 @@
         return '<option value="' + esc(x).replace(/"/g, '&quot;') + '">' + esc(x) +
           (yo ? ' — ya la hizo ' + fmtNum(yo.veces) + (yo.veces === 1 ? ' vez' : ' veces') +
                 (yo.dias ? ' · ' + esc(yo.dias) : '') : '') + '</option>';
-      }).join('') + '</select></div>' +
+      }).join('') +
+      // Los demás, aparte, para que no estorben al buscar
+      (yaLaHicieron.length && otros.length
+        ? '<optgroup label="Nunca han hecho esta pieza">' + otros.map(function (x) {
+            return '<option value="' + esc(x).replace(/"/g, '&quot;') + '">' + esc(x) +
+              '</option>';
+          }).join('') + '</optgroup>'
+        : '') +
+      '<option value="__nuevo__">+ Proveedor nuevo…</option>' +
+      '</select></div>' +
+      '<div class="fld" id="suProvNuevoBox" style="display:none">' +
+      '<label>Nombre del proveedor nuevo</label>' +
+      '<input id="suProvNuevo" placeholder="Como se llama en la factura">' +
+      '<div class="s" style="color:var(--muted);margin-top:2px">' +
+      'Se da de alta en Lista de Proveedores al registrar el pedido.</div></div>' +
       '<div class="fld"><label>Pedido</label><select id="suPedSel"></select></div>' +
       '<div class="fld" id="suPedNuevoBox"><label>Número del pedido nuevo</label>' +
       '<input id="suPedNuevo" value="' + esc(d.pedidoSugerido || '') + '"></div>' +
@@ -7791,6 +7930,19 @@
       var cc = (yo && yo.costo) || (c && (c.costoSugerido || c.costoCatalogo)) || 0;
       if (cc) ci.value = cc;
     }
+    // Y el número del pedido nuevo, con la nomenclatura de ESE proveedor.
+    //
+    // Salía "PCH-T-076" para todos —que es como numera TANDEM— aunque se
+    // eligiera a SERGIO o a AYDIA. Ahora se propone el consecutivo que sigue en
+    // los pedidos de ese proveedor. Sigue siendo una sugerencia: se puede pisar.
+    var nuevoNo = document.getElementById('suPedNuevo');
+    if (nuevoNo) {
+      nuevoNo.value = (d.pedidoSugeridoPor || {})[norm(prov.value)] ||
+                      d.pedidoSugerido || '';
+    }
+    // Proveedor nuevo: se escribe el nombre aquí mismo
+    var boxN = document.getElementById('suProvNuevoBox');
+    if (boxN) boxN.style.display = (prov.value === '__nuevo__') ? '' : 'none';
     verPedidoNuevo();
   }
   function verPedidoNuevo() {
@@ -7843,6 +7995,13 @@
       datos.hacer = 'pedido';
       datos.cantidad = cant;
       datos.proveedor = (document.getElementById('suProv') || {}).value || '';
+      // Proveedor que se estrena: el nombre se escribió abajo y se da de alta
+      // en Lista de Proveedores al registrar el pedido.
+      if (datos.proveedor === '__nuevo__') {
+        datos.proveedor = ((document.getElementById('suProvNuevo') || {}).value || '').trim();
+        if (!datos.proveedor) { toast('Escribe el nombre del proveedor nuevo.', 'err'); return; }
+        datos.proveedorNuevo = 1;
+      }
       datos.costo = Number((document.getElementById('suCosto') || {}).value || 0);
       datos.pedidoNuevo = noPed;
       datos.especificaciones = (document.getElementById('suEsp') || {}).value || '';
@@ -16153,6 +16312,7 @@
     document.getElementById('aventaCancel').textContent = 'Cerrar';
     terminarPaso();
     impactoContinuar = null; modalModo = ''; surtirPieza = null;
+    progDesdeProveedores = false;
     aventaPedido = null; aventaLineas = []; aventaPend = []; aventaDest = {};
     aventaYaSalio = {};
     entradaPedido = null; entradaLineas = []; entradaPend = null;
@@ -17422,7 +17582,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.10.29-510';
+    var mia = '2026.10.30-512';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
