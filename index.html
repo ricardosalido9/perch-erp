@@ -1094,7 +1094,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.02-514</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.02-515</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -11103,6 +11103,41 @@
         '&token=' + encodeURIComponent(state.token), '_blank');
     });
   }
+  // Los descuentos del mes, venta por venta. Es lo que se revisa al cerrar:
+  // a quién se le dio, cuánto y qué porcentaje salió.
+  function descuentosDelMesHTML(d) {
+    if (!d || !(d.ventas || []).length) {
+      return '<div class="s" style="color:var(--muted);margin:10px 0">' +
+        'Ninguna venta de este mes lleva descuento.</div>';
+    }
+    return '<div class="panel" style="padding:12px 14px;margin:10px 0">' +
+      '<div style="display:flex;gap:26px;flex-wrap:wrap;align-items:baseline;margin-bottom:8px">' +
+        '<div><span class="k">Descuento otorgado</span><br><b style="font-size:16px">' +
+          esc(formatMoney(d.total)) + '</b></div>' +
+        '<div><span class="k">En promedio</span><br><b style="font-size:16px">' +
+          (Number(d.pctPromedio) || 0).toFixed(1) + '%</b></div>' +
+        '<div class="s" style="color:var(--muted)">' + fmtNum(d.ventas.length) +
+          (d.ventas.length === 1 ? ' venta con descuento' : ' ventas con descuento') +
+          ' · sin IVA</div>' +
+      '</div>' +
+      '<table class="mini-table"><thead><tr><th>Cliente</th><th>Folio</th>' +
+      '<th style="text-align:right">%</th><th style="text-align:right">Antes del descuento</th>' +
+      '<th style="text-align:right">Descuento</th></tr></thead><tbody>' +
+      d.ventas.map(function (v) {
+        return '<tr><td data-th="Cliente" class="cot-prod">' + esc(v.cliente || '—') +
+            (v.despacho ? ' <span class="s" style="color:var(--slate)">· ' +
+              esc(v.despacho) + '</span>' : '') + '</td>' +
+          '<td data-th="Folio">' + esc(v.folio) + '</td>' +
+          '<td class="num" data-th="%">' + (Number(v.pct) || 0).toFixed(1) + '%' +
+            (v.pctsDistintos
+              ? '<div class="s" style="color:var(--amber)">' +
+                v.pctsDistintos.map(function (x) { return x + '%'; }).join(' y ') +
+                ' por renglón</div>'
+              : '') + '</td>' +
+          '<td class="num" data-th="Antes del descuento">' + esc(formatMoney(v.base)) + '</td>' +
+          '<td class="num" data-th="Descuento">' + esc(formatMoney(v.monto)) + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+  }
   function generarCierre() {
     var btn = document.getElementById('aventaOk');
     var mes = +document.getElementById('ciMes').value;
@@ -11128,6 +11163,12 @@
               (r.cobros === 1 ? ' cobro' : ' cobros') +
               ' <span style="color:var(--muted)">· tomado del banco</span></div>'
             : '') +
+          // Qué descuento se le dio a cada cliente este mes.
+          //
+          // Para el cierre hace falta el porcentaje, no solo el monto, y la
+          // columna de la hoja es una fórmula que no siempre baja. Esto se
+          // calcula con lo capturado: el % y el precio.
+          descuentosDelMesHTML(o.descuentos) +
           '<iframe src="data:application/pdf;base64,' + o.pdf +
           '" style="width:100%;height:52vh;border:1px solid var(--line);border-radius:10px"></iframe>';
         btn.textContent = 'Descargar';
@@ -17685,7 +17726,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.11.02-514';
+    var mia = '2026.11.02-515';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
