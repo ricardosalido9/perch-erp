@@ -1094,7 +1094,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.02-515</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.02-517</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -2125,6 +2125,10 @@
 
       var h = chips + '<table class="mini-table"><thead><tr><th>Folio</th><th>Fecha</th><th>Cliente</th>' +
         '<th style="text-align:right">Venta s/IVA</th>' +
+        // El descuento que se le dio a esa venta. Nico lo pidió para su cierre
+        // de mes: el reporte mensual vive en Ventas y en el Dashboard, dos
+        // pantallas que su rol no tiene, y ésta sí es suya.
+        '<th style="text-align:right">Descuento</th>' +
         '<th style="text-align:right">Costo real</th><th style="text-align:right">Margen</th>' +
         '<th style="text-align:right">Costo Ventas</th><th style="text-align:right">Margen</th>' +
         '<th style="text-align:right">Costo Catálogo</th><th style="text-align:right">Margen</th>' +
@@ -2143,12 +2147,17 @@
           '<td>' + esc(r.fecha ? formatDateCell(r.fecha) : '') + '</td>' +
           '<td title="' + esc(r.cliente) + '">' + esc(r.cliente || '—') + '</td>' +
           '<td class="num">' + esc(formatMoney(r.venta)) + '</td>' +
+          '<td class="num">' + (r.descuento
+            ? esc(formatMoney(r.descuento)) +
+              '<div class="s" style="color:var(--slate)">' +
+              (Number(r.descuentoPct) || 0).toFixed(1) + '%</div>'
+            : '<span style="color:var(--muted)">—</span>') + '</td>' +
           celda(r.costoReal, r.margenReal, r.estadoCosto) +
           celda(r.costoVentas, r.margenVentas, r.piezas ? '' : 'sin salidas') +
           celda(r.costoCatalogo, r.margenCatalogo) +
           '<td title="' + esc(r.proveedores) + '">' + esc((r.proveedores || '').slice(0, 28)) + '</td></tr>';
         if (costoAbierto === r.folio && r.detalle && r.detalle.length) {
-          h += '<tr><td colspan="11" style="background:var(--paper);padding:12px 14px">' +
+          h += '<tr><td colspan="12" style="background:var(--paper);padding:12px 14px">' +
             (r.faltanSalidas
               ? '<div class="s" style="margin-bottom:8px;color:var(--danger)"><b>Faltan ' +
                 fmtNum(r.faltanSalidas) + ' piezas por registrar en Salidas.</b> El pedido las asignó a este ' +
@@ -2258,6 +2267,233 @@
     }).catch(function (e) {
       document.getElementById('tableWrap').innerHTML =
         '<div class="state">' + esc((e && e.message) || 'No se pudo armar el comparativo.') + '</div>';
+    });
+  }
+
+  // ===== Cierre operativo del mes =====
+  //
+  // El cierre de producción. El comercial vive en Ventas y en el Dashboard, dos
+  // pantallas que el rol Operativo no tiene: Nico pedía "el botón de cierre de
+  // mes" y no era que le faltara habilitarlo, era que no había uno suyo.
+  //
+  // Cada bloque se corta con su propia fecha —pedidos por la fecha en que se
+  // colocaron, entradas por la de llegada, salidas por la de salida, entregas
+  // por la fecha de entrega real—, que es como se cierra una operación.
+  var cierreOpMes = 0, cierreOpAnio = 0, cierreOpAbierto = '';
+  function loadCierreOp() {
+    var hoy = new Date();
+    if (!cierreOpMes) {
+      // Se abre en el mes que se está cerrando: el pasado, no el corriente
+      cierreOpMes = hoy.getMonth() === 0 ? 12 : hoy.getMonth();
+      cierreOpAnio = hoy.getMonth() === 0 ? hoy.getFullYear() - 1 : hoy.getFullYear();
+    }
+    document.getElementById('summary').innerHTML = '';
+    document.getElementById('tableWrap').innerHTML =
+      '<div class="state" style="padding:50px 0">Cerrando el mes: pedidos, entradas, ' +
+      'salidas, entregas y pagos…</div>';
+    mostrarAlta(false);
+    api('cierre-op', { token: state.token, mes: cierreOpMes, anio: cierreOpAnio })
+      .then(pintarCierreOp)
+      .catch(function (e) {
+        document.getElementById('tableWrap').innerHTML =
+          '<div class="state">' + esc((e && e.message) || 'No se pudo armar el cierre.') + '</div>';
+      });
+  }
+
+  function cierreOpChips() {
+    var hoy = new Date();
+    var h = '<div class="mes-chips">';
+    // Los últimos 12 meses, del más reciente al más viejo
+    for (var i = 0; i < 12; i++) {
+      var d = new Date(hoy.getFullYear(), hoy.getMonth() - i, 1);
+      var m = d.getMonth() + 1, a = d.getFullYear();
+      h += '<button type="button" class="mes-chip' +
+        ((m === cierreOpMes && a === cierreOpAnio) ? ' on' : '') +
+        '" data-mes="' + m + '" data-anio="' + a + '">' +
+        MESES_ES[m - 1] + (a !== hoy.getFullYear() ? ' ' + a : '') + '</button>';
+    }
+    return h + '<button type="button" class="mes-chip" id="cierreOpTablero">' +
+      'Ver como tablero</button>' +
+      '<span class="s" style="color:var(--muted);margin-left:8px">Se abre en otra pestaña. ' +
+      'Para PDF: imprimir y guardar como PDF.</span></div>';
+  }
+
+  function pintarCierreOp(d) {
+    // "1 ventas · 1 piezas" se lee mal en un reporte que se manda
+    var pl = function (n, uno, varios) {
+      return fmtNum(n || 0) + ' ' + ((n === 1) ? uno : varios);
+    };
+    var box = document.getElementById('summary');
+    box.style.display = 'block';
+    var ent = d.entregas || {}, pen = ent.pendientes || {}, din = d.dinero || {};
+    var atr = d.atrasados || {}, inv = d.inventario || {};
+    box.innerHTML =
+      '<div class="summary-cards">' +
+      '<div class="sum-card"><div class="k">Pedido a proveedores</div><div class="v">' +
+        fmtNum((d.pedidos || {}).piezas || 0) + '</div>' +
+        '<div class="k" style="text-transform:none;letter-spacing:0">piezas en ' +
+        pl((d.pedidos || {}).n || 0, 'pedido', 'pedidos') + ' · ' +
+        esc(fmtMoneyShort((d.pedidos || {}).importe || 0)) + '</div></div>' +
+      '<div class="sum-card"><div class="k">Llegó a bodega</div><div class="v">' +
+        fmtNum((d.entradas || {}).piezas || 0) + '</div>' +
+        '<div class="k" style="text-transform:none;letter-spacing:0">piezas' +
+        ((d.entradas || {}).aExhibicion ? ' · ' + fmtNum(d.entradas.aExhibicion) +
+          ' a exhibición' : '') + '</div></div>' +
+      '<div class="sum-card"><div class="k">Entregado a clientes</div><div class="v">' +
+        fmtNum(ent.folios || 0) + '</div>' +
+        '<div class="k" style="text-transform:none;letter-spacing:0">' +
+        ((ent.folios === 1) ? 'venta' : 'ventas') + ' · ' +
+        pl(ent.piezas || 0, 'pieza', 'piezas') +
+        (ent.tarde ? ' · ' + fmtNum(ent.tarde) + ' tarde' : '') + '</div></div>' +
+      '<div class="sum-card"><div class="k">Pagado a proveedores</div><div class="v">' +
+        esc(fmtMoneyShort(din.pagado || 0)) + '</div>' +
+        '<div class="k" style="text-transform:none;letter-spacing:0">' +
+        pl(din.nPagos || 0, 'pago', 'pagos') + '</div></div>' +
+      '<div class="sum-card"><div class="k">Por pagar</div><div class="v">' +
+        (din.deuda ? esc(fmtMoneyShort(din.deuda.total)) :
+          '<span style="color:var(--muted)">—</span>') + '</div>' +
+        '<div class="k" style="text-transform:none;letter-spacing:0">' +
+        (din.deuda ? 'a hoy, como en Estado de cuenta' : 'no se pudo leer') + '</div></div>' +
+      '<div class="sum-card"><div class="k">Atrasado al cierre</div><div class="v"' +
+        (atr.piezas ? ' style="color:var(--danger)"' : '') + '>' +
+        fmtNum(atr.piezas || 0) + '</div>' +
+        '<div class="k" style="text-transform:none;letter-spacing:0">piezas que ya debían ' +
+        'haber llegado</div></div>' +
+      '</div>';
+
+    var h = cierreOpChips();
+
+    // Lo que hay que arreglar antes de dar el mes por cerrado
+    if (inv.aviso) {
+      h += '<div class="panel" style="padding:12px 14px;margin:10px 0;border-left:3px solid ' +
+        'var(--danger)"><b>Antes de cerrar:</b> ' + esc(inv.aviso) + '</div>';
+    }
+    if ((d.faltan || []).length) {
+      h += '<div class="panel" style="padding:12px 14px;margin:10px 0"><b>Faltan columnas ' +
+        'en las hojas:</b> ' + esc(d.faltan.join(' · ')) + '. Ese bloque sale incompleto.</div>';
+    }
+
+    var bloque = function (id, titulo, sub, cuerpo) {
+      if (!cuerpo) return '';
+      var on = cierreOpAbierto === id;
+      return '<div class="panel" style="margin:10px 0">' +
+        '<button type="button" class="cop-tit" data-cop="' + id + '" style="width:100%;' +
+          'text-align:left;background:none;border:0;padding:12px 14px;cursor:pointer">' +
+          '<b>' + esc(titulo) + '</b>' +
+          '<span class="s" style="color:var(--muted);margin-left:8px">' + esc(sub) + '</span>' +
+          '<span style="float:right;color:var(--muted)">' + (on ? '▾' : '▸') + '</span>' +
+        '</button>' +
+        (on ? '<div style="padding:0 14px 14px">' + cuerpo + '</div>' : '') + '</div>';
+    };
+    var tabla = function (cols, filas) {
+      if (!filas.length) return '';
+      return '<table class="mini-table"><thead><tr>' +
+        cols.map(function (c) {
+          return '<th' + (c.num ? ' style="text-align:right"' : '') + '>' + esc(c.t) + '</th>';
+        }).join('') + '</tr></thead><tbody>' +
+        filas.map(function (f) {
+          return '<tr>' + f.map(function (c, i) {
+            return '<td' + (cols[i].num ? ' class="num"' : '') + ' data-th="' +
+              esc(cols[i].t) + '">' + (c === '' || c === null || c === undefined
+                ? '' : esc(String(c))) + '</td>';
+          }).join('') + '</tr>';
+        }).join('') + '</tbody></table>';
+    };
+
+    h += bloque('ped', 'Lo que se pidió a proveedores',
+      pl((d.pedidos || {}).piezas || 0, 'pieza', 'piezas') + ' · ' +
+      formatMoney((d.pedidos || {}).importe || 0),
+      tabla([{ t: 'Proveedor' }, { t: 'Pedidos', num: 1 }, { t: 'Piezas', num: 1 },
+             { t: 'Importe con IVA', num: 1 }],
+        ((d.pedidos || {}).porProveedor || []).map(function (p) {
+          return [p.proveedor, fmtNum(p.pedidos), fmtNum(p.piezas), formatMoney(p.importe)];
+        })));
+
+    h += bloque('ent', 'Lo que llegó a bodega',
+      pl((d.entradas || {}).piezas || 0, 'pieza', 'piezas'),
+      tabla([{ t: 'Proveedor' }, { t: 'Piezas', num: 1 }],
+        ((d.entradas || {}).porProveedor || []).map(function (p) {
+          return [p.proveedor, fmtNum(p.piezas)];
+        })));
+
+    h += bloque('sal', 'Lo que salió de bodega',
+      pl((d.salidas || {}).piezas || 0, 'pieza', 'piezas') + ' · ' +
+      pl((d.salidas || {}).folios || 0, 'folio', 'folios'),
+      tabla([{ t: 'Folio' }, { t: 'Cliente' }, { t: 'Piezas', num: 1 }, { t: 'Costo', num: 1 }],
+        ((d.salidas || {}).porFolio || []).map(function (p) {
+          return [p.folio, p.cliente, fmtNum(p.piezas), formatMoney(p.costo)];
+        })));
+
+    h += bloque('atr', 'Pedidos atrasados al cierre',
+      pl(atr.piezas || 0, 'pieza', 'piezas') + ' en ' +
+      pl(atr.renglones || 0, 'renglón de pedido', 'renglones de pedido'),
+      tabla([{ t: 'Pedido' }, { t: 'Proveedor' }, { t: 'Producto' }, { t: 'Material' },
+             { t: 'Faltan', num: 1 }, { t: 'Prometido para' }, { t: 'Para' }],
+        (atr.detalle || []).map(function (p) {
+          return [p.pedido, p.proveedor, p.producto, p.material, fmtNum(p.piezas),
+                  p.estimada, p.folio || p.destino];
+        })));
+
+    h += bloque('entr', 'Lo que se entregó a clientes',
+      pl(ent.folios || 0, 'venta', 'ventas') + ' · ' +
+      pl(ent.piezas || 0, 'pieza', 'piezas') +
+      (ent.tarde ? ' · ' + fmtNum(ent.tarde) + ' fuera de fecha' : ''),
+      tabla([{ t: 'Folio' }, { t: 'Cliente' }, { t: 'Piezas', num: 1 },
+             { t: 'Se entregó' }, { t: 'Se había acordado' }, { t: 'Días', num: 1 }],
+        (ent.detalle || []).map(function (p) {
+          return [p.folio, p.cliente, fmtNum(p.piezas), p.fecha, p.acordada,
+                  (p.dias === null || p.dias === undefined) ? '' :
+                    (p.dias > 0 ? '+' + p.dias : String(p.dias))];
+        })));
+
+    h += bloque('pen', 'Lo que quedó pendiente de entregar',
+      pl(pen.folios || 0, 'venta', 'ventas') + ' · ' +
+      pl(pen.piezas || 0, 'pieza', 'piezas'),
+      tabla([{ t: 'Folio' }, { t: 'Cliente' }, { t: 'Piezas', num: 1 },
+             { t: 'Se había acordado' }],
+        (pen.detalle || []).map(function (p) {
+          return [p.folio, p.cliente, fmtNum(p.piezas), p.acordada];
+        })));
+
+    h += bloque('din', 'Lo que se pagó a proveedores',
+      formatMoney(din.pagado || 0) + ' en ' + pl(din.nPagos || 0, 'pago', 'pagos'),
+      tabla([{ t: 'Proveedor' }, { t: 'Pagos', num: 1 }, { t: 'Monto', num: 1 }],
+        (din.porProveedor || []).map(function (p) {
+          return [p.proveedor, fmtNum(p.pagos), formatMoney(p.monto)];
+        })) +
+      (din.deuda
+        ? '<div style="margin-top:14px"><b>Por pagar a hoy: ' +
+          esc(formatMoney(din.deuda.total)) + '</b>' +
+          '<div class="s" style="color:var(--muted);margin-bottom:6px">Es el mismo número ' +
+          'del Estado de cuenta de proveedores, no se vuelve a calcular aquí.</div>' +
+          tabla([{ t: 'Proveedor' }, { t: 'Por pagar', num: 1 }],
+            (din.deuda.proveedores || []).map(function (p) {
+              return [p.proveedor, formatMoney(p.porPagar)];
+            })) + '</div>'
+        : (din.sinDeuda ? '<div class="s" style="color:var(--muted);margin-top:10px">' +
+            esc(din.sinDeuda) + '</div>' : '')));
+
+    document.getElementById('tableWrap').innerHTML = h;
+    document.getElementById('count').textContent = d.etiqueta || '';
+
+    document.querySelectorAll('#tableWrap [data-mes]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        cierreOpMes = +b.getAttribute('data-mes');
+        cierreOpAnio = +b.getAttribute('data-anio');
+        loadCierreOp();
+      });
+    });
+    document.querySelectorAll('#tableWrap [data-cop]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var id = b.getAttribute('data-cop');
+        cierreOpAbierto = (cierreOpAbierto === id) ? '' : id;
+        pintarCierreOp(d);
+      });
+    });
+    var t = document.getElementById('cierreOpTablero');
+    if (t) t.addEventListener('click', function () {
+      window.open('/api/erp?action=cierre-op-html&mes=' + cierreOpMes +
+        '&anio=' + cierreOpAnio + '&token=' + encodeURIComponent(state.token), '_blank');
     });
   }
 
@@ -9274,7 +9510,7 @@
     'log_calendario', 'fin_banco', 'fac_emitidos', 'pagos_pedidos', 'fac_impuestos',
     'fin_efectivo', 'fin_gastos_op', 'rh_resumen', 'prov_razon', 'cfdi_prov',
     'cfdi_control', 'cfdi_comp_rec', 'fac_control', 'cta_clientes', 'expediente',
-    'inv_prov', 'conciliacion', 'costos', 'proveedores'];
+    'inv_prov', 'conciliacion', 'costos', 'proveedores', 'op_cierre'];
   function tienePantallaPropia(k) {
     // Clientes es la misma área con dos vistas: la lista sí es tabla.
     if (k === 'ventas_clientes') return vistaClientes === 'historial';
@@ -9328,6 +9564,7 @@
     if (state.key === 'conciliacion') return loadConciliacion();
     if (state.key === 'costos') return loadCostos();
     if (state.key === 'proveedores') return loadProveedores();
+    if (state.key === 'op_cierre') return loadCierreOp();
     document.getElementById('tableWrap').innerHTML = '<div class="state">Cargando...</div>';
     document.getElementById('count').textContent = '';
     state.categories = {}; state.lookups = []; state.lineItems = [];
@@ -17726,7 +17963,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.11.02-515';
+    var mia = '2026.11.02-517';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;

@@ -100,6 +100,9 @@ const RUTAS = {
   efectivo:       require('../lib/handlers/efectivo'),
   impuestos:      require('../lib/handlers/impuestos'),
   cierre:         require('../lib/handlers/cierre'),
+  // El cierre del lado de producción: lo que Nico revisa al cerrar el mes.
+  'cierre-op':    require('../lib/handlers/cierre-op'),
+  'cierre-op-html': require('../lib/handlers/cierre-op-html'),
   config:         require('../lib/handlers/config'),
   pagos:          require('../lib/handlers/pagos'),
   logistica:      require('../lib/handlers/logistica'),
