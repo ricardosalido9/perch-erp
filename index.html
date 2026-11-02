@@ -1094,7 +1094,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.10.30-512</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.02-514</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -7788,7 +7788,15 @@
           '<span class="s" style="color:var(--slate)"> · quedan ' + fmtNum(l.disponibles) +
           (l.fecha ? ' · llegó ' + esc(l.fecha) : '') +
           (l.costo ? ' · ' + esc(formatMoney(l.costo)) : '') +
-          ' · se sacan ' + fmtNum(n) + '</span></span></label>';
+          ' · se sacan ' + fmtNum(n) + '</span>' +
+          // La pieza de piso se vende, pero hay que saber que se le quita al
+          // showroom: el descuento de exhibición lo pone quien vende.
+          (l.enExhibicion
+            ? '<span class="s" style="background:var(--amber-bg);color:var(--amber);' +
+              'padding:1px 7px;border-radius:20px;font-size:11px;font-weight:600;' +
+              'margin-left:6px">' + fmtNum(l.enExhibicion) + ' en exhibición</span>'
+            : '') +
+          '</span></label>';
       }).join('');
     }
     // El costo con el que se escribe la salida. Si el pedido lo trae, viene puesto;
@@ -7983,6 +7991,15 @@
       datos.hacer = 'stock';
       datos.cantidad = Math.min(l.disponibles, c.falta);
       datos.pedido = l.pedido; datos.proveedor = l.proveedor || '';
+      // Si el lote está en el showroom, se dice antes y queda anotado en la
+      // salida: ese mueble se le quita a la exhibición.
+      if (l.enExhibicion > 0) {
+        if (!confirm('De ese pedido hay ' + fmtNum(l.enExhibicion) +
+              (l.enExhibicion === 1 ? ' pieza en exhibición' : ' piezas en exhibición') +
+              '.\n\nSi la surtes, se le quita al showroom y queda anotado en la salida.' +
+              '\n\n¿Seguimos?')) return;
+        datos.deExhibicion = 1;
+      }
       var ci = document.getElementById('suCostoStock');
       datos.costo = ci && ci.value !== '' ? Number(ci.value) : (l.costo || 0);
     } else {
@@ -12340,12 +12357,92 @@
             (esSoloLectura(state.key) ? '' :
               '<button type="button" class="row-btn add-a-folio" data-folio="' +
               esc(k).replace(/"/g, '&quot;') + '">+ Agregar producto</button>') +
+            // Cambiarle el número al pedido. Varios nacieron como "Pendiente por
+            // Aydia" y el proveedor da su número después; el número es la llave
+            // con la que se amarra todo, así que se cambia en todas las hojas.
+            (esSoloLectura(state.key) ? '' :
+              '<button type="button" class="row-btn ped-nombre" data-ped="' +
+              esc(k).replace(/"/g, '&quot;') + '">Cambiar el número</button>') +
             '<span class="s" style="color:var(--muted)">Asigna piezas de este pedido a folios de venta</span>' +
           '</div></div>';
       }
       h += '</div>';
     });
     return h + '</div>';
+  }
+
+  // ===== Cambiarle el número a un pedido =====
+  //
+  // Nico: *"había pedidos que se quedaron como 'Pendiente por Aydia' y ahora que
+  // ya nos pasaron el número, lo necesitamos cambiar"*. El número es la llave con
+  // la que se amarra todo —lo pedido, lo que llegó, lo que salió, lo pagado en
+  // EGRESOS y la cola de pagos—, así que primero se dice qué se va a tocar y
+  // hasta el segundo clic se cambia.
+  var pedNombreDe = '', pedNombreListo = false;
+  function abrirCambiarNumeroPedido(pedido) {
+    pedNombreDe = pedido || '';
+    pedNombreListo = false;
+    modalModo = 'pedNombre';
+    document.getElementById('aventaTitulo').textContent = 'Cambiar el número del pedido';
+    document.getElementById('aventaCuerpo').innerHTML =
+      '<div class="s" style="color:var(--slate);margin-bottom:14px">' +
+      'Hoy se llama <b>' + esc(pedNombreDe) + '</b>. Se cambia en todas las hojas donde ' +
+      'aparece: pedidos, entradas, salidas, EGRESOS, pagos por hacer y Mi hoja.</div>' +
+      '<div class="fld" style="max-width:320px"><label>Número nuevo</label>' +
+      '<input id="pn_nuevo" placeholder="Como lo mandó el proveedor"></div>' +
+      '<div id="pn_resumen"></div>';
+    document.getElementById('aventaOk').textContent = 'Revisar el cambio';
+    document.getElementById('aventaCancel').textContent = 'Cancelar';
+    document.getElementById('aventaModal').classList.add('on');
+    aventaPedido = null; entradaPedido = null;
+    var inp = document.getElementById('pn_nuevo');
+    // Si lo cambia después de revisar, hay que volver a revisar
+    if (inp) inp.addEventListener('input', function () {
+      if (!pedNombreListo) return;
+      pedNombreListo = false;
+      document.getElementById('aventaOk').textContent = 'Revisar el cambio';
+      document.getElementById('pn_resumen').innerHTML = '';
+    });
+  }
+  function guardarCambiarNumeroPedido() {
+    var nuevo = String((document.getElementById('pn_nuevo') || {}).value || '').trim();
+    if (!nuevo) { toast('Escribe el número nuevo.', 'err'); return; }
+    var btn = document.getElementById('aventaOk');
+    var caja = document.getElementById('pn_resumen');
+    btn.disabled = true; btn.textContent = pedNombreListo ? 'Cambiando…' : 'Revisando…';
+    api('pedido-nombre', { token: state.token, pedido: pedNombreDe, nuevo: nuevo,
+                           confirmar: pedNombreListo ? 1 : 0 })
+      .then(function (d) {
+        if (d.previo) {
+          pedNombreListo = true;
+          caja.innerHTML = '<div class="panel" style="padding:12px 14px;margin-top:10px">' +
+            '<div style="font-weight:600;margin-bottom:6px">' + esc(d.mensaje || '') + '</div>' +
+            (d.detalle || []).filter(function (x) { return x.renglones || x.nota; })
+              .map(function (x) {
+                return '<div class="s" style="color:var(--slate)">· ' + esc(x.que) + ': ' +
+                  (x.renglones ? '<b>' + fmtNum(x.renglones) +
+                    (x.renglones === 1 ? '</b> renglón' : '</b> renglones')
+                   : '<span style="color:var(--muted)">' + esc(x.nota || 'nada') + '</span>') +
+                  '</div>';
+              }).join('') +
+            (d.aviso ? '<div class="s" style="color:var(--amber);margin-top:8px"><b>' +
+              esc(d.aviso) + '</b></div>' : '') + '</div>';
+          btn.textContent = 'Sí, cambiarlo';
+          return;
+        }
+        toast(d.mensaje || 'Listo.', 'ok');
+        cerrarMandarAVenta();
+        loadArea();
+      })
+      .catch(function (e) {
+        caja.innerHTML = '<div class="s" style="color:var(--danger);margin-top:10px">' +
+          esc((e && e.message) || 'No se pudo.') +
+          (e && e.pista ? '<div style="color:var(--slate);margin-top:4px">' + esc(e.pista) +
+            '</div>' : '') + '</div>';
+        btn.textContent = 'Revisar el cambio';
+        pedNombreListo = false;
+      })
+      .then(function () { btn.disabled = false; });
   }
 
   // Envíos en tarjetas: una por folio, con lo que importa a la vista y el detalle
@@ -12956,7 +13053,10 @@
       'Zona': ['CDMX', 'Área metropolitana', 'Foráneo', 'Recolección en tienda']
     },
     prov_pedidos: {
-      'Destino': ['Bodega Perch', 'Proveedor', 'Directo a cliente'],
+      // "Exhibición" es un destino tan real como una venta: la pieza se pide
+      // para el showroom, no para un cliente ni para la bodega. Lo pidió Nico,
+      // y el panel ya la trata como pieza libre (no apartada para nadie).
+      'Destino': ['Bodega Perch', 'Proveedor', 'Directo a cliente', 'Exhibición'],
       'Status':  ['PENDIENTE COMPLETO', 'EN PROCESO', 'ENTREGADO', 'CANCELADO']
     },
     ventas_registro: {
@@ -15840,7 +15940,10 @@
       '<div class="fld" style="margin:0"><label>¿Dónde quedaron?</label>' +
       '<select id="entDonde"><option>Bodega Perch</option>' +
       '<option>Sigue en el proveedor</option>' +
-      '<option>Showroom</option>' +
+      // Se guarda como "Exhibición": es la palabra que usa Nico y la que el
+      // panel busca para marcar la pieza de piso. "Showroom" de antes se sigue
+      // entendiendo al leer.
+      '<option value="Exhibición">Exhibición (showroom)</option>' +
       '<option value="cliente">Directo al cliente</option></select></div></div>' +
       // Si se fue directo al cliente, la pieza entró y salió el mismo día: se registran
       // las dos cosas. Aquí se elige a qué venta se fue cada renglón.
@@ -17582,7 +17685,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.10.30-512';
+    var mia = '2026.11.02-514';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
@@ -17667,6 +17770,7 @@
       case 'salidas':         registrarSalidas(); return;
       case 'cerrar':          cerrarMandarAVenta(); return;
       case 'pedirPago':       guardarPedirPago(); return;
+      case 'pedNombre':       guardarCambiarNumeroPedido(); return;
       case 'cierre':
         if (cierrePdf) { bajarPdf(cierrePdf.pdf, cierrePdf.nombre); return; }
         generarCierre(); return;
@@ -18051,6 +18155,8 @@
     if (an) { abrirAnular(an.getAttribute('data-folio')); return; }
     var oc = e.target.closest('.oc-btn');
     if (oc) { bajarOrdenDeCompra(oc); return; }
+    var pn = e.target.closest('.ped-nombre');
+    if (pn) { abrirCambiarNumeroPedido(pn.getAttribute('data-ped')); return; }
     var ed = e.target.closest('.env-doc');
     if (ed) { subirDocEnvio(ed); return; }
     var he = e.target.closest('[data-env]');
@@ -18061,7 +18167,7 @@
       return;
     }
     var ph2 = e.target.closest('[data-ped]');
-    if (ph2 && !av && !oc) {
+    if (ph2 && !av && !oc && !pn) {
       var kp2 = ph2.getAttribute('data-ped');
       pedAbierto[kp2] = !pedAbierto[kp2];
       renderTable();
