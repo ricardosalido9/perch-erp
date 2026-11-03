@@ -850,6 +850,19 @@
      cada uno con el nombre de su columna (el `data-th` del renglón). En la
      computadora no cambia nada. */
   @media (max-width:640px) {
+    /* El tablero de la venta: en el celular cada renglón se vuelve una ficha.
+       Son cinco columnas y la que importa —quién lo hace— quedaba hasta la
+       derecha, fuera de la pantalla. */
+    .tab-piezas thead { display:none; }
+    .tab-piezas, .tab-piezas tbody, .tab-piezas tr, .tab-piezas td {
+      display:block; width:auto; max-width:none; }
+    .tab-piezas tr { padding:10px 0; border-bottom:1px solid var(--line); }
+    .tab-piezas tr:last-child { border-bottom:0; }
+    .tab-piezas td { border:0; padding:2px 0; white-space:normal; text-align:left; }
+    .tab-piezas td.num { text-align:left; }
+    .tab-piezas td[data-th]::before { content:attr(data-th) ": ";
+      color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.5px; }
+    .tab-piezas td:empty { display:none; }
     .cot-body { padding:10px 10px; }
     .cot-body .mini-table thead { display:none; }
     .cot-body .mini-table,
@@ -1094,7 +1107,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.03-519</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.03-520</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -2345,6 +2358,303 @@
         costosOrden = this.value; loadCostos(true);
       });
     }
+  }
+
+  // ===== Tablero de la venta =====
+  //
+  // Cada venta en una tarjeta con todo lo suyo: quién la compró y cómo
+  // contactarlo, qué se vendió, quién está haciendo cada pieza y en qué va, cómo
+  // se manda y cuánto deja. Nico y Pau la revisaban en cuatro pantallas.
+  //
+  // La lista llega de una; el detalle de una venta se pide al abrir su tarjeta y
+  // se guarda, porque cruza seis hojas y no tiene caso hacerlo 300 veces.
+  var tabAbierta = '', tabDetalle = {}, tabDatos = null, tabBusca = '', tabFiltro = 'todas';
+  function loadVentaTablero() {
+    document.getElementById('summary').innerHTML = '';
+    document.getElementById('tableWrap').innerHTML =
+      '<div class="state" style="padding:50px 0">Juntando ventas, producción, envíos y costos…</div>';
+    mostrarAlta(false);
+    api('venta-tablero', { token: state.token })
+      .then(function (d) { tabDatos = d; pintarVentaTablero(); })
+      .catch(function (e) {
+        document.getElementById('tableWrap').innerHTML =
+          '<div class="state">' + esc((e && e.message) || 'No se pudo armar el tablero.') + '</div>';
+      });
+  }
+
+  function tabChip(txt2, color, fondo) {
+    return '<span class="s" style="display:inline-block;padding:2px 9px;border-radius:999px;' +
+      'font-weight:600;font-size:11px;color:' + color + ';background:' + fondo +
+      '">' + esc(txt2) + '</span>';
+  }
+  var TAB_PROD = {
+    'sin pedir':       ['Por surtir', 'var(--danger)', 'var(--danger-bg)'],
+    'a medias':        ['A medias', 'var(--amber)', 'var(--paper)'],
+    'pedido completo': ['Pedido completo', 'var(--success)', 'var(--paper)']
+  };
+
+  function pintarVentaTablero() {
+    var d = tabDatos || {}, t = d.resumen || {};
+    var box = document.getElementById('summary');
+    box.style.display = 'block';
+    var mg = (t.venta ? ((t.venta - t.costo) / t.venta * 100).toFixed(1) + '%' : '—');
+    box.innerHTML = (d.sinCostos
+        ? '<div class="panel" style="padding:10px 14px;margin-bottom:10px">' +
+          esc(d.sinCostos) + '</div>' : '') +
+      '<div class="summary-cards">' +
+      '<div class="sum-card"><div class="k">Ventas</div><div class="v">' +
+        fmtNum(t.ventas) + '</div></div>' +
+      '<div class="sum-card"><div class="k">Por surtir</div><div class="v"' +
+        (t.sinPedir ? ' style="color:var(--danger)"' : '') + '>' + fmtNum(t.sinPedir) +
+        '</div><div class="k" style="text-transform:none;letter-spacing:0">' +
+        fmtNum(t.aMedias) + ' a medias</div></div>' +
+      '<div class="sum-card"><div class="k">Pedido completo</div><div class="v">' +
+        fmtNum(t.completos) + '</div></div>' +
+      '<div class="sum-card"><div class="k">Foráneas</div><div class="v">' +
+        fmtNum(t.foraneos) + '</div><div class="k" style="text-transform:none;' +
+        'letter-spacing:0">' + fmtNum(t.sinEnvio) + ' sin envío</div></div>' +
+      '<div class="sum-card"><div class="k">Margen</div><div class="v">' + mg +
+        '</div><div class="k" style="text-transform:none;letter-spacing:0">' +
+        'de ' + esc(fmtMoneyShort(t.venta)) + ' con costo</div></div>' +
+      (t.sinCosto ? '<div class="sum-card"><div class="k">Sin costo real</div>' +
+        '<div class="v" style="color:var(--amber)">' + fmtNum(t.sinCosto) + '</div>' +
+        '<div class="k" style="text-transform:none;letter-spacing:0">les faltan ' +
+        'salidas</div></div>' : '') +
+      '</div>';
+
+    var V = (d.ventas || []).filter(function (v) {
+      if (tabFiltro === 'surtir' && v.produccion === 'pedido completo') return false;
+      if (tabFiltro === 'foraneas' && !(v.envio && v.envio.donde === 'foráneo')) return false;
+      if (tabFiltro === 'sinenvio' && v.envio && v.envio.donde) return false;
+      var q = norm(tabBusca);
+      if (!q) return true;
+      return norm(v.folio).indexOf(q) !== -1 || norm(v.cliente).indexOf(q) !== -1 ||
+             norm((v.proveedores || []).join(' ')).indexOf(q) !== -1 ||
+             norm((v.pedidos || []).join(' ')).indexOf(q) !== -1;
+    });
+
+    var FILTROS = [['todas', 'Todas'], ['surtir', 'Falta surtir'],
+                   ['foraneas', 'Foráneas'], ['sinenvio', 'Sin envío']];
+    var h = '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 12px">' +
+      '<input id="buscaTab" placeholder="Buscar folio, cliente, proveedor o pedido…" ' +
+      'value="' + esc(tabBusca).replace(/"/g, '&quot;') + '" ' +
+      'style="flex:1;min-width:200px;max-width:340px">' +
+      FILTROS.map(function (f) {
+        return '<button type="button" class="mes-chip' + (tabFiltro === f[0] ? ' on' : '') +
+          '" data-tabf="' + f[0] + '">' + esc(f[1]) + '</button>';
+      }).join('') +
+      '<span class="s" style="color:var(--muted)">' + fmtNum(V.length) +
+      (V.length === 1 ? ' venta' : ' ventas') + '</span></div>';
+
+    if (!V.length) {
+      h += '<div class="state" style="padding:40px 0">No hay ventas que mostrar.</div>';
+    }
+    V.forEach(function (v) {
+      var abierta = tabAbierta === v.folio;
+      var pr = TAB_PROD[v.produccion] || ['', 'var(--slate)', 'var(--paper)'];
+      h += '<div class="panel" style="margin-bottom:12px">' +
+        '<button type="button" class="tab-folio" data-folio="' +
+          esc(v.folio).replace(/"/g, '&quot;') + '" style="width:100%;text-align:left;' +
+          'background:none;border:0;padding:14px 16px;cursor:pointer">' +
+          '<div style="display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;' +
+            'align-items:baseline">' +
+            '<div style="min-width:0">' +
+              '<b style="font-size:15px">' + esc(v.folio) + '</b> ' +
+              (v.status ? tabChip(v.status, 'var(--slate)', 'var(--paper)') + ' ' : '') +
+              (pr[0] ? tabChip(pr[0], pr[1], pr[2]) + ' ' : '') +
+              (v.envio && v.envio.donde
+                ? tabChip(v.envio.donde === 'local' ? 'Local' : 'Foráneo',
+                          'var(--accent)', 'var(--paper)')
+                : tabChip('Sin envío', 'var(--muted)', 'var(--paper)')) +
+              '<div style="margin-top:4px">' + esc(v.cliente || '—') + '</div>' +
+              '<div class="s" style="color:var(--muted)">' +
+                fmtNum(v.renglones) + (v.renglones === 1 ? ' producto' : ' productos') +
+                ' · ' + fmtNum(v.piezas) + (v.piezas === 1 ? ' pieza' : ' piezas') +
+                (v.fecha ? ' · ' + esc(v.fecha) : '') +
+                (v.faltan ? ' · falta pedir ' + fmtNum(v.faltan) : '') + '</div>' +
+            '</div>' +
+            '<div style="text-align:right;white-space:nowrap">' +
+              (v.venta === null || v.venta === undefined ? '' :
+                '<div><span class="s" style="color:var(--muted)">Total pedido</span> <b>' +
+                esc(formatMoney(v.venta)) + '</b></div>') +
+              (v.costo === null ? '<div class="s" style="color:var(--amber)">sin costo real</div>'
+                : '<div class="s"><span style="color:var(--muted)">Producción</span> ' +
+                  esc(formatMoney(v.costo)) + '</div>' +
+                  '<div class="s"><span style="color:var(--muted)">Margen</span> <b>' +
+                  (v.margen === null ? '—' : v.margen.toFixed(1) + '%') + '</b></div>') +
+              '<div class="s" style="color:var(--muted);margin-top:2px">' +
+                (abierta ? 'cerrar ▾' : 'ver todo ▸') + '</div>' +
+            '</div>' +
+          '</div>' +
+        '</button>' +
+        (abierta ? '<div id="tabDet" style="padding:0 16px 16px">' +
+          detalleVentaHTML(v.folio) + '</div>' : '') +
+        '</div>';
+    });
+
+    document.getElementById('tableWrap').innerHTML = h;
+    document.getElementById('count').textContent = fmtNum((d.ventas || []).length) + ' ventas';
+
+    var bus = document.getElementById('buscaTab');
+    if (bus) bus.addEventListener('input', function () {
+      tabBusca = this.value;
+      var donde = this.selectionStart;
+      pintarVentaTablero();
+      var otra = document.getElementById('buscaTab');
+      if (otra) { otra.focus(); try { otra.setSelectionRange(donde, donde); } catch (e) {} }
+    });
+    document.querySelectorAll('#tableWrap [data-tabf]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        tabFiltro = b.getAttribute('data-tabf'); pintarVentaTablero();
+      });
+    });
+    document.querySelectorAll('#tableWrap .tab-folio').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var f = b.getAttribute('data-folio');
+        tabAbierta = (tabAbierta === f) ? '' : f;
+        pintarVentaTablero();
+        if (tabAbierta && !tabDetalle[tabAbierta]) pedirDetalleVenta(tabAbierta);
+      });
+    });
+  }
+
+  function pedirDetalleVenta(folio) {
+    api('venta-tablero', { token: state.token, folio: folio })
+      .then(function (o) { tabDetalle[folio] = o; })
+      .catch(function (e) {
+        tabDetalle[folio] = { error: (e && e.message) || 'No se pudo leer esta venta.' };
+      })
+      .then(function () {
+        if (tabAbierta !== folio) return;
+        var caja = document.getElementById('tabDet');
+        if (caja) caja.innerHTML = detalleVentaHTML(folio);
+      });
+  }
+
+  // Lo que se ve al abrir una tarjeta
+  function detalleVentaHTML(folio) {
+    var o = tabDetalle[folio];
+    if (!o) return '<div class="state" style="padding:24px 0">Leyendo esta venta…</div>';
+    if (o.error) return '<div class="state" style="color:var(--danger)">' + esc(o.error) + '</div>';
+    var f = o.ficha || {};
+    var dato = function (k, v) {
+      if (!v) return '';
+      return '<div style="min-width:0"><div class="s" style="color:var(--muted);' +
+        'text-transform:uppercase;letter-spacing:.6px;font-size:10px">' + k + '</div>' +
+        '<div style="font-size:13px;word-break:break-word">' + v + '</div></div>';
+    };
+    var h = '';
+    if (o.vacia) {
+      h += '<div class="panel" style="padding:12px 14px;margin-bottom:10px">' +
+        '<b>Esta venta no tiene producción que mostrar.</b> ' +
+        esc((o.porque || []).join(' · ') || 'Revisa sus renglones en la hoja de ventas.') +
+        '</div>';
+    }
+    if (o.entregada) {
+      h += '<div class="panel" style="padding:10px 14px;margin-bottom:10px;' +
+        'border-left:3px solid var(--slate)"><b>Entregada</b>' +
+        (o.entregadaEl ? ' el ' + esc(o.entregadaEl) : '') +
+        (o.faltanSalidas ? ' · <span style="color:var(--amber)">faltan ' +
+          fmtNum(o.faltanSalidas) + ' piezas por registrar en Salidas</span>' : '') + '</div>';
+    }
+
+    // Quién compró y a dónde va
+    var fichas = [
+      dato('Teléfono', f.telefono ? '<a href="tel:' +
+        esc(String(f.telefono).replace(/[^0-9+]/g, '')) + '" style="color:var(--accent)">' +
+        esc(formatTelefono(f.telefono)) + '</a>' : ''),
+      dato('Dirección', f.direccion ? '<a href="https://www.google.com/maps/search/' +
+        encodeURIComponent(f.direccion) + '" target="_blank" rel="noopener" ' +
+        'style="color:var(--accent)">' + esc(f.direccion) + '</a>' : ''),
+      dato('Ciudad', esc(f.ciudad || '')),
+      dato('Correo', esc(f.correo || '')),
+      dato('Despacho', esc(o.despacho || f.despacho || '')),
+      dato('Vendedor', esc(o.vendedor || f.vendedor || '')),
+      dato('Entrega acordada', esc(o.acordada || f.entrega || ''))
+    ].filter(Boolean).join('');
+    if (fichas) {
+      h += '<div class="panel" style="padding:12px 16px;margin-bottom:10px;display:grid;' +
+        'grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px 18px">' +
+        fichas + '</div>';
+    }
+    if ((o.comentarios || []).length) {
+      h += '<div class="panel" style="padding:12px 16px;margin-bottom:10px">' +
+        '<div class="s" style="color:var(--muted);text-transform:uppercase;' +
+        'letter-spacing:.6px;font-size:10px">Comentarios de la venta</div>' +
+        o.comentarios.map(function (c) {
+          return '<div style="font-size:13px;margin-top:3px">' + esc(c) + '</div>';
+        }).join('') + '</div>';
+    }
+
+    // Qué se vendió y quién lo está haciendo
+    var EST = {
+      'surtido':     ['Surtido', 'var(--success)'],
+      'pedido':      ['Pedido', 'var(--slate)'],
+      'por surtir':  ['Por surtir', 'var(--danger)'],
+      'por definir': ['Por definir', 'var(--amber)']
+    };
+    if ((o.piezas || []).length) {
+      h += '<table class="mini-table tab-piezas"><thead><tr><th>Producto</th>' +
+        '<th>Material</th>' +
+        '<th style="text-align:right">Cantidad</th><th>Comentario</th>' +
+        '<th>Quién lo hace</th></tr></thead><tbody>';
+      o.piezas.forEach(function (p) {
+        h += '<tr>' +
+          '<td data-th="Producto"><b>' + esc(p.producto) + '</b></td>' +
+          '<td data-th="Material">' + esc(p.material || '') +
+            (p.materialExtra ? ' <span class="s" style="color:var(--slate)">· ' +
+              esc(p.materialExtra) + '</span>' : '') + '</td>' +
+          '<td class="num" data-th="Cantidad">' + fmtNum(p.cantidad) + '</td>' +
+          '<td data-th="Comentario" class="s">' + esc(p.especificaciones || '') + '</td>' +
+          '<td data-th="Quién lo hace">' +
+            (p.componentes || []).map(function (c) {
+              var e = EST[c.estado] || ['', 'var(--slate)'];
+              return '<div style="margin-bottom:6px">' +
+                '<span class="s" style="color:var(--muted)">' + esc(c.componente) + '</span> ' +
+                tabChip(e[0], e[1], 'var(--paper)') +
+                (c.proveedor ? '<div style="font-size:13px">' + esc(c.proveedor) +
+                  (c.pedido ? ' <span class="s" style="color:var(--slate)">· ' +
+                    esc(c.pedido) + '</span>' : '') + '</div>' : '') +
+                (c.statusPedido ? '<div class="s" style="color:var(--muted)">' +
+                  esc(c.statusPedido) + (c.llega ? ' · llega ' + esc(c.llega) : '') +
+                  '</div>' : '') +
+                (!c.proveedor && c.estado === 'por surtir'
+                  ? '<div class="s" style="color:var(--muted)">' +
+                    (c.enBodega ? fmtNum(c.enBodega) + ' en bodega'
+                      : (c.candidatos || []).length
+                        ? 'la han hecho ' + esc(c.candidatos.join(', '))
+                        : 'nadie la ha hecho antes') + '</div>' : '') +
+                '</div>';
+            }).join('') +
+          '</td></tr>';
+      });
+      h += '</tbody></table>';
+    }
+
+    // Cómo se manda
+    var e2 = o.envio || {};
+    var envioDato = function (k, v) {
+      return '<div><span class="s" style="color:var(--muted)">' + k + '</span> ' + v + '</div>';
+    };
+    var mgEnv = (e2.cobrado && e2.costo)
+      ? ((e2.cobrado - e2.costo) / e2.cobrado * 100).toFixed(1) + '%' : '';
+    h += '<div class="panel" style="padding:12px 16px;margin-top:10px;display:grid;' +
+      'grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px 18px">' +
+      '<div style="grid-column:1/-1"><b>Envío</b>' +
+        (e2.donde ? ' ' + tabChip(e2.donde === 'local' ? 'Local' : 'Foráneo',
+                                  'var(--accent)', 'var(--paper)') : '') +
+        (e2.deLaVenta ? ' <span class="s" style="color:var(--amber)">sin registro en ' +
+          'Envíos: solo lo que dice la venta</span>' : '') + '</div>' +
+      envioDato('Paquetería', esc(e2.paqueteria || '—')) +
+      envioDato('Guía', esc(e2.guia || '—')) +
+      envioDato('Status', esc(e2.status || '—')) +
+      envioDato('Cobrado al cliente', e2.cobrado ? esc(formatMoney(e2.cobrado)) : '—') +
+      envioDato('Costo', e2.costo ? esc(formatMoney(e2.costo)) : '—') +
+      envioDato('Margen', mgEnv || '—') +
+      (e2.estimada ? envioDato('Estimada', esc(e2.estimada)) : '') +
+      (e2.real ? envioDato('Entregado', esc(e2.real)) : '') +
+      '</div>';
+    return h;
   }
 
   // ===== Cierre operativo del mes =====
@@ -9627,7 +9937,7 @@
     'log_calendario', 'fin_banco', 'fac_emitidos', 'pagos_pedidos', 'fac_impuestos',
     'fin_efectivo', 'fin_gastos_op', 'rh_resumen', 'prov_razon', 'cfdi_prov',
     'cfdi_control', 'cfdi_comp_rec', 'fac_control', 'cta_clientes', 'expediente',
-    'inv_prov', 'conciliacion', 'costos', 'proveedores', 'op_cierre'];
+    'inv_prov', 'conciliacion', 'costos', 'proveedores', 'op_cierre', 'venta_tablero'];
   function tienePantallaPropia(k) {
     // Clientes es la misma área con dos vistas: la lista sí es tabla.
     if (k === 'ventas_clientes') return vistaClientes === 'historial';
@@ -9682,6 +9992,7 @@
     if (state.key === 'costos') return loadCostos();
     if (state.key === 'proveedores') return loadProveedores();
     if (state.key === 'op_cierre') return loadCierreOp();
+    if (state.key === 'venta_tablero') return loadVentaTablero();
     document.getElementById('tableWrap').innerHTML = '<div class="state">Cargando...</div>';
     document.getElementById('count').textContent = '';
     state.categories = {}; state.lookups = []; state.lineItems = [];
@@ -18080,7 +18391,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.11.03-519';
+    var mia = '2026.11.03-520';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;

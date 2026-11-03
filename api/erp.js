@@ -102,6 +102,8 @@ const RUTAS = {
   cierre:         require('../lib/handlers/cierre'),
   // El cierre del lado de producción: lo que Nico revisa al cerrar el mes.
   'cierre-op':    require('../lib/handlers/cierre-op'),
+  // La venta entera en una tarjeta: cliente, producción, envío y margen
+  'venta-tablero': require('../lib/handlers/venta-tablero'),
   'cierre-op-html': require('../lib/handlers/cierre-op-html'),
   config:         require('../lib/handlers/config'),
   pagos:          require('../lib/handlers/pagos'),
