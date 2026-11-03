@@ -1107,7 +1107,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.03-520</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.03-521</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -2516,6 +2516,24 @@
         if (tabAbierta && !tabDetalle[tabAbierta]) pedirDetalleVenta(tabAbierta);
       });
     });
+    oyentesDelDetalle();
+  }
+
+  // Los botones de adentro de la tarjeta. Se enganchan aparte porque el detalle
+  // también se repinta solo cuando llega del servidor.
+  function oyentesDelDetalle() {
+    var pon = function (clase, fn) {
+      document.querySelectorAll('#tableWrap ' + clase).forEach(function (b) {
+        b.addEventListener('click', function (ev) {
+          if (ev && ev.stopPropagation) ev.stopPropagation();
+          fn(b.getAttribute('data-folio'), +b.getAttribute('data-p'),
+             +b.getAttribute('data-c'));
+        });
+      });
+    };
+    pon('.tab-surtir', surtirDesdeTablero);
+    pon('.tab-nota', abrirInstrucciones);
+    pon('.tab-envio', function (f) { abrirEnvioTablero(f); });
   }
 
   function pedirDetalleVenta(folio) {
@@ -2527,7 +2545,7 @@
       .then(function () {
         if (tabAbierta !== folio) return;
         var caja = document.getElementById('tabDet');
-        if (caja) caja.innerHTML = detalleVentaHTML(folio);
+        if (caja) { caja.innerHTML = detalleVentaHTML(folio); oyentesDelDetalle(); }
       });
   }
 
@@ -2598,7 +2616,7 @@
         '<th>Material</th>' +
         '<th style="text-align:right">Cantidad</th><th>Comentario</th>' +
         '<th>Quién lo hace</th></tr></thead><tbody>';
-      o.piezas.forEach(function (p) {
+      o.piezas.forEach(function (p, ip) {
         h += '<tr>' +
           '<td data-th="Producto"><b>' + esc(p.producto) + '</b></td>' +
           '<td data-th="Material">' + esc(p.material || '') +
@@ -2607,9 +2625,24 @@
           '<td class="num" data-th="Cantidad">' + fmtNum(p.cantidad) + '</td>' +
           '<td data-th="Comentario" class="s">' + esc(p.especificaciones || '') + '</td>' +
           '<td data-th="Quién lo hace">' +
-            (p.componentes || []).map(function (c) {
+            (p.componentes || []).map(function (c, ic) {
               var e = EST[c.estado] || ['', 'var(--slate)'];
-              return '<div style="margin-bottom:6px">' +
+              // Lo que se puede hacer con esta parte, sin salir de la tarjeta:
+              // surtirla o pedirla (el mismo diálogo de Surtir ventas) y, si ya
+              // tiene pedido, decirle algo al proveedor o mover su status.
+              var acc = '<div style="margin-top:4px;display:flex;gap:6px;flex-wrap:wrap">' +
+                (c.falta > 0
+                  ? '<button type="button" class="row-btn tab-surtir" data-folio="' +
+                    esc(folio).replace(/"/g, '&quot;') + '" data-p="' + ip + '" data-c="' +
+                    ic + '">' + (o.entregada ? 'Registrar la salida' : 'Surtir o pedir') +
+                    ' ' + fmtNum(c.falta) + '…</button>'
+                  : '') +
+                (c.pedido
+                  ? '<button type="button" class="row-btn tab-nota" data-folio="' +
+                    esc(folio).replace(/"/g, '&quot;') + '" data-p="' + ip + '" data-c="' +
+                    ic + '">Instrucciones y status…</button>'
+                  : '') + '</div>';
+              return '<div style="margin-bottom:10px">' +
                 '<span class="s" style="color:var(--muted)">' + esc(c.componente) + '</span> ' +
                 tabChip(e[0], e[1], 'var(--paper)') +
                 (c.proveedor ? '<div style="font-size:13px">' + esc(c.proveedor) +
@@ -2624,7 +2657,10 @@
                       : (c.candidatos || []).length
                         ? 'la han hecho ' + esc(c.candidatos.join(', '))
                         : 'nadie la ha hecho antes') + '</div>' : '') +
-                '</div>';
+                // Lo que ya se le dijo al proveedor, por si hay que cambiarlo
+                (c.instrucciones ? '<div class="s" style="color:var(--slate)">\u201c' +
+                  esc(c.instrucciones) + '\u201d</div>' : '') +
+                acc + '</div>';
             }).join('') +
           '</td></tr>';
       });
@@ -2640,11 +2676,16 @@
       ? ((e2.cobrado - e2.costo) / e2.cobrado * 100).toFixed(1) + '%' : '';
     h += '<div class="panel" style="padding:12px 16px;margin-top:10px;display:grid;' +
       'grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px 18px">' +
-      '<div style="grid-column:1/-1"><b>Envío</b>' +
-        (e2.donde ? ' ' + tabChip(e2.donde === 'local' ? 'Local' : 'Foráneo',
-                                  'var(--accent)', 'var(--paper)') : '') +
-        (e2.deLaVenta ? ' <span class="s" style="color:var(--amber)">sin registro en ' +
-          'Envíos: solo lo que dice la venta</span>' : '') + '</div>' +
+      '<div style="grid-column:1/-1;display:flex;gap:10px;align-items:baseline;' +
+        'flex-wrap:wrap"><b>Envío</b>' +
+        (e2.donde ? tabChip(e2.donde === 'local' ? 'Local' : 'Foráneo',
+                            'var(--accent)', 'var(--paper)') : '') +
+        (e2.deLaVenta ? '<span class="s" style="color:var(--amber)">sin registro en ' +
+          'Envíos: solo lo que dice la venta</span>' : '') +
+        '<button type="button" class="row-btn tab-envio" data-folio="' +
+          esc(folio).replace(/"/g, '&quot;') + '">' +
+          (e2.deLaVenta ? 'Capturar el envío…' : 'Editar el envío…') + '</button>' +
+        '</div>' +
       envioDato('Paquetería', esc(e2.paqueteria || '—')) +
       envioDato('Guía', esc(e2.guia || '—')) +
       envioDato('Status', esc(e2.status || '—')) +
@@ -2655,6 +2696,132 @@
       (e2.real ? envioDato('Entregado', esc(e2.real)) : '') +
       '</div>';
     return h;
+  }
+
+  // ----- Operar la venta desde su tarjeta (fase 2) -----
+  //
+  // Surtir y pedir no se vuelven a escribir aquí: se abre EL MISMO diálogo de
+  // Surtir ventas, con los mismos datos que usa allá. Lo único que cambia es a
+  // dónde regresa al terminar.
+  var tabVolverA = '';
+  function surtirDesdeTablero(folio, iP, iC) {
+    var o = tabDetalle[folio];
+    if (!o || !o.piezas || !o.piezas[iP]) return;
+    var p = o.piezas[iP].crudo, c = (o.piezas[iP].componentes[iC] || {}).crudo;
+    if (!p || !c) return;
+    // El diálogo lee de aquí los proveedores, los pedidos abiertos y el número
+    // que le toca a cada proveedor: el detalle los trae para esto.
+    surtirDatos = o;
+    abrirSurtir(p, c);
+    tabVolverA = folio;      // después de abrir: abrirSurtir lo limpia
+  }
+
+  // Lo que hay que decirle al proveedor y en qué va la pieza. Las dos cosas
+  // viven en el renglón del pedido: el status es el de fabricación y la nota es
+  // la que sale impresa en la orden de compra.
+  var tabNota = null;
+  function abrirInstrucciones(folio, iP, iC) {
+    var o = tabDetalle[folio];
+    var pz = o && o.piezas ? o.piezas[iP] : null;
+    var c = pz ? pz.componentes[iC] : null;
+    if (!pz || !c || !c.pedido) return;
+    tabNota = { folio: folio, pedido: c.pedido, producto: pz.producto,
+                material: c.componente };
+    // El componente puede ser la madera (que es el Material de la venta) o la
+    // tela (que en el pedido va como su propio renglón, con ese material).
+    modalModo = 'tabNota';
+    document.getElementById('aventaTitulo').textContent =
+      'Pedido ' + c.pedido + ' · ' + pz.producto;
+    var ops = ['', 'EN PROCESO', 'PENDIENTE COMPLETO', 'ENTREGADO', 'CANCELADO'];
+    document.getElementById('aventaCuerpo').innerHTML =
+      '<div class="s" style="color:var(--slate);margin-bottom:10px">' +
+        esc(c.proveedor || 'Sin proveedor') + ' · ' + esc(c.componente) + '</div>' +
+      '<div class="fld"><label>En qué va</label><select id="tnStatus">' +
+        ops.map(function (x) {
+          return '<option value="' + esc(x) + '"' +
+            (norm(x) === norm(c.statusPedido || '') ? ' selected' : '') + '>' +
+            (x ? esc(x) : '— sin status —') + '</option>';
+        }).join('') + '</select></div>' +
+      '<div class="fld"><label>Instrucciones al proveedor</label>' +
+        '<textarea id="tnNota" rows="3" placeholder="Medidas especiales, acabado, tela…">' +
+        esc(c.instrucciones || '') + '</textarea>' +
+        '<div class="s" style="color:var(--muted);margin-top:2px">Es lo que sale ' +
+        'impreso en la orden de compra de ese pedido.</div></div>';
+    document.getElementById('aventaOk').textContent = 'Guardar';
+    document.getElementById('aventaCancel').textContent = 'Cerrar';
+    document.getElementById('aventaModal').classList.add('on');
+  }
+  function guardarInstrucciones() {
+    if (!tabNota) return;
+    var btn = document.getElementById('aventaOk');
+    btn.disabled = true; btn.textContent = 'Guardando…';
+    api('venta-tablero', { token: state.token, hacer: 'pedido-nota',
+        pedido: tabNota.pedido, producto: tabNota.producto, material: tabNota.material,
+        status: (document.getElementById('tnStatus') || {}).value || '',
+        nota: (document.getElementById('tnNota') || {}).value || '' })
+      .then(function (o) {
+        toast(o.mensaje || 'Listo.', 'ok');
+        var f = tabNota.folio;
+        cerrarMandarAVenta();
+        delete tabDetalle[f]; pintarVentaTablero(); pedirDetalleVenta(f);
+      })
+      .catch(fail)
+      .then(function () { btn.disabled = false; btn.textContent = 'Guardar'; });
+  }
+
+  // El envío de esa venta. Si todavía no está capturado, se crea.
+  var tabEnvio = null;
+  function abrirEnvioTablero(folio) {
+    var o = tabDetalle[folio] || {};
+    var e = o.envio || {};
+    tabEnvio = { folio: folio, nuevo: !!e.deLaVenta };
+    modalModo = 'tabEnvio';
+    document.getElementById('aventaTitulo').textContent =
+      (e.deLaVenta ? 'Capturar el envío de ' : 'Envío de ') + folio;
+    var campo = function (id, et, val, tipo) {
+      return '<div class="fld"><label>' + et + '</label><input id="' + id + '"' +
+        (tipo ? ' type="' + tipo + '"' : '') + ' value="' +
+        esc(val == null ? '' : String(val)).replace(/"/g, '&quot;') + '"></div>';
+    };
+    document.getElementById('aventaCuerpo').innerHTML =
+      '<div class="form-grid">' +
+        campo('teStatus', 'Status', e.status || '') +
+        campo('tePaq', 'Paquetería', e.paqueteria || '') +
+        campo('teGuia', 'Guía', e.guia || '') +
+        campo('teZona', 'Zona o estado', e.zona || '') +
+        campo('teCob', 'Cobrado al cliente', e.cobrado || '', 'number') +
+        campo('teCosto', 'Costo del envío', e.costo || '', 'number') +
+        campo('teEst', 'Fecha estimada', e.estimada || '') +
+      '</div>' +
+      '<div class="s" style="color:var(--muted);margin-top:6px">Foráneo o local se ' +
+      'deduce de la zona. El costo con IVA, la utilidad y el margen son fórmula en la ' +
+      'hoja: no se tocan.</div>';
+    document.getElementById('aventaOk').textContent = tabEnvio.nuevo ? 'Crear' : 'Guardar';
+    document.getElementById('aventaCancel').textContent = 'Cerrar';
+    document.getElementById('aventaModal').classList.add('on');
+  }
+  function guardarEnvioTablero() {
+    if (!tabEnvio) return;
+    var btn = document.getElementById('aventaOk');
+    var v = function (id) { return (document.getElementById(id) || {}).value || ''; };
+    btn.disabled = true; btn.textContent = 'Guardando…';
+    var o = tabDetalle[tabEnvio.folio] || {};
+    api('venta-tablero', { token: state.token, hacer: 'envio', folio: tabEnvio.folio,
+        status: v('teStatus'), paqueteria: v('tePaq'), guia: v('teGuia'),
+        zona: v('teZona'), estimada: v('teEst'),
+        cobrado: v('teCob') === '' ? '' : Number(v('teCob')),
+        costo: v('teCosto') === '' ? '' : Number(v('teCosto')),
+        cliente: o.cliente || '' })
+      .then(function (r) {
+        toast(r.mensaje || 'Listo.', 'ok');
+        var f = tabEnvio.folio;
+        cerrarMandarAVenta();
+        delete tabDetalle[f]; pintarVentaTablero(); pedirDetalleVenta(f);
+      })
+      .catch(fail)
+      .then(function () {
+        btn.disabled = false; btn.textContent = tabEnvio.nuevo ? 'Crear' : 'Guardar';
+      });
   }
 
   // ===== Cierre operativo del mes =====
@@ -8357,6 +8524,9 @@
   var surtirVerTodosProv = false;
   function abrirSurtir(p, c) {
     surtirVerTodosProv = false;
+    // Cada vez que se abre, olvida de dónde vino. Quien lo abra desde el
+    // tablero lo vuelve a marcar enseguida.
+    tabVolverA = '';
     surtirPieza = { p: p, c: c };
     modalModo = 'surtir';
     document.getElementById('aventaTitulo').textContent =
@@ -8671,6 +8841,15 @@
       // La salida quedó pero el pedido no se pudo marcar: hay que decirlo, o la
       // pieza se va a ver libre en Pedidos y alguien la va a repartir otra vez.
       if (o.avisoPedido) avisoFijo('<b>' + esc(o.avisoPedido) + '</b>');
+      // El mismo diálogo se abre desde Surtir ventas y desde el tablero de la
+      // venta: regresa a donde se abrió, no siempre a Surtir.
+      if (tabVolverA) {
+        var f = tabVolverA; tabVolverA = '';
+        delete tabDetalle[f];
+        pintarVentaTablero();
+        pedirDetalleVenta(f);
+        return;
+      }
       loadSurtir();
     };
     api('surtir', datos)
@@ -18391,7 +18570,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.11.03-520';
+    var mia = '2026.11.03-521';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
@@ -18477,6 +18656,8 @@
       case 'cerrar':          cerrarMandarAVenta(); return;
       case 'pedirPago':       guardarPedirPago(); return;
       case 'pedNombre':       guardarCambiarNumeroPedido(); return;
+      case 'tabNota':         guardarInstrucciones(); return;
+      case 'tabEnvio':        guardarEnvioTablero(); return;
       case 'cierre':
         if (cierrePdf) { bajarPdf(cierrePdf.pdf, cierrePdf.nombre); return; }
         generarCierre(); return;
