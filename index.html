@@ -1094,7 +1094,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.02-517</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.03-519</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1975,6 +1975,9 @@
 
   // ===== Comparativo de costos por folio =====
   var costosAnio = '', costosDatos = [], costoAbierto = '';
+  // Lo que contestó el servidor, tal cual. Filtrar, buscar u ordenar NO vuelve a
+  // pedirlo: el comparativo cruza ventas, salidas, pedidos y catálogo y tarda.
+  var costosCrudo = null, costosBusca = '', costosOrden = 'fecha';
   function bajarCostos() {
     var cols = ['Folio','Fecha','Cliente','Venta sin IVA','Costo real','Margen real',
                 'Costo Ventas','Margen Ventas','Costo Catálogo','Margen Catálogo',
@@ -2006,7 +2009,8 @@
     }).catch(fail).then(function () { btn.disabled = false; btn.textContent = t; });
   }
 
-  function loadCostos() {
+  function loadCostos(usarCache) {
+    if (usarCache && costosCrudo) { pintarCostos(costosCrudo); return; }
     document.getElementById('driveCostosBtn').style.display = '';
     var bt = document.getElementById('btnTableroCostos');
     if (!bt) {
@@ -2029,7 +2033,17 @@
       '<div class="state" style="padding:50px 0">Cruzando ventas, salidas, pedidos y catálogo…</div>';
     document.getElementById('summary').innerHTML = '';
     mostrarAlta(false);
-    api('costos', { token: state.token }).then(function (d) {
+    api('costos', { token: state.token })
+      .then(function (d) { costosCrudo = d; pintarCostos(d); })
+      .catch(function (e) {
+        document.getElementById('tableWrap').innerHTML =
+          '<div class="state">' + esc((e && e.message) ||
+            'No se pudo armar el comparativo.') + '</div>';
+      });
+  }
+
+  function pintarCostos(d) {
+    {
       var F = d.folios || [];
       var conReal = F.filter(function (r) { return r.costoReal !== null; });
       var sum = function (arr, k) { var t = 0; arr.forEach(function (r) { t += (r[k] || 0); }); return t; };
@@ -2121,6 +2135,55 @@
       chips += '<button type="button" class="mes-chip" id="bajarCostos">Descargar para Excel</button>' +
         '<button type="button" class="mes-chip" id="subirCostos">Actualizar en Drive</button></div>';
       if (costosAnio) F = F.filter(function (r) { return String(r.anio) === String(costosAnio); });
+
+      // Buscar por folio, cliente, proveedor o producto. Con 500 folios en
+      // pantalla, encontrar uno era bajar con la rueda del ratón.
+      var q = norm(costosBusca);
+      if (q) {
+        F = F.filter(function (r) {
+          if (norm(r.folio).indexOf(q) !== -1) return true;
+          if (norm(r.cliente).indexOf(q) !== -1) return true;
+          if (norm(r.proveedores).indexOf(q) !== -1) return true;
+          return (r.detalle || []).some(function (x) {
+            return norm(x.producto).indexOf(q) !== -1 ||
+                   norm(x.material).indexOf(q) !== -1;
+          });
+        });
+      }
+      // De la más reciente a la más vieja, o por folio. Un folio sin fecha
+      // legible se va al final en vez de colarse hasta arriba.
+      F = F.slice().sort(function (x, y) {
+        if (costosOrden === 'folio') {
+          return String(x.folio).localeCompare(String(y.folio), 'es',
+                                               { numeric: true, sensitivity: 'base' });
+        }
+        var fx = parseDate(x.fecha), fy = parseDate(y.fecha);
+        if (fx === null && fy === null) return 0;
+        if (fx === null) return 1;
+        if (fy === null) return -1;
+        return fy - fx;
+      });
+
+      var barraBusca = '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;' +
+        'margin:0 0 10px">' +
+        '<input id="buscaCosto" placeholder="Buscar folio, cliente, proveedor o producto…" ' +
+        'value="' + esc(costosBusca).replace(/"/g, '&quot;') + '" ' +
+        'style="flex:1;min-width:200px;max-width:360px">' +
+        '<select id="ordenCosto" style="width:auto">' +
+        '<option value="fecha"' + (costosOrden === 'fecha' ? ' selected' : '') +
+          '>Más recientes primero</option>' +
+        '<option value="folio"' + (costosOrden === 'folio' ? ' selected' : '') +
+          '>Por folio</option></select>' +
+        '<span class="s" style="color:var(--muted)">' + fmtNum(F.length) +
+        (F.length === 1 ? ' folio' : ' folios') + (q ? ' encontrados' : '') + '</span>' +
+        '</div>' +
+        // Qué es cada costo. Nico preguntó qué era la columna "Catálogo".
+        '<div class="s" style="color:var(--muted);margin:-4px 0 10px">' +
+        '<b>Costo real</b>: lo que de verdad costó, de las salidas registradas y su pedido. ' +
+        '<b>Costo Ventas</b>: el que trae capturado la hoja de ventas. ' +
+        '<b>Costo Catálogo</b>: lo que esa pieza debería costar según la Lista de Precios. ' +
+        'Si el real y el de catálogo se separan más de 5%, el renglón se pinta.</div>';
+      chips += barraBusca;
       costosDatos = F;
 
       var h = chips + '<table class="mini-table"><thead><tr><th>Folio</th><th>Fecha</th><th>Cliente</th>' +
@@ -2262,12 +2325,26 @@
         });
       });
       document.querySelectorAll('#tableWrap [data-anio]').forEach(function (b) {
-        b.addEventListener('click', function () { costosAnio = b.getAttribute('data-anio'); loadCostos(); });
+        b.addEventListener('click', function () {
+          costosAnio = b.getAttribute('data-anio'); loadCostos(true);
+        });
       });
-    }).catch(function (e) {
-      document.getElementById('tableWrap').innerHTML =
-        '<div class="state">' + esc((e && e.message) || 'No se pudo armar el comparativo.') + '</div>';
-    });
+      // Buscar y ordenar: con los datos que ya están, sin volver a cruzar nada
+      var bus = document.getElementById('buscaCosto');
+      if (bus) {
+        bus.addEventListener('input', function () {
+          costosBusca = this.value;
+          var donde = this.selectionStart;
+          loadCostos(true);
+          var otra = document.getElementById('buscaCosto');
+          if (otra) { otra.focus(); try { otra.setSelectionRange(donde, donde); } catch (e) {} }
+        });
+      }
+      var ord = document.getElementById('ordenCosto');
+      if (ord) ord.addEventListener('change', function () {
+        costosOrden = this.value; loadCostos(true);
+      });
+    }
   }
 
   // ===== Cierre operativo del mes =====
@@ -7964,7 +8041,12 @@
   // elegir lo importante: a qué pedido se cuelga la pieza. Ahora es un diálogo.
   var surtirDatos = null, surtirPieza = null;
 
+  // Los 40 proveedores de la casa no caben en un desplegable para elegir quién
+  // hace una silla: por default solo salen los que ya la han hecho, y los demás
+  // se piden con "Ver los demás".
+  var surtirVerTodosProv = false;
   function abrirSurtir(p, c) {
+    surtirVerTodosProv = false;
     surtirPieza = { p: p, c: c };
     modalModo = 'surtir';
     document.getElementById('aventaTitulo').textContent =
@@ -8098,12 +8180,15 @@
           (yo ? ' — ya la hizo ' + fmtNum(yo.veces) + (yo.veces === 1 ? ' vez' : ' veces') +
                 (yo.dias ? ' · ' + esc(yo.dias) : '') : '') + '</option>';
       }).join('') +
-      // Los demás, aparte, para que no estorben al buscar
+      // Los demás no salen hasta que se piden: eran 40 nombres estorbando
       (yaLaHicieron.length && otros.length
-        ? '<optgroup label="Nunca han hecho esta pieza">' + otros.map(function (x) {
-            return '<option value="' + esc(x).replace(/"/g, '&quot;') + '">' + esc(x) +
-              '</option>';
-          }).join('') + '</optgroup>'
+        ? (surtirVerTodosProv
+            ? '<optgroup label="Nunca han hecho esta pieza">' + otros.map(function (x) {
+                return '<option value="' + esc(x).replace(/"/g, '&quot;') + '">' + esc(x) +
+                  '</option>';
+              }).join('') + '</optgroup>'
+            : '<option value="__todos__">Ver los demás proveedores (' +
+              fmtNum(otros.length) + ')…</option>')
         : '') +
       '<option value="__nuevo__">+ Proveedor nuevo…</option>' +
       '</select></div>' +
@@ -8143,6 +8228,15 @@
     var prov = document.getElementById('suProv');
     var sel = document.getElementById('suPedSel');
     if (!prov || !sel) return;
+    // "Ver los demás proveedores…" no es un proveedor: abre la lista completa
+    if (prov.value === '__todos__') {
+      surtirVerTodosProv = true;
+      // Se borra el centinela antes de repintar: si se queda puesto, el
+      // diálogo se vuelve a dibujar en bucle.
+      prov.value = '';
+      pintarSurtir();
+      return;
+    }
     var abiertos = (d.pedidosAbiertos || {})[prov.value] || [];
     // Un pedido abierto del proveedor NO es el pedido de esta pieza. Antes se
     // preseleccionaba el primero y el Sillón Alondra se colgaba del pedido del
@@ -8264,6 +8358,9 @@
     var listo = function (o) {
       toast(o.mensaje || 'Listo.', 'ok');
       cerrarMandarAVenta();
+      // La salida quedó pero el pedido no se pudo marcar: hay que decirlo, o la
+      // pieza se va a ver libre en Pedidos y alguien la va a repartir otra vez.
+      if (o.avisoPedido) avisoFijo('<b>' + esc(o.avisoPedido) + '</b>');
       loadSurtir();
     };
     api('surtir', datos)
@@ -8382,12 +8479,15 @@
       // En qué estado está cada venta. Una venta cae en uno solo, y en ese orden:
       // si le falta algo es "por surtir", aunque parte ya esté pedida.
       var estadoDe = function (v) {
+        // Entregada manda sobre todo lo demás: el mueble ya está con el cliente
+        if (v.entregada) return 'entregadas';
         if (v.pendiente) return 'pendientes';
         if (v.enCamino) return 'pedidas';
         return 'surtidas';
       };
       var todasLas = d.ventas || [];
-      var cuenta = { pendientes: 0, pedidas: 0, surtidas: 0, todas: todasLas.length };
+      var cuenta = { pendientes: 0, pedidas: 0, surtidas: 0, entregadas: 0,
+                     todas: todasLas.length };
       todasLas.forEach(function (v) { cuenta[estadoDe(v)]++; });
       var h = todasLas
         .filter(function (v) {
@@ -8406,7 +8506,17 @@
               'pedido, esperando al proveedor</span>' : '') +
           (v.sobran
             ? ' <span class="s" style="color:var(--danger);font-weight:600">· se pidió ' +
-              'de más</span>' : '') + '</h3>' +
+              'de más</span>' : '') +
+          // Entregada: se consulta, no se surte. Si le faltan salidas por
+          // capturar se dice aquí, que es lo que trae inflado el Stock.
+          (v.entregada
+            ? ' <span class="s" style="color:var(--slate);font-weight:600">· entregada</span>' +
+              (v.faltanSalidas
+                ? ' <span class="s" style="color:var(--amber);font-weight:400">· faltan ' +
+                  fmtNum(v.faltanSalidas) +
+                  (v.faltanSalidas === 1 ? ' pieza' : ' piezas') +
+                  ' por registrar en Salidas</span>' : '')
+            : '') + '</h3>' +
           // Quien surte también despacha: a quién le entrega, dónde y cuándo.
           // Antes había que salirse a Clientes a buscarlo.
           fichaEnvio(v) +
@@ -8462,8 +8572,13 @@
                 // Un solo botón: el diálogo es donde se elige de dónde sale, de
                 // qué pedido y a qué pedido se cuelga. Antes era una hilera de
                 // botones que con dos lotes y seis proveedores era una pared.
-                var acciones = '<button type="button" class="row-btn primary surtir-abrir" ' +
-                  datos + '>Surtir ' + fmtNum(c.falta) +
+                // En una venta ya entregada el botón no sirve para surtir —el
+                // mueble ya se fue— sino para capturar la salida que nunca se
+                // registró, que es lo que trae el Stock inflado.
+                var acciones = '<button type="button" class="row-btn' +
+                  (v.entregada ? '' : ' primary') + ' surtir-abrir" ' +
+                  datos + '>' + (v.entregada ? 'Registrar la salida de ' : 'Surtir ') +
+                  fmtNum(c.falta) +
                   (c.falta === 1 ? ' pieza' : ' piezas') + '…</button> ' +
                   ((c.lotes || []).length
                     ? '<span class="s" style="color:var(--success)">' +
@@ -8543,6 +8658,7 @@
         ['pendientes', 'Por surtir'],
         ['pedidas', 'Ya pedidas'],
         ['surtidas', 'Ya surtidas'],
+        ['entregadas', 'Entregadas'],
         ['todas', 'Todas']
       ];
       var barra = '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">' +
@@ -8557,6 +8673,7 @@
         pendientes: 'No falta surtir nada. Mira "Ya pedidas" para lo que viene en camino.',
         pedidas: 'No hay nada esperando al proveedor.',
         surtidas: 'Todavía no hay ventas surtidas por completo.',
+        entregadas: 'Ninguna venta entregada todavía.',
         todas: 'No hay ventas que mostrar.'
       };
       // Las ventas que no están en ninguna pestaña, y por qué. Sin esto, un
@@ -17963,7 +18080,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.11.02-517';
+    var mia = '2026.11.03-519';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
