@@ -1107,7 +1107,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.04-525</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.04-526</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -2433,9 +2433,28 @@
              norm((v.pedidos || []).join(' ')).indexOf(q) !== -1;
     });
 
+    // Renglones de venta a los que la hoja no les bajó la fórmula del total.
+    // El tablero los calcula (precio × cantidad − descuento), pero el número
+    // bueno tiene que quedar en la hoja: mientras no esté, el margen de esa
+    // venta y los totales del mes salen cortos en todo lo que lea esa columna.
+    var SF = d.sinFormulaTotal || [];
+    var hAviso = !SF.length ? '' :
+      '<div class="aviso-caja s" style="margin:0 0 12px;padding:10px 12px">' +
+        '<b>' + fmtNum(SF.length) + (SF.length === 1
+          ? ' renglón de venta no trae su total en la hoja'
+          : ' renglones de venta no traen su total en la hoja') + '.</b> ' +
+        'El tablero lo calcula con precio × cantidad menos el descuento, pero hay que ' +
+        'bajar la fórmula en “Registros de Venta 2026” para que cuadre en todos lados: ' +
+        SF.slice(0, 8).map(function (x) {
+          return esc(x.folio) + ' · ' + esc(x.producto || '—') +
+            (x.fila ? ' (renglón ' + fmtNum(x.fila) + ')' : '');
+        }).join(' · ') + (SF.length > 8 ? ' …' : '') +
+      '</div>';
+
     var FILTROS = [['todas', 'Todas'], ['surtir', 'Falta surtir'],
                    ['foraneas', 'Foráneas'], ['sinenvio', 'Sin envío']];
-    var h = '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 12px">' +
+    var h = hAviso +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 12px">' +
       '<input id="buscaTab" placeholder="Buscar folio, cliente, proveedor o pedido…" ' +
       'value="' + esc(tabBusca).replace(/"/g, '&quot;') + '" ' +
       'style="flex:1;min-width:200px;max-width:340px">' +
@@ -18660,7 +18679,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.11.04-525';
+    var mia = '2026.11.04-526';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
