@@ -1107,7 +1107,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.04-522</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.04-523</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -13241,7 +13241,7 @@
             '<button type="button" class="primary llegaron-btn" data-ped="' +
               esc(k).replace(/"/g, '&quot;') + '">Ya llegaron</button>' +
             '<button type="button" class="aventa-btn" data-ped="' +
-            esc(k).replace(/"/g, '&quot;') + '">Mandar a venta</button>' +
+            esc(k).replace(/"/g, '&quot;') + '">Registrar salidas\u2026</button>' +
             '<button type="button" class="asignar-btn" data-ped="' +
             esc(k).replace(/"/g, '&quot;') + '">Cliente y fecha por mueble</button>' +
             '<button type="button" class="oc-btn" data-ped="' +
@@ -13258,7 +13258,8 @@
             (esSoloLectura(state.key) ? '' :
               '<button type="button" class="row-btn ped-nombre" data-ped="' +
               esc(k).replace(/"/g, '&quot;') + '">Cambiar el número</button>') +
-            '<span class="s" style="color:var(--muted)">Asigna piezas de este pedido a folios de venta</span>' +
+            '<span class="s" style="color:var(--muted)">Registra la salida de bodega de las ' +
+            'piezas de este pedido. A qué venta van ya quedó al pedirlas.</span>' +
           '</div></div>';
       }
       h += '</div>';
@@ -17049,14 +17050,29 @@
     var cIt = findHeaderByName('Producto');
     var cMat = findHeaderByName('Material'), cCant = findHeaderByName('Cantidad');
     var cCU = findHeaderByName('Costo Unitario'), cProv = findHeaderByName('Proveedor');
+    // A qué venta está asignado ese renglón y si ya llegó. Sin esto la ventana
+    // ofrecía "Se queda en stock" para piezas que ya tenían dueño.
+    var cFol = findHeaderByName('Folio cliente') || findHeaderByName('Folio');
+    var cSt = findHeaderByName('Status');
     aventaLineas = (state.rows || []).filter(function (r) {
       return String(r[cPed] || '').trim() === pedido;
     }).map(function (r) {
       return { producto: String(r[cIt] || '').trim(), material: String(r[cMat] || '').trim(),
                cantidad: parseNumber(r[cCant]) || 0, costo: parseNumber(r[cCU]) || 0,
-               proveedor: String(r[cProv] || '').trim() };
+               proveedor: String(r[cProv] || '').trim(),
+               folio: cFol ? String(r[cFol] || '').trim() : '',
+               status: cSt ? String(r[cSt] || '').trim() : '' };
     });
-    document.getElementById('aventaTitulo').textContent = 'Mandar a venta · ' + pedido;
+    // Si el renglón ya trae su venta, el destino llega puesto: lo que falta es
+    // la cantidad que de verdad salió, no volver a decir para quién es.
+    aventaDest = {};
+    aventaLineas.forEach(function (l, i) {
+      var f = l.folio;
+      if (!f || f.split(/[,;/]+/).length !== 1) return;
+      if (/^(stock|bodega|showroom|exhibici)/i.test(norm(f))) return;
+      aventaDest[i] = [{ cant: '', folio: f, dir: '' }];
+    });
+    document.getElementById('aventaTitulo').textContent = 'Registrar salidas · ' + pedido;
     document.getElementById('aventaCuerpo').innerHTML =
       '<div class="state" style="padding:30px 0">Buscando ventas que pidieron estos productos…</div>';
     document.getElementById('aventaModal').classList.add('on');
@@ -17208,9 +17224,25 @@
           '<div class="s">' + fmtNum(cupo.pedidas) + ' pedidas' +
             (cupo.yaSalio ? ' · ' + fmtNum(cupo.yaSalio) + ' ya salieron' : '') + ' · ' +
             '<b style="color:' + (falta < 0 ? 'var(--danger)' : (falta === 0 ? 'var(--success)' : 'var(--slate)')) + '">' +
-            (falta < 0 ? 'te pasaste por ' + fmtNum(-falta) : (falta === 0 ? 'repartidas' : fmtNum(falta) + ' sin repartir')) +
+            (falta < 0 ? 'te pasaste por ' + fmtNum(-falta)
+              : (falta === 0 ? 'con su salida' : fmtNum(falta) + ' sin salida')) +
             '</b></div>' +
         '</div>' +
+        // Esta ventana NO asigna la pieza a una venta: eso ya se hizo al pedirla.
+        // Aquí se registra la SALIDA de bodega, que es otra cosa y es lo que le
+        // da costo real a la venta. Nico asignaba desde el tablero y al abrir
+        // esto le decía "7 sin repartir", como si no hubiera hecho nada.
+        (l.folio && !/^(stock|bodega|showroom|exhibici)/i.test(norm(l.folio))
+          ? '<div class="s" style="color:var(--slate);margin-bottom:8px">' +
+            'Ya está asignado a <b>' + esc(l.folio) + '</b>. Aquí solo se registra la ' +
+            '<b>salida de bodega</b>: cuántas piezas de verdad salieron.</div>'
+          : '') +
+        // Y si el pedido todavía no llega, registrar su salida es adelantarse
+        (l.status && !/entregad/i.test(l.status)
+          ? '<div class="s" style="color:var(--amber);margin-bottom:8px">Este pedido está en ' +
+            '<b>' + esc(l.status) + '</b>: todavía no llega. Normalmente primero se marca ' +
+            '“Ya llegaron” y después se registra la salida.</div>'
+          : '') +
         (falta < 0
           ? '<div class="s" style="color:var(--danger);margin-bottom:8px">De este pedido solo quedan ' +
             fmtNum(Math.max(0, cupo.pedidas - cupo.yaSalio)) + ' piezas por sacar. Baja las cantidades ' +
@@ -17248,8 +17280,10 @@
       }
       h += '</div>';
     });
-    h += '<div class="s" style="color:var(--muted)">Solo aparecen las ventas que pidieron ese producto y ' +
-      'todavía no tienen salida. Lo que no repartas se queda en stock del proveedor.</div>';
+    h += '<div class="s" style="color:var(--muted)">Aquí se registra la <b>salida de bodega</b>, ' +
+      'no a qué venta va la pieza: eso ya quedó al pedirla. Solo aparecen las ventas que ' +
+      'pidieron ese producto y todavía no tienen salida; lo que no registres se queda en ' +
+      'stock del proveedor.</div>';
     document.getElementById('aventaCuerpo').innerHTML = h;
 
     // El candado: mientras haya algún producto repartido de más, no se puede guardar.
@@ -18580,7 +18614,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.11.04-522';
+    var mia = '2026.11.04-523';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
