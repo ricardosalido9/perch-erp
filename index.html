@@ -1107,7 +1107,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.03-521</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.04-522</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -2477,7 +2477,11 @@
               (v.venta === null || v.venta === undefined ? '' :
                 '<div><span class="s" style="color:var(--muted)">Total pedido</span> <b>' +
                 esc(formatMoney(v.venta)) + '</b></div>') +
-              (v.costo === null ? '<div class="s" style="color:var(--amber)">sin costo real</div>'
+              (v.costo === null ? '<div class="s" style="color:var(--amber)" title="El costo ' +
+                'real sale de las salidas de inventario registradas. Mientras las piezas no ' +
+                'salgan de bodega no hay costo que contar, aunque ya estén pedidas.">' +
+                'sin costo real <span style="color:var(--muted)">· falta que salgan de ' +
+                'bodega</span></div>'
                 : '<div class="s"><span style="color:var(--muted)">Producción</span> ' +
                   esc(formatMoney(v.costo)) + '</div>' +
                   '<div class="s"><span style="color:var(--muted)">Margen</span> <b>' +
@@ -2651,6 +2655,12 @@
                 (c.statusPedido ? '<div class="s" style="color:var(--muted)">' +
                   esc(c.statusPedido) + (c.llega ? ' · llega ' + esc(c.llega) : '') +
                   '</div>' : '') +
+                // Una parte puede ir a medias: algo ya salió de bodega y el
+                // resto viene en camino. Sin esto, "Pedido" se lee como si no
+                // hubiera salido nada.
+                (c.surtidas > 0 && c.estado !== 'surtido'
+                  ? '<div class="s" style="color:var(--success)">' + fmtNum(c.surtidas) +
+                    ' de ' + fmtNum(c.vendidas) + ' ya salieron de bodega</div>' : '') +
                 (!c.proveedor && c.estado === 'por surtir'
                   ? '<div class="s" style="color:var(--muted)">' +
                     (c.enBodega ? fmtNum(c.enBodega) + ' en bodega'
@@ -18570,7 +18580,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.11.03-521';
+    var mia = '2026.11.04-522';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
