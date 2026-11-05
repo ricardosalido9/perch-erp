@@ -1107,7 +1107,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.05-528</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.05-529</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -13229,21 +13229,36 @@
       // Google guarda un 15% como 0.15 si la celda tiene formato de porcentaje
       if (pct > 0 && pct < 1) pct = pct * 100;
       var dto = (cDscT && cDscT !== cPctT) ? (parseNumber(r[cDscT]) || 0) : 0;
-      if (pct) base = base - (base * pct / 100);
-      else if (dto) base = base - dto;
-      return { cantidad: c, precio: p, pct: pct, importe: base };
+      // El descuento se ve igual venga como % o como pesos.
+      //
+      // 5 nov. Val: "que la visualización de los que tienen descuentos sea más
+      // clara, por ejemplo cuando da descuento por un % en efectivo". Cuando el
+      // descuento se capturaba en pesos, la columna decía "—" aunque el importe
+      // sí bajaba: parecía que esa venta no traía descuento. Ahora siempre se
+      // sabe cuánto es en pesos y a qué porcentaje equivale.
+      var enPesos = !pct && !!dto;
+      var monto = 0;
+      if (pct) { monto = base * pct / 100; }
+      else if (dto) { monto = dto; pct = base ? (dto / base * 100) : 0; }
+      var bruto = base;
+      base = base - monto;
+      return { cantidad: c, precio: p, pct: pct, monto: monto, bruto: bruto,
+               importe: base, enPesos: enPesos };
     };
 
     var h = '<div class="cot-grid">';
     orden.forEach(function (k) {
       var items = g[k], r0 = items[0];
-      var piezas = 0, total = 0, envio = 0;
+      var piezas = 0, total = 0, envio = 0, dtoTotal = 0, dtoBruto = 0;
       items.forEach(function (r) {
         var d = importeDeRenglon(r);
         piezas += d.cantidad; total += d.importe;
+        dtoTotal += d.monto; dtoBruto += d.bruto;
         var e = parseNumber(cEnv ? r[cEnv] : null); if (e) envio += e;
       });
       total += envio;
+      // Cuánto se le descontó a ESTA venta, en pesos y en porcentaje
+      var dtoPct = dtoBruto ? Math.round(dtoTotal / dtoBruto * 1000) / 10 : 0;
       var st = cSt ? String(r0[cSt] || '').trim() : '';
       var vendida = /vendida/i.test(st);
       var abierta = !!cotAbierta[k];
@@ -13257,7 +13272,11 @@
               ' · ' + fmtNum(piezas) + (piezas === 1 ? ' pieza' : ' piezas') +
               (cFec && r0[cFec] ? ' · ' + esc(formatDateCell(r0[cFec])) : '') + '</div>' +
           '</div>' +
-          '<div class="cot-total">' + esc(formatMoney(total)) + '</div>' +
+          '<div class="cot-total">' + esc(formatMoney(total)) +
+            (dtoTotal
+              ? '<div class="s" style="color:var(--success);font-weight:400">' +
+                dtoPct + '% de descuento · -' + esc(formatMoney(dtoTotal)) + '</div>'
+              : '') + '</div>' +
           '<span class="cat-chev">' + (abierta ? '▲' : '▼') + '</span>' +
         '</button>';
       if (abierta) {
@@ -13324,7 +13343,12 @@
                 '" value="' + esc(c) + '" style="width:70px;text-align:right"></td>' +
               '<td><input class="row-input ed-campo" type="number" step="0.01" data-col="' + esc(cPU || '') +
                 '" value="' + esc(p) + '" style="width:100px;text-align:right"></td>' +
-              '<td class="num s">' + esc(importeDeRenglon(r).pct ? importeDeRenglon(r).pct + '%' : '—') + '</td>' +
+              (function (d) {
+                return '<td class="num s">' + (d.monto
+                  ? (Math.round(d.pct * 10) / 10) + '%<div class="s" style="color:var(--muted)">-' +
+                    esc(formatMoney(d.monto)) + '</div>'
+                  : '—') + '</td>';
+              })(importeDeRenglon(r)) +
               '<td class="num">' + esc(formatMoney(importeDeRenglon(r).importe)) + '</td>' +
               '<td style="white-space:nowrap"><button type="button" class="row-btn primary ed-ok" data-row="' +
                 r._row + '">Guardar</button> ' +
@@ -13371,9 +13395,15 @@
                   '</span>' : '') + '</td>' +
               '<td class="num" data-th="Cantidad">' + fmtNum(c) +
               '</td><td class="num" data-th="Precio unitario">' + esc(formatMoney(p)) + '</td>' +
-              '<td class="num s" data-th="Descuento"' +
-                (importeDeRenglon(r).pct ? ' style="color:var(--success)"' : '') + '>' +
-                esc(importeDeRenglon(r).pct ? '-' + importeDeRenglon(r).pct + '%' : '—') + '</td>' +
+              (function (d) {
+                return '<td class="num s" data-th="Descuento"' +
+                  (d.monto ? ' style="color:var(--success)"' : '') + '>' +
+                  (d.monto
+                    ? '-' + (Math.round(d.pct * 10) / 10) + '%' +
+                      '<div class="s" style="color:var(--muted)">-' +
+                      esc(formatMoney(d.monto)) + (d.enPesos ? ' (en pesos)' : '') + '</div>'
+                    : '—') + '</td>';
+              })(importeDeRenglon(r)) +
               '<td class="num cot-importe" data-th="Importe">' +
                 esc(formatMoney(importeDeRenglon(r).importe)) + '</td>' +
               '<td class="cot-acc-reng" style="white-space:nowrap">' +
@@ -18951,7 +18981,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.11.05-528';
+    var mia = '2026.11.05-529';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
