@@ -1107,7 +1107,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.04-526</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.05-527</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1495,7 +1495,7 @@
     fin_bancos:   'Se calcula desde Ingresos y Egresos más el saldo de arranque.',
     ventas_folios:'Sale de cruzar Ventas contra Pedidos a proveedores.'
   };
-  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'cxc_cotejo', 'fac_pendientes', 'fac_control', 'cfdi_control', 'cfdi_comp_rec', 'cfdi_prov', 'prov_razon', 'rh_resumen', 'fin_gastos_op', 'fin_efectivo', 'fac_impuestos', 'fac_emitidos', 'fin_estados', 'fin_flujo', 'fin_balance', 'fin_bancos', 'ventas_folios',
+  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'cxc_cotejo', 'fin_cobros', 'fac_pendientes', 'fac_control', 'cfdi_control', 'cfdi_comp_rec', 'cfdi_prov', 'prov_razon', 'rh_resumen', 'fin_gastos_op', 'fin_efectivo', 'fac_impuestos', 'fac_emitidos', 'fin_estados', 'fin_flujo', 'fin_balance', 'fin_bancos', 'ventas_folios',
     // El stock sale de pedidos, entradas y salidas: se recalcula, no se edita
     'op_stock', 'op_traza', 'op_revisar', 'prov_revision'];
   function esLector() {
@@ -9764,6 +9764,156 @@
   // Los cobros reportados contra lo que entró al banco. Tres listas: los que
   // cuadran, los reportados que nunca llegaron, y el dinero que entró sin que
   // nadie lo ligara a su folio.
+  // ---- Historial de cobros ---------------------------------------------
+  // Val, 5 nov: "que todo lo que sube en archivos de los cobros se pueda ver
+  // como lista histórica, los ingresos que va subiendo y también los finiquitos".
+  // Los cobros ya estaban en la hoja "Pagos de clientes", uno por renglón con su
+  // comprobante de Drive; lo que no había era dónde verlos todos juntos: había
+  // que abrir venta por venta.
+  var cobDatos = null, cobMes = 0, cobBusca = '', cobTipo = 'todos';
+  var COB_CHIP = {
+    'anticipo':      ['var(--accent)', 'Anticipo'],
+    'pago a cuenta': ['var(--slate)',  'A cuenta'],
+    'finiquito':     ['var(--success)','Finiquito'],
+    'pago total':    ['var(--success)','Pago total'],
+    'sin clasificar':['var(--muted)',  'Sin clasificar'],
+    'cancelado':     ['var(--danger)', 'Cancelado']
+  };
+  function loadCobrosHistorial() {
+    document.getElementById('tableWrap').innerHTML =
+      '<div class="state" style="padding:50px 0">Juntando los cobros…</div>';
+    document.getElementById('summary').innerHTML = '';
+    mostrarAlta(false);
+    var q = { token: state.token };
+    if (cobMes) { q.anio = Math.floor(cobMes / 100); q.mes = cobMes % 100; }
+    api('cobros-historial', q).then(function (d) {
+      if (d.error) {
+        document.getElementById('tableWrap').innerHTML =
+          '<div class="state" style="padding:40px 0"><b>' + esc(d.error) + '</b>' +
+          (d.pista ? '<div class="s" style="color:var(--muted);margin-top:6px">' +
+            esc(d.pista) + '</div>' : '') + '</div>';
+        return;
+      }
+      cobDatos = d;
+      pintarCobrosHistorial();
+    });
+  }
+  function pintarCobrosHistorial() {
+    var d = cobDatos || {}, t = d.resumen || {};
+    var box = document.getElementById('summary');
+    box.style.display = 'flex';
+    box.innerHTML =
+      '<div class="sum-card"><div class="k">Cobrado</div><div class="v">' +
+        fmtMoney(t.cobrado) + '</div><div class="k" style="text-transform:none;' +
+        'letter-spacing:0">' + fmtNum(t.cobros) + (t.cobros === 1 ? ' cobro' : ' cobros') +
+        '</div></div>' +
+      '<div class="sum-card"><div class="k">Finiquitos</div><div class="v">' +
+        fmtNum(t.finiquitos) + '</div><div class="k" style="text-transform:none;' +
+        'letter-spacing:0">' + esc(fmtMoneyShort(t.finiquitado)) + '</div></div>' +
+      '<div class="sum-card"><div class="k">Anticipos</div><div class="v">' +
+        fmtNum(t.anticipos) + '</div><div class="k" style="text-transform:none;' +
+        'letter-spacing:0">' + esc(fmtMoneyShort(t.anticipado)) + '</div></div>' +
+      '<div class="sum-card"><div class="k">Con comprobante</div><div class="v"' +
+        (t.sinComprobante ? ' style="color:var(--amber)"' : '') + '>' +
+        fmtNum(t.conComprobante) + '</div><div class="k" style="text-transform:none;' +
+        'letter-spacing:0">' + fmtNum(t.sinComprobante) + ' sin archivo</div></div>' +
+      '<div class="sum-card"><div class="k">Confirmados en banco</div><div class="v">' +
+        fmtNum(t.confirmados) + '</div><div class="k" style="text-transform:none;' +
+        'letter-spacing:0">de ' + fmtNum(t.cobros) + '</div></div>';
+
+    // Los meses salen de los cobros que existen, no de un calendario fijo
+    var MESES = [['todos', 'Todos'], ['anticipo', 'Anticipos'],
+                 ['finiquito', 'Finiquitos'], ['sincomp', 'Sin comprobante']];
+    var h = '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 10px">' +
+      '<input id="buscaCob" placeholder="Buscar folio, cliente o referencia…" ' +
+      'value="' + esc(cobBusca).replace(/"/g, '&quot;') + '" ' +
+      'style="flex:1;min-width:200px;max-width:340px">' +
+      MESES.map(function (f) {
+        return '<button type="button" class="mes-chip' + (cobTipo === f[0] ? ' on' : '') +
+          '" data-cobt="' + f[0] + '">' + esc(f[1]) + '</button>';
+      }).join('') + '</div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:0 0 12px">' +
+        '<button type="button" class="mes-chip' + (!cobMes ? ' on' : '') +
+          '" data-cobm="0">Todo el año</button>' +
+        (d.meses || []).map(function (m) {
+          var k = m.anio * 100 + m.mes;
+          return '<button type="button" class="mes-chip' + (cobMes === k ? ' on' : '') +
+            '" data-cobm="' + k + '">' + esc(m.label) + '</button>';
+        }).join('') + '</div>';
+
+    var q = norm(cobBusca);
+    var L = (d.cobros || []).filter(function (c) {
+      if (cobTipo === 'anticipo' && c.tipo !== 'anticipo') return false;
+      if (cobTipo === 'finiquito' && c.tipo !== 'finiquito' && c.tipo !== 'pago total') return false;
+      if (cobTipo === 'sincomp' && (c.comprobante || c.cancelado)) return false;
+      if (!q) return true;
+      return norm(c.folio).indexOf(q) !== -1 || norm(c.cliente).indexOf(q) !== -1 ||
+             norm(c.referencia).indexOf(q) !== -1;
+    });
+
+    if (!L.length) {
+      h += '<div class="state" style="padding:40px 0">No hay cobros con ese filtro.</div>';
+    } else {
+      h += '<table class="mini-table tab-piezas"><thead><tr>' +
+        '<th>Fecha</th><th>Folio</th><th>Cliente</th><th>Qué pago es</th>' +
+        '<th class="num">Monto</th><th>Método</th><th>Referencia</th>' +
+        '<th>Comprobante</th><th>Banco</th>' +
+        '</tr></thead><tbody>' +
+        L.map(function (c) {
+          var ch = COB_CHIP[c.cancelado ? 'cancelado' : c.tipo] || COB_CHIP['sin clasificar'];
+          return '<tr' + (c.cancelado ? ' style="opacity:.55"' : '') + '>' +
+            '<td data-th="Fecha">' + esc(c.fechaTxt || '—') + '</td>' +
+            '<td data-th="Folio"><b>' + esc(c.folio || '—') + '</b></td>' +
+            '<td data-th="Cliente">' + esc(c.cliente || '—') + '</td>' +
+            '<td data-th="Qué pago es">' + tabChip(ch[1], ch[0], 'var(--paper)') +
+              // Lo que falta por cobrar de esa venta después de este pago: es
+              // lo que convierte la lista en un estado de cuenta.
+              (c.saldo !== null && c.saldo > 1 && !c.cancelado
+                ? '<div class="s" style="color:var(--muted)">faltan ' +
+                  esc(fmtMoneyShort(c.saldo)) + '</div>' : '') + '</td>' +
+            '<td class="num" data-th="Monto">' + esc(formatMoney(c.monto)) + '</td>' +
+            '<td data-th="Método">' + esc(c.metodo || '') + '</td>' +
+            '<td data-th="Referencia">' + esc(c.referencia || '') + '</td>' +
+            '<td data-th="Comprobante">' + (c.comprobante
+              ? '<a href="' + esc(c.comprobante).replace(/"/g, '&quot;') +
+                '" target="_blank" rel="noopener">Ver archivo</a>'
+              : '<span class="s" style="color:var(--amber)">sin archivo</span>') + '</td>' +
+            '<td data-th="Banco">' + (c.confirmado
+              ? esc(c.banco)
+              : '<span class="s" style="color:var(--muted)">sin confirmar</span>') + '</td>' +
+            '</tr>';
+        }).join('') + '</tbody></table>' +
+        '<div class="s" style="color:var(--muted);margin-top:10px">' +
+          'Sale de la pestaña <b>' + esc(d.pestana || 'Pagos de clientes') + '</b>. ' +
+          'Anticipo, a cuenta y finiquito se calculan comparando lo cobrado de cada ' +
+          'venta contra su total, en orden de fecha; los cancelados se ven pero no suman.' +
+        '</div>';
+    }
+    document.getElementById('tableWrap').innerHTML = h;
+    document.getElementById('count').textContent = fmtNum(L.length) +
+      (L.length === 1 ? ' cobro' : ' cobros');
+
+    var bus = document.getElementById('buscaCob');
+    if (bus) bus.addEventListener('input', function () {
+      cobBusca = this.value;
+      var donde = this.selectionStart;
+      pintarCobrosHistorial();
+      var otra = document.getElementById('buscaCob');
+      if (otra) { otra.focus(); try { otra.setSelectionRange(donde, donde); } catch (e) {} }
+    });
+    document.querySelectorAll('#tableWrap [data-cobt]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        cobTipo = b.getAttribute('data-cobt'); pintarCobrosHistorial();
+      });
+    });
+    // El mes se pide al servidor: así el resumen de arriba es el de ese mes
+    document.querySelectorAll('#tableWrap [data-cobm]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        cobMes = +b.getAttribute('data-cobm'); loadCobrosHistorial();
+      });
+    });
+  }
+
   function loadCotejoCxc() {
     document.getElementById('tableWrap').innerHTML =
       '<div class="state" style="padding:50px 0">Cruzando cobros contra el banco…</div>';
@@ -10141,7 +10291,7 @@
   // proveedores en una tabla pelona. Parecía que lo había mandado a otra
   // pantalla, y en efecto eso hacía.
   var PANTALLA_PROPIA = ['fin_estados', 'fin_flujo', 'fin_balance', 'fin_bancos',
-    'ventas_folios', 'surtir', 'op_traza', 'cxc_cotejo', 'fac_pendientes',
+    'ventas_folios', 'surtir', 'op_traza', 'cxc_cotejo', 'fin_cobros', 'fac_pendientes',
     'log_calendario', 'fin_banco', 'fac_emitidos', 'pagos_pedidos', 'fac_impuestos',
     'fin_efectivo', 'fin_gastos_op', 'rh_resumen', 'prov_razon', 'cfdi_prov',
     'cfdi_control', 'cfdi_comp_rec', 'fac_control', 'cta_clientes', 'expediente',
@@ -10173,6 +10323,7 @@
     if (state.key === 'surtir') return loadSurtir();
     if (state.key === 'op_traza') return loadTraza();
     if (state.key === 'cxc_cotejo') return loadCotejoCxc();
+    if (state.key === 'fin_cobros') return loadCobrosHistorial();
     if (state.key === 'fac_pendientes') return loadControlFactura();
     if (state.key === 'log_calendario') return loadLogistica();
     if (state.key === 'fin_banco') return loadSubirBanco();
@@ -18679,7 +18830,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.11.04-526';
+    var mia = '2026.11.05-527';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;

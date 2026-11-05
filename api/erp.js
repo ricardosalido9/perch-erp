@@ -75,6 +75,7 @@ const RUTAS = {
   'remision-pdf': require('../lib/handlers/remision-pdf'),
   'pago-cliente': require('../lib/handlers/pago-cliente'),
   'cxc-cotejo':   require('../lib/handlers/cxc-cotejo'),
+  'cobros-historial': require('../lib/handlers/cobros-historial'),
   'control-factura': require('../lib/handlers/control-factura'),
   traza:          require('../lib/handlers/traza'),
   foto:           require('../lib/handlers/foto'),
