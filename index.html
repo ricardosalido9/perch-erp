@@ -1107,7 +1107,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.05-534</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.05-535</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -2656,6 +2656,18 @@
           '<td data-th="Quién lo hace">' +
             (p.componentes || []).map(function (c, ic) {
               var e = EST[c.estado] || ['', 'var(--slate)'];
+              // "Surtido" quiere decir que la pieza SALIÓ de bodega. Si su
+              // pedido sigue en PENDIENTE —el proveedor no ha entregado nada—,
+              // entonces salió algo que nunca entró y el Stock está en negativo.
+              //
+              // 5 nov. Nico: "esta venta sale con componentes en Surtido y otros
+              // en Pedido… pero al meterme al pedido S-NOV-11-26, que en el
+              // tablero sale como surtido, aquí me sale como pendiente completo".
+              // Las dos pantallas decían la verdad: lo que faltaba era decir que
+              // juntas no cuadran.
+              var salioSinEntrar = (c.estado === 'surtido' && c.pedido &&
+                /^pendiente/i.test(String(c.statusPedido || '')));
+              if (salioSinEntrar) e = ['Surtido sin entrada', 'var(--amber)'];
               // Lo que se puede hacer con esta parte, sin salir de la tarjeta:
               // surtirla o pedirla (el mismo diálogo de Surtir ventas) y, si ya
               // tiene pedido, decirle algo al proveedor o mover su status.
@@ -2680,6 +2692,10 @@
                 (c.statusPedido ? '<div class="s" style="color:var(--muted)">' +
                   esc(c.statusPedido) + (c.llega ? ' · llega ' + esc(c.llega) : '') +
                   '</div>' : '') +
+                (salioSinEntrar
+                  ? '<div class="s" style="color:var(--amber)">Salió de bodega, pero el ' +
+                    'pedido no ha llegado: el Stock de este mueble está en negativo. ' +
+                    'Marca “Ya llegaron” en el pedido.</div>' : '') +
                 // Una parte puede ir a medias: algo ya salió de bodega y el
                 // resto viene en camino. Sin esto, "Pedido" se lee como si no
                 // hubiera salido nada.
@@ -17698,9 +17714,16 @@
             '<b style="color:' + (cupo.llegaron ? 'var(--slate)' : 'var(--amber)') + '">' +
             fmtNum(cupo.llegaron) + ' llegadas</b>' +
             (cupo.yaSalio ? ' · ' + fmtNum(cupo.yaSalio) + ' ya salieron' : '') + ' · ' +
-            '<b style="color:' + (falta < 0 ? 'var(--danger)' : (falta === 0 ? 'var(--success)' : 'var(--slate)')) + '">' +
+            // Si ya salieron piezas de un pedido que no ha llegado, decir "con
+            // su salida" en verde es mentir: ese mueble está en Stock negativo.
+            '<b style="color:' + (falta < 0 ? 'var(--danger)'
+              : (falta === 0 ? (cupo.yaSalio && !cupo.llegaron ? 'var(--amber)'
+                                                              : 'var(--success)')
+                             : 'var(--slate)')) + '">' +
             (falta < 0 ? 'te pasaste por ' + fmtNum(-falta)
-              : (falta === 0 ? 'con su salida' : fmtNum(falta) + ' sin salida')) +
+              : (falta === 0
+                  ? (cupo.yaSalio && !cupo.llegaron ? 'salieron sin entrada' : 'con su salida')
+                  : fmtNum(falta) + ' sin salida')) +
             '</b></div>' +
         '</div>' +
         // Esta ventana NO asigna la pieza a una venta: eso ya se hizo al pedirla.
@@ -19136,7 +19159,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.11.05-534';
+    var mia = '2026.11.05-535';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
