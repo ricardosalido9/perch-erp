@@ -1107,7 +1107,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.05-530</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.05-531</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -9798,6 +9798,7 @@
                                 requiere: false, cobros: [] };
                      orden.push(k); }
       var v = por[k];
+      v.previo = c.previo || v.previo || 0;
       v.cobros.push(c);
       v.n++;
       v.total = Math.round((v.total + c.monto) * 100) / 100;
@@ -9834,7 +9835,12 @@
           '<td data-th="Orden"><b>' + esc(v.folio) + '</b></td>' +
           '<td data-th="Cliente">' + esc(v.cliente) + '</td>' +
           '<td class="num" data-th="Anticipos">' +
-            (v.anticipos ? esc(formatMoney(v.anticipos)) : '') + '</td>' +
+            (v.anticipos ? esc(formatMoney(v.anticipos)) : '') +
+            // El anticipo que se cobró antes del panel no está capturado como
+            // cobro, pero CxC sí lo trae: se dice, para que el reporte del mes
+            // no parezca incompleto.
+            (v.previo ? '<div class="s" style="color:var(--muted)">' +
+              esc(fmtMoneyShort(v.previo)) + ' antes del panel</div>' : '') + '</td>' +
           '<td class="num" data-th="Finiquitos">' +
             (v.finiquitos ? '<b>' + esc(formatMoney(v.finiquitos)) + '</b>' : '') + '</td>' +
           '<td class="num" data-th="Cobrado">' + esc(formatMoney(v.total)) +
@@ -9855,11 +9861,11 @@
   function bajarCobrosCSV() {
     var V = cobVentas || [];
     var cols = ['Fecha', 'Orden', 'Cliente', 'Anticipos', 'Finiquitos', 'Cobrado',
-                'Falta por cobrar', 'Pide factura', 'Facturado'];
+                'Cobrado antes del panel', 'Falta por cobrar', 'Pide factura', 'Facturado'];
     var filas = V.map(function (v) {
       return [v.fechaTxt || '', v.folio, v.cliente, v.anticipos || '', v.finiquitos || '',
-              v.total, (v.saldo === null ? '' : v.saldo), v.requiere ? 'Sí' : 'No',
-              v.factura || ''];
+              v.total, v.previo || '', (v.saldo === null ? '' : v.saldo),
+              v.requiere ? 'Sí' : 'No', v.factura || ''];
     });
     var csv = [cols].concat(filas).map(function (f) {
       return f.map(function (x) {
@@ -9915,7 +9921,11 @@
         'letter-spacing:0">' + fmtNum(t.sinComprobante) + ' sin archivo</div></div>' +
       '<div class="sum-card"><div class="k">Confirmados en banco</div><div class="v">' +
         fmtNum(t.confirmados) + '</div><div class="k" style="text-transform:none;' +
-        'letter-spacing:0">de ' + fmtNum(t.cobros) + '</div></div>';
+        'letter-spacing:0">de ' + fmtNum(t.cobros) + '</div></div>' +
+      (t.conCobroAnterior ? '<div class="sum-card"><div class="k">Con cobro anterior</div>' +
+        '<div class="v">' + fmtNum(t.conCobroAnterior) + '</div><div class="k" ' +
+        'style="text-transform:none;letter-spacing:0">ventas con pagos de antes ' +
+        'del panel</div></div>' : '');
 
     // Los meses salen de los cobros que existen, no de un calendario fijo
     var MESES = [['todos', 'Todos'], ['anticipo', 'Anticipos'],
@@ -9979,6 +9989,10 @@
             '<td data-th="Folio"><b>' + esc(c.folio || '—') + '</b></td>' +
             '<td data-th="Cliente">' + esc(c.cliente || '—') + '</td>' +
             '<td data-th="Qué pago es">' + tabChip(ch[1], ch[0], 'var(--paper)') +
+              // Lo que ya se había cobrado antes de que existiera esta pantalla
+              (c.previo > 0 && !c.cancelado
+                ? '<div class="s" style="color:var(--muted)">+ ' +
+                  esc(fmtMoneyShort(c.previo)) + ' cobrados antes</div>' : '') +
               // Lo que falta por cobrar de esa venta después de este pago: es
               // lo que convierte la lista en un estado de cuenta.
               (c.saldo !== null && c.saldo > 1 && !c.cancelado
@@ -19007,7 +19021,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.11.05-530';
+    var mia = '2026.11.05-531';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
