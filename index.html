@@ -1107,7 +1107,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.05-532</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.05-533</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -13354,29 +13354,67 @@
             // Las opciones de segundo material QUE EXISTEN para ese producto y
             // esa madera: para el Sillón Alondra en Nogal, Tela y Piel. Así se
             // escribe lo que el catálogo entiende y no un texto libre.
-            if (cExt2) {
-              var dle = document.getElementById('listaMatExtraEd');
-              if (!dle) {
-                dle = document.createElement('datalist');
-                dle.id = 'listaMatExtraEd';
-                document.body.appendChild(dle);
+            // Lo que ya existe en la hoja para ese producto: el respaldo de las
+            // listas cuando el catálogo no contesta.
+            //
+            // 5 nov. Nico: "aquí ya me desplegaba las opciones de materiales y
+            // de material extra, pero ya no me salen". Las dos listas salían
+            // SOLO de la cascada del catálogo: si el catálogo no cargó —o el
+            // producto no está en él— `cascDistinct` devuelve vacío y el campo
+            // se queda mudo, sin decir por qué. Y el campo Material nunca tuvo
+            // lista en la edición del renglón, solo en el alta.
+            var deLaHoja = function (col, filtra) {
+              var v = {};
+              (state.rows || []).forEach(function (x) {
+                var t = col ? String(x[col] || '').trim() : '';
+                if (!t) return;
+                if (filtra && /^(n\/?a|no aplica|\(vac)/i.test(t)) return;
+                v[t] = 1;
+              });
+              return Object.keys(v).sort();
+            };
+            var ponLista = function (id, ops) {
+              var dl2 = document.getElementById(id);
+              if (!dl2) {
+                dl2 = document.createElement('datalist');
+                dl2.id = id;
+                document.body.appendChild(dl2);
               }
-              var cas = cascadeLU();
+              dl2.innerHTML = (ops || []).map(function (v) {
+                return '<option value="' + esc(v) + '">'; }).join('');
+            };
+            // Los materiales (la madera) de ese producto, y si no, los de la hoja
+            if (cMat) {
+              var opsM = [];
+              try {
+                var casM = cascadeLU();
+                if (casM && casM.levels && casM.levels.length > 1) {
+                  opsM = cascDistinct(casM, [r[cProd] || ''], 1)
+                    .filter(function (v) { return v && !/^\(vac/i.test(v); });
+                }
+              } catch (e) { opsM = []; }
+              if (!opsM.length) opsM = deLaHoja(cMat, false);
+              ponLista('listaMaterialesEd', opsM);
+            }
+            if (cExt2) {
               var ops = [];
               try {
+                var cas = cascadeLU();
                 if (cas && cas.levels && cas.levels.length > 2) {
                   ops = cascDistinct(cas, [r[cProd] || '', cMat ? (r[cMat] || '') : ''], 2)
                     .filter(function (v) { return v && !/^(n\/?a|no aplica|\(vac)/i.test(v); });
                 }
               } catch (e) { ops = []; }
-              dle.innerHTML = ops.map(function (v) {
-                return '<option value="' + esc(v) + '">'; }).join('');
+              // Si el catálogo no dio nada, al menos lo que ya se ha usado
+              if (!ops.length) ops = deLaHoja(cExt2, true);
+              ponLista('listaMatExtraEd', ops);
             }
             h += '<tr class="fila-edit">' +
               '<td><input class="row-input ed-campo" list="listaProductosEd" data-col="' +
                 esc(cProd || '') + '" value="' + esc(r[cProd] || '') +
                 '" style="width:150px"></td>' +
-              '<td><input class="row-input ed-campo" data-col="' + esc(cMat || '') + '" value="' +
+              '<td><input class="row-input ed-campo" list="listaMaterialesEd" data-col="' +
+                esc(cMat || '') + '" value="' +
                 esc(cMat ? (r[cMat] || '') : '') + '" style="width:120px"></td>' +
               '<td><input class="row-input ed-campo" type="number" min="0" data-col="' + esc(cCant || '') +
                 '" value="' + esc(c) + '" style="width:70px;text-align:right"></td>' +
@@ -19092,7 +19130,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.11.05-532';
+    var mia = '2026.11.05-533';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
