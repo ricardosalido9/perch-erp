@@ -1107,7 +1107,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.05-527</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.05-528</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -9771,6 +9771,7 @@
   // comprobante de Drive; lo que no había era dónde verlos todos juntos: había
   // que abrir venta por venta.
   var cobDatos = null, cobMes = 0, cobBusca = '', cobTipo = 'todos';
+  var cobVista = 'cobro', cobVentas = null;
   var COB_CHIP = {
     'anticipo':      ['var(--accent)', 'Anticipo'],
     'pago a cuenta': ['var(--slate)',  'A cuenta'],
@@ -9779,6 +9780,101 @@
     'sin clasificar':['var(--muted)',  'Sin clasificar'],
     'cancelado':     ['var(--danger)', 'Cancelado']
   };
+  // La vista que pidió facturación: una línea por VENTA, no por pago.
+  // Val, 5 nov: "Fecha / Cliente / Orden / Anticipos / Finiquitos. Los finiquitos
+  // para la parte de facturación le está costando trabajo, porque ella hace el
+  // reporte mensual con base en lo cobrado".
+  // Por eso se agrupa lo cobrado DEL PERIODO que se esté viendo: si el mes es
+  // octubre, la línea de esa venta trae lo que entró en octubre, no su historia
+  // completa. Así el reporte del mes sale de aquí sin rehacer sumas.
+  function cobrosPorVenta(L) {
+    var por = {}, orden = [];
+    L.forEach(function (c) {
+      if (c.cancelado) return;                       // un cobro cancelado no se factura
+      var k = norm(c.folio) || ('(sin folio) ' + norm(c.cliente));
+      if (!por[k]) { por[k] = { folio: c.folio || '—', cliente: c.cliente || '—',
+                                anticipos: 0, finiquitos: 0, total: 0, n: 0,
+                                fecha: 0, desde: 0, saldo: null, factura: '',
+                                requiere: false, cobros: [] };
+                     orden.push(k); }
+      var v = por[k];
+      v.cobros.push(c);
+      v.n++;
+      v.total = Math.round((v.total + c.monto) * 100) / 100;
+      if (c.tipo === 'finiquito' || c.tipo === 'pago total') {
+        v.finiquitos = Math.round((v.finiquitos + c.monto) * 100) / 100;
+      } else {
+        // anticipo, a cuenta y lo que no se pudo clasificar van del mismo lado:
+        // para facturar, lo que no cierra la venta es anticipo.
+        v.anticipos = Math.round((v.anticipos + c.monto) * 100) / 100;
+      }
+      if (c.fecha > v.fecha) { v.fecha = c.fecha; v.fechaTxt = c.fechaTxt; }
+      if (!v.desde || (c.fecha && c.fecha < v.desde)) { v.desde = c.fecha; v.desdeTxt = c.fechaTxt; }
+      // El saldo que importa es el que quedó después del último cobro
+      if (c.saldo !== null && (v.saldoFecha === undefined || c.fecha >= v.saldoFecha)) {
+        v.saldo = c.saldo; v.saldoFecha = c.fecha;
+      }
+      if (c.requiereFactura) v.requiere = true;
+      if (c.facturado && !v.factura) v.factura = c.facturado;
+    });
+    return orden.map(function (k) { return por[k]; })
+      .sort(function (a, b) { return (b.fecha || 0) - (a.fecha || 0); });
+  }
+  function tablaCobrosPorVenta(V) {
+    return '<table class="mini-table tab-piezas"><thead><tr>' +
+      '<th>Fecha</th><th>Orden</th><th>Cliente</th>' +
+      '<th class="num">Anticipos</th><th class="num">Finiquitos</th>' +
+      '<th class="num">Cobrado</th><th>Factura</th>' +
+      '</tr></thead><tbody>' +
+      V.map(function (v) {
+        return '<tr>' +
+          '<td data-th="Fecha">' + esc(v.fechaTxt || '—') +
+            (v.n > 1 ? '<div class="s" style="color:var(--muted)">' + fmtNum(v.n) +
+              ' cobros · desde ' + esc(v.desdeTxt || '') + '</div>' : '') + '</td>' +
+          '<td data-th="Orden"><b>' + esc(v.folio) + '</b></td>' +
+          '<td data-th="Cliente">' + esc(v.cliente) + '</td>' +
+          '<td class="num" data-th="Anticipos">' +
+            (v.anticipos ? esc(formatMoney(v.anticipos)) : '') + '</td>' +
+          '<td class="num" data-th="Finiquitos">' +
+            (v.finiquitos ? '<b>' + esc(formatMoney(v.finiquitos)) + '</b>' : '') + '</td>' +
+          '<td class="num" data-th="Cobrado">' + esc(formatMoney(v.total)) +
+            (v.saldo !== null && v.saldo > 1
+              ? '<div class="s" style="color:var(--muted)">faltan ' +
+                esc(fmtMoneyShort(v.saldo)) + '</div>'
+              : (v.saldo !== null
+                ? '<div class="s" style="color:var(--success)">liquidada</div>' : '')) + '</td>' +
+          '<td data-th="Factura">' + (v.factura
+            ? esc(v.factura)
+            : (v.requiere
+              ? '<span class="s" style="color:var(--amber)">pide factura</span>'
+              : '<span class="s" style="color:var(--muted)">no pidió</span>')) + '</td>' +
+          '</tr>';
+      }).join('') + '</tbody></table>';
+  }
+  // El mismo reporte, para pegarlo en Excel
+  function bajarCobrosCSV() {
+    var V = cobVentas || [];
+    var cols = ['Fecha', 'Orden', 'Cliente', 'Anticipos', 'Finiquitos', 'Cobrado',
+                'Falta por cobrar', 'Pide factura', 'Facturado'];
+    var filas = V.map(function (v) {
+      return [v.fechaTxt || '', v.folio, v.cliente, v.anticipos || '', v.finiquitos || '',
+              v.total, (v.saldo === null ? '' : v.saldo), v.requiere ? 'Sí' : 'No',
+              v.factura || ''];
+    });
+    var csv = [cols].concat(filas).map(function (f) {
+      return f.map(function (x) {
+        var t = (x === null || x === undefined) ? '' : String(x);
+        return /[",;\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+      }).join(',');
+    }).join('\n');
+    var url = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }));
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'cobros' + (cobMes ? '_' + cobMes : '') + '.csv';
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+  }
+
   function loadCobrosHistorial() {
     document.getElementById('tableWrap').innerHTML =
       '<div class="state" style="padding:50px 0">Juntando los cobros…</div>';
@@ -9825,6 +9921,14 @@
     var MESES = [['todos', 'Todos'], ['anticipo', 'Anticipos'],
                  ['finiquito', 'Finiquitos'], ['sincomp', 'Sin comprobante']];
     var h = '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 10px">' +
+      '<button type="button" class="mes-chip' + (cobVista === 'cobro' ? ' on' : '') +
+        '" data-cobv="cobro">Cada cobro</button>' +
+      '<button type="button" class="mes-chip' + (cobVista === 'venta' ? ' on' : '') +
+        '" data-cobv="venta">Por venta (reporte)</button>' +
+      (cobVista === 'venta'
+        ? '<button type="button" id="cobCsv" style="font-size:13px">Bajar a Excel</button>' : '') +
+      '</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 10px">' +
       '<input id="buscaCob" placeholder="Buscar folio, cliente o referencia…" ' +
       'value="' + esc(cobBusca).replace(/"/g, '&quot;') + '" ' +
       'style="flex:1;min-width:200px;max-width:340px">' +
@@ -9851,8 +9955,17 @@
              norm(c.referencia).indexOf(q) !== -1;
     });
 
+    cobVentas = cobrosPorVenta(L);
     if (!L.length) {
       h += '<div class="state" style="padding:40px 0">No hay cobros con ese filtro.</div>';
+    } else if (cobVista === 'venta') {
+      h += tablaCobrosPorVenta(cobVentas) +
+        '<div class="s" style="color:var(--muted);margin-top:10px">' +
+          'Una línea por venta con <b>lo que se cobró en el periodo que estás viendo</b>: ' +
+          'si eliges octubre, trae lo que entró en octubre. Lo que no cierra la venta ' +
+          'cuenta como anticipo; lo que la deja en cero, como finiquito. Los cancelados ' +
+          'no entran.' +
+        '</div>';
     } else {
       h += '<table class="mini-table tab-piezas"><thead><tr>' +
         '<th>Fecha</th><th>Folio</th><th>Cliente</th><th>Qué pago es</th>' +
@@ -9890,8 +10003,9 @@
         '</div>';
     }
     document.getElementById('tableWrap').innerHTML = h;
-    document.getElementById('count').textContent = fmtNum(L.length) +
-      (L.length === 1 ? ' cobro' : ' cobros');
+    document.getElementById('count').textContent = (cobVista === 'venta'
+      ? fmtNum(cobVentas.length) + (cobVentas.length === 1 ? ' venta' : ' ventas')
+      : fmtNum(L.length) + (L.length === 1 ? ' cobro' : ' cobros'));
 
     var bus = document.getElementById('buscaCob');
     if (bus) bus.addEventListener('input', function () {
@@ -9901,6 +10015,13 @@
       var otra = document.getElementById('buscaCob');
       if (otra) { otra.focus(); try { otra.setSelectionRange(donde, donde); } catch (e) {} }
     });
+    document.querySelectorAll('#tableWrap [data-cobv]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        cobVista = b.getAttribute('data-cobv'); pintarCobrosHistorial();
+      });
+    });
+    var csvBtn = document.getElementById('cobCsv');
+    if (csvBtn) csvBtn.addEventListener('click', bajarCobrosCSV);
     document.querySelectorAll('#tableWrap [data-cobt]').forEach(function (b) {
       b.addEventListener('click', function () {
         cobTipo = b.getAttribute('data-cobt'); pintarCobrosHistorial();
@@ -18830,7 +18951,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.11.05-527';
+    var mia = '2026.11.05-528';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
