@@ -1107,7 +1107,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.05-533</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.05-534</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -2390,7 +2390,9 @@
   var TAB_PROD = {
     'sin pedir':       ['Por surtir', 'var(--danger)', 'var(--danger-bg)'],
     'a medias':        ['A medias', 'var(--amber)', 'var(--paper)'],
-    'pedido completo': ['Pedido completo', 'var(--success)', 'var(--paper)']
+    'pedido completo': ['Pedido completo', 'var(--success)', 'var(--paper)'],
+    // El mueble ya está con el cliente: ni se surte ni se pide
+    'entregada':       ['Entregada', 'var(--slate)', 'var(--paper)']
   };
 
   function pintarVentaTablero() {
@@ -2408,6 +2410,9 @@
         (t.sinPedir ? ' style="color:var(--danger)"' : '') + '>' + fmtNum(t.sinPedir) +
         '</div><div class="k" style="text-transform:none;letter-spacing:0">' +
         fmtNum(t.aMedias) + ' a medias</div></div>' +
+      (t.entregadas ? '<div class="sum-card"><div class="k">Entregadas</div><div class="v">' +
+        fmtNum(t.entregadas) + '</div><div class="k" style="text-transform:none;' +
+        'letter-spacing:0">no se surten</div></div>' : '') +
       '<div class="sum-card"><div class="k">Pedido completo</div><div class="v">' +
         fmtNum(t.completos) + '</div></div>' +
       '<div class="sum-card"><div class="k">Foráneas</div><div class="v">' +
@@ -2423,7 +2428,8 @@
       '</div>';
 
     var V = (d.ventas || []).filter(function (v) {
-      if (tabFiltro === 'surtir' && v.produccion === 'pedido completo') return false;
+      if (tabFiltro === 'surtir' &&
+          (v.produccion === 'pedido completo' || v.produccion === 'entregada')) return false;
       if (tabFiltro === 'foraneas' && !(v.envio && v.envio.donde === 'foráneo')) return false;
       if (tabFiltro === 'sinenvio' && v.envio && v.envio.donde) return false;
       var q = norm(tabBusca);
@@ -19130,7 +19136,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.11.05-533';
+    var mia = '2026.11.05-534';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
