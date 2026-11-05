@@ -1107,7 +1107,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.05-529</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.05-530</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -13385,6 +13385,17 @@
             // se veía por ningún lado y nadie notaba que estaba vacío.
             var ext = cExt2 ? String(r[cExt2] || '').trim() : '';
             if (/^(n\/?a|no aplica|ninguno|ninguna|-)$/i.test(ext)) ext = '';
+            // Si el segundo material es Tela o Piel, falta decir CUÁL.
+            //
+            // 5 nov. Val: "en la cotización cuando se pone tela, cuando se hace
+            // venta ya no se aplica el segundo material". Revisando la hoja: el
+            // dato nunca existió. En las cotizaciones recientes la columna Tela
+            // está vacía aunque Material Extra diga "Tela" —la O19-26 llegó así
+            // a la venta—, y producción no puede pedir el mueble sin saber qué
+            // tela lleva: en Surtir ventas sale como "por definir".
+            var cTelaR = findHeaderByName('Tela');
+            var telaR = cTelaR ? String(r[cTelaR] || '').trim() : '';
+            var pideTela = /^(tela|piel|textil)$/i.test(ext) && !telaR;
             // El `data-th` es el nombre de la columna. En el celular la tabla se
             // vuelve una ficha por producto y cada dato se presenta con él: sin
             // eso, tres números en fila no dicen cuál es el precio y cuál el
@@ -13392,7 +13403,9 @@
             h += '<tr><td data-th="Producto" class="cot-prod">' + esc(r[cProd] || '') + '</td>' +
               '<td data-th="Material">' + esc(cMat ? (r[cMat] || '') : '') +
                 (ext ? ' <span class="s" style="color:var(--slate)">· ' + esc(ext) +
-                  '</span>' : '') + '</td>' +
+                  (telaR ? ' ' + esc(telaR) : '') + '</span>' : '') +
+                (pideTela ? '<div class="s" style="color:var(--amber)">falta decir qué ' +
+                  esc(ext.toLowerCase()) + '</div>' : '') + '</td>' +
               '<td class="num" data-th="Cantidad">' + fmtNum(c) +
               '</td><td class="num" data-th="Precio unitario">' + esc(formatMoney(p)) + '</td>' +
               (function (d) {
@@ -18353,6 +18366,19 @@
     previo.then(function () {
     return api('to-sale', { token: state.token, folio: cotAConvertir, fechaEntrega: iso ? isoToLargo(iso) : '' })
       .then(function (out) {
+        // El mueble lleva tela o piel pero nadie dijo cuál: se avisa ahora, que
+        // es cuando todavía se le puede preguntar al cliente.
+        if ((out.sinTela || []).length) {
+          avisoFijo('<b>La venta se creó, pero no dice qué tela lleva:</b>' +
+            '<div style="margin-top:6px">' +
+            out.sinTela.map(function (x) {
+              return esc(x.producto) + (x.material ? ' · ' + esc(x.material) : '') +
+                ' <span style="opacity:.8">(' + esc(x.pide) + ')</span>';
+            }).join('<br>') + '</div>' +
+            '<div class="s" style="margin-top:6px;color:var(--slate)">Producción no puede ' +
+            'pedirlo sin eso: en Surtir ventas sale como “por definir”. Ponlo en la columna ' +
+            'Tela de la venta en cuanto lo sepas.</div>');
+        }
         if ((out.columnasPerdidas || []).length) {
           avisoFijo('<b>La venta se creó, pero estas columnas de la cotización no existen ' +
             'en VENTAS y su dato se quedó atrás:</b><div style="margin-top:6px">' +
@@ -18981,7 +19007,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.11.05-529';
+    var mia = '2026.11.05-530';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
