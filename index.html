@@ -1107,7 +1107,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.06-540</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.06-541</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1450,6 +1450,7 @@
     fac_comp_emitidos:   'Complementos de pago emitidos, como los descargó el SAT.',
     fin_bancos:          'Cuánto hay en cada cuenta: arranque más entradas menos salidas.',
     ventas_folios:       'Cada venta y si ya se le pidió al proveedor, pieza por pieza.',
+    exhibicion:          'Las piezas del showroom: en qué va cada una, igual que el tablero de ventas.',
     rh_resumen:          'La plantilla de un vistazo: costo, altas, bajas y rotación.',
     rh_personal:         'Quién trabaja aquí, desde cuándo y bajo qué esquema.',
     rh_nomina:           'Lo que se paga cada periodo, con sus deducciones.',
@@ -2369,6 +2370,13 @@
   // La lista llega de una; el detalle de una venta se pide al abrir su tarjeta y
   // se guarda, porque cruza seis hojas y no tiene caso hacerlo 300 veces.
   var tabAbierta = '', tabDetalle = {}, tabDatos = null, tabBusca = '', tabFiltro = 'todas';
+  // Una pieza de showroom, no una venta. Se reconoce por el folio o por el
+  // cliente: en la hoja de Ventas están capturadas así desde siempre.
+  function esExhibicion(v) {
+    var f = norm(v && v.folio), c = norm(v && v.cliente);
+    return /^exhibici/.test(f) || /^exhibici/.test(c) ||
+           /^showroom/.test(f) || /^showroom/.test(c);
+  }
   function loadVentaTablero() {
     document.getElementById('summary').innerHTML = '';
     document.getElementById('tableWrap').innerHTML =
@@ -2396,7 +2404,10 @@
   };
 
   function pintarVentaTablero() {
-    var d = tabDatos || {}, t = d.resumen || {};
+    var d = tabDatos || {};
+    // Cada área con sus números: las tarjetas de Exhibición no deben contar
+    // ventas ni margen de lo que se le vendió a un cliente.
+    var t = ((state.key === 'exhibicion' ? d.resumenExhibicion : d.resumen) || {});
     var box = document.getElementById('summary');
     box.style.display = 'block';
     var mg = (t.venta ? ((t.venta - t.costo) / t.venta * 100).toFixed(1) + '%' : '—');
@@ -2404,7 +2415,9 @@
         ? '<div class="panel" style="padding:10px 14px;margin-bottom:10px">' +
           esc(d.sinCostos) + '</div>' : '') +
       '<div class="summary-cards">' +
-      '<div class="sum-card"><div class="k">Ventas</div><div class="v">' +
+      // En Exhibición no son ventas: son piezas del showroom, y nadie las compró
+      '<div class="sum-card"><div class="k">' +
+        (state.key === 'exhibicion' ? 'Piezas' : 'Ventas') + '</div><div class="v">' +
         fmtNum(t.ventas) + '</div></div>' +
       '<div class="sum-card"><div class="k">Por surtir</div><div class="v"' +
         (t.sinPedir ? ' style="color:var(--danger)"' : '') + '>' + fmtNum(t.sinPedir) +
@@ -2418,9 +2431,14 @@
       '<div class="sum-card"><div class="k">Foráneas</div><div class="v">' +
         fmtNum(t.foraneos) + '</div><div class="k" style="text-transform:none;' +
         'letter-spacing:0">' + fmtNum(t.sinEnvio) + ' sin envío</div></div>' +
-      '<div class="sum-card"><div class="k">Margen</div><div class="v">' + mg +
-        '</div><div class="k" style="text-transform:none;letter-spacing:0">' +
-        'de ' + esc(fmtMoneyShort(t.venta)) + ' con costo</div></div>' +
+      // En Exhibición no hay margen que calcular —no se vendió— así que en su
+      // lugar se enseña lo que costó tener esas piezas en el showroom.
+      (state.key === 'exhibicion'
+        ? '<div class="sum-card"><div class="k">Costo en showroom</div><div class="v">' +
+          esc(fmtMoneyShort(t.costo)) + '</div></div>'
+        : '<div class="sum-card"><div class="k">Margen</div><div class="v">' + mg +
+          '</div><div class="k" style="text-transform:none;letter-spacing:0">' +
+          'de ' + esc(fmtMoneyShort(t.venta)) + ' con costo</div></div>') +
       (t.sinCosto ? '<div class="sum-card"><div class="k">Sin costo real</div>' +
         '<div class="v" style="color:var(--amber)">' + fmtNum(t.sinCosto) + '</div>' +
         '<div class="k" style="text-transform:none;letter-spacing:0">les faltan ' +
@@ -2428,6 +2446,15 @@
       '</div>';
 
     var V = (d.ventas || []).filter(function (v) {
+      // Exhibición tiene su propia área: aquí no se mezcla con las ventas.
+      //
+      // "Tener un área diferente o sacar de las ventas el apartado de
+      // exhibición, que se comporte igual que el tablero de ventas" (Nico,
+      // 6 nov). Una pieza de showroom no se le vendió a nadie, así que ensuciaba
+      // los totales de venta y de margen. Es el mismo tablero, con las mismas
+      // tarjetas y el mismo botón de surtir: lo único que cambia es qué folios
+      // entran.
+      if (esExhibicion(v) !== (state.key === 'exhibicion')) return false;
       if (tabFiltro === 'surtir' &&
           (v.produccion === 'pedido completo' || v.produccion === 'entregada')) return false;
       if (tabFiltro === 'foraneas' && !(v.envio && v.envio.donde === 'foráneo')) return false;
@@ -2469,10 +2496,15 @@
           '" data-tabf="' + f[0] + '">' + esc(f[1]) + '</button>';
       }).join('') +
       '<span class="s" style="color:var(--muted)">' + fmtNum(V.length) +
-      (V.length === 1 ? ' venta' : ' ventas') + '</span></div>';
+      (state.key === 'exhibicion'
+        ? (V.length === 1 ? ' pieza' : ' piezas')
+        : (V.length === 1 ? ' venta' : ' ventas')) + '</span></div>';
 
     if (!V.length) {
-      h += '<div class="state" style="padding:40px 0">No hay ventas que mostrar.</div>';
+      h += '<div class="state" style="padding:40px 0">' +
+        (state.key === 'exhibicion'
+          ? 'Todavía no hay piezas de exhibición. Se capturan en Ventas con el folio o el cliente “Exhibición”.'
+          : 'No hay ventas que mostrar.') + '</div>';
     }
     V.forEach(function (v) {
       var abierta = tabAbierta === v.folio;
@@ -2499,7 +2531,9 @@
                 (v.faltan ? ' · falta pedir ' + fmtNum(v.faltan) : '') + '</div>' +
             '</div>' +
             '<div style="text-align:right;white-space:nowrap">' +
-              (v.venta === null || v.venta === undefined ? '' :
+              // En Exhibición no hay "total pedido": nadie la compró, y poner
+              // $0.00 de relleno es justo lo que no se debe hacer.
+              (state.key === 'exhibicion' || v.venta === null || v.venta === undefined ? '' :
                 '<div><span class="s" style="color:var(--muted)">Total pedido</span> <b>' +
                 esc(formatMoney(v.venta)) + '</b></div>') +
               (v.costo === null ? '<div class="s" style="color:var(--amber)" title="El costo ' +
@@ -2509,8 +2543,9 @@
                 'bodega</span></div>'
                 : '<div class="s"><span style="color:var(--muted)">Producción</span> ' +
                   esc(formatMoney(v.costo)) + '</div>' +
-                  '<div class="s"><span style="color:var(--muted)">Margen</span> <b>' +
-                  (v.margen === null ? '—' : v.margen.toFixed(1) + '%') + '</b></div>') +
+                  (state.key === 'exhibicion' ? '' :
+                    '<div class="s"><span style="color:var(--muted)">Margen</span> <b>' +
+                    (v.margen === null ? '—' : v.margen.toFixed(1) + '%') + '</b></div>')) +
               '<div class="s" style="color:var(--muted);margin-top:2px">' +
                 (abierta ? 'cerrar ▾' : 'ver todo ▸') + '</div>' +
             '</div>' +
@@ -2522,7 +2557,10 @@
     });
 
     document.getElementById('tableWrap').innerHTML = h;
-    document.getElementById('count').textContent = fmtNum((d.ventas || []).length) + ' ventas';
+    // Lo de abajo cuenta lo que SE VE, no todo lo que trajo el servidor: desde
+    // que Exhibición vive aparte, "todo" incluye las piezas de la otra área.
+    document.getElementById('count').textContent = fmtNum(V.length) +
+      (state.key === 'exhibicion' ? ' en exhibición' : ' ventas');
 
     var bus = document.getElementById('buscaTab');
     if (bus) bus.addEventListener('input', function () {
@@ -8040,12 +8078,26 @@
     ])
       .then(function (r) {
         var d = r[0] || {}, todas = r[1] || {};
-        var vistos = {}, extra = '';
+        var vistos = {}, extra = '', yaCubiertas = [];
+        // "Siguen saliendo los clientes aunque ya tengan productos asignados"
+        // (Nico, 6 nov). Una venta cuyo pendiente ya está cubierto por un pedido
+        // al proveedor no se ofrece arriba: se manda al final, agrupada y
+        // diciendo con qué pedido quedó, por si de todos modos hay que repartirle.
         (d.pendientes || []).forEach(function (p) {
           if (!p.folio || vistos[p.folio]) return;
           vistos[p.folio] = 1;
+          var cubierta = (p.faltanSinAsignar === 0 && p.asignadas > 0);
+          var texto = esc(p.folio + (p.cliente ? ' · ' + p.cliente : ''));
+          if (cubierta) {
+            yaCubiertas.push('<option value="' + esc(p.folio).replace(/"/g, '&quot;') + '">' +
+              texto + ' · ya está en ' +
+              esc((p.pedidosAsignados || []).join(', ') || 'otro pedido') + '</option>');
+            return;
+          }
           extra += '<option value="' + esc(p.folio).replace(/"/g, '&quot;') + '">' +
-            esc(p.folio + (p.cliente ? ' · ' + p.cliente : '')) + ' · pidió este mueble</option>';
+            texto + ' · pidió este mueble' +
+            (p.asignadas > 0 ? ' · faltan ' + fmtNum(p.faltanSinAsignar) + ' por pedir' : '') +
+            '</option>';
         });
         (todas.pendientes || []).forEach(function (p) {
           if (!p.folio || vistos[p.folio]) return;
@@ -8053,6 +8105,10 @@
           extra += '<option value="' + esc(p.folio).replace(/"/g, '&quot;') + '">' +
             esc(p.folio + (p.cliente ? ' · ' + p.cliente : '')) + '</option>';
         });
+        if (yaCubiertas.length) {
+          extra += '<optgroup label="Ya tienen pedido asignado">' +
+            yaCubiertas.join('') + '</optgroup>';
+        }
         if (!extra) return;
         document.querySelectorAll('.asig-folio, #asigTodosFolio').forEach(function (sel) {
           var actual = sel.value;
@@ -9482,8 +9538,8 @@
                       : '<div class="s" style="color:var(--success)">\u2713 completa</div>') +
                   '</div></div>';
               }).join('') +
-              // Surtir desde aquí lleva a Surtir Ventas, a esa venta: el diálogo
-              // con la bodega, los lotes y los proveedores vive allá.
+              // Surtir desde aquí lleva al Tablero de la venta, a ese folio, que
+              // es donde ahora vive el botón de surtir o pedir.
               (v.faltaSurtir
                 ? '<div style="margin:-4px 0 14px"><button type="button" class="row-btn ' +
                   'ir-surtir" data-folio="' + esc(v.folio).replace(/"/g, '&quot;') + '">' +
@@ -9563,14 +9619,22 @@
         var a = document.getElementById('trzPed'), b = document.getElementById('trzPrv');
         if (a) a.addEventListener('change', function () { trazaPedido = a.value; loadTraza(); });
         if (b) b.addEventListener('change', function () { trazaProv = b.value; loadTraza(); });
-        // Surtir desde el Historial: lleva a Surtir Ventas y deja esa venta
-        // arriba, resaltada. El diálogo de surtir vive allá, con la bodega, los
-        // lotes y los proveedores; duplicarlo aquí sería mantener dos.
+        // Surtir desde el Historial: lleva al Tablero de la venta y abre ese
+        // folio. El diálogo de surtir —bodega, lotes y proveedores— vive ahí
+        // desde que se quitó la pantalla de Surtir ventas; duplicarlo aquí sería
+        // mantener dos.
         document.querySelectorAll('.ir-surtir').forEach(function (bt) {
           bt.addEventListener('click', function () {
-            surtirFoco = bt.getAttribute('data-folio') || '';
-            surtirFiltro = 'todas';
-            selectArea('surtir', LABELS.surtir || 'Surtir ventas', true);
+            var f = bt.getAttribute('data-folio') || '';
+            tabAbierta = f; tabBusca = f; tabFiltro = 'todas';
+            // Respaldo, por si este usuario no tiene el Tablero: la pantalla
+            // vieja sigue existiendo aunque ya no esté en el menú.
+            if (tieneArea('venta_tablero')) {
+              selectArea('venta_tablero', LABELS.venta_tablero || 'Tablero de la venta', true);
+            } else {
+              surtirFoco = f; surtirFiltro = 'todas';
+              selectArea('surtir', LABELS.surtir || 'Surtir ventas', true);
+            }
           });
         });
       }).catch(fail);
@@ -10499,7 +10563,9 @@
     'log_calendario', 'fin_banco', 'fac_emitidos', 'pagos_pedidos', 'fac_impuestos',
     'fin_efectivo', 'fin_gastos_op', 'rh_resumen', 'prov_razon', 'cfdi_prov',
     'cfdi_control', 'cfdi_comp_rec', 'fac_control', 'cta_clientes', 'expediente',
-    'inv_prov', 'conciliacion', 'costos', 'proveedores', 'op_cierre', 'venta_tablero'];
+    'inv_prov', 'conciliacion', 'costos', 'proveedores', 'op_cierre', 'venta_tablero',
+    // Exhibición usa el mismo tablero, filtrado a las piezas del showroom
+    'exhibicion'];
   function tienePantallaPropia(k) {
     // Clientes es la misma área con dos vistas: la lista sí es tabla.
     if (k === 'ventas_clientes') return vistaClientes === 'historial';
@@ -10555,7 +10621,7 @@
     if (state.key === 'costos') return loadCostos();
     if (state.key === 'proveedores') return loadProveedores();
     if (state.key === 'op_cierre') return loadCierreOp();
-    if (state.key === 'venta_tablero') return loadVentaTablero();
+    if (state.key === 'venta_tablero' || state.key === 'exhibicion') return loadVentaTablero();
     document.getElementById('tableWrap').innerHTML = '<div class="state">Cargando...</div>';
     document.getElementById('count').textContent = '';
     state.categories = {}; state.lookups = []; state.lineItems = [];
@@ -15339,6 +15405,10 @@
   }
   function onCascadeChange(level) {
     setTimeout(avisarSiYaTiene, 60);
+    // Al cambiar de mueble, la lista de proveedores se vuelve a acortar a quien
+    // hace ESE mueble, y se olvida el "Ver todos" del mueble anterior.
+    if (level === 0) verTodosProv = false;
+    setTimeout(function () { try { refrescarProveedores(); } catch (e) {} }, 0);
     var c = cascadeLU(); if (!c) return;
     // Al elegir un nivel se vuelven a llenar TODOS los de abajo, filtrando por lo
     // que ya se eligió arriba. Antes solo se rehacían al tocar el nivel 0, así que
@@ -15484,6 +15554,66 @@
   // Tabla de consulta por varias llaves (costo unitario según producto + material + proveedor)
   function tablaLU() {
     return (state.lookups || []).filter(function (l) { return l.type === 'tabla'; })[0];
+  }
+
+  // ===== Solo los proveedores que hacen ese mueble =====
+  //
+  // "Del desplegable de proveedores, que solo se desplieguen los proveedores que
+  // hacen ese componente o producto" (Nico, 6 nov).
+  //
+  // Quién hace qué no hay que escribirlo en ningún lado nuevo: ya está en la
+  // pestaña "Costos Unitarios", que guarda el costo por producto + material +
+  // proveedor. Un proveedor con costo capturado de ese mueble es un proveedor
+  // que lo hace.
+  //
+  // La lista NO se cierra: si de ese mueble todavía no hay costos —un mueble
+  // nuevo, una pieza sobre diseño— salen todos, porque hay que poder pedirlo
+  // igual. Y siempre queda el "Ver todos" para estrenar proveedor.
+  var verTodosProv = false;
+  var refrescarProveedores = function () {};
+  function esCampoProveedor(h) {
+    return state.key === 'prov_pedidos' && norm(h) === norm('Proveedor');
+  }
+  function productoElegido() {
+    var el = cascElem(0);
+    return el ? String(el.value || '').trim() : '';
+  }
+  // Los proveedores (normalizados) que tienen costo de ese mueble
+  function proveedoresQueHacen(producto) {
+    var t = tablaLU();
+    if (!t || !(t.filas || []).length || !producto) return null;
+    var p = norm(producto), hay = {}, cuantos = 0;
+    t.filas.forEach(function (f) {
+      // _k viene del servidor como "producto||material||proveedor", ya normalizado
+      var k = String(f._k || '').split('||');
+      if (k.length < 3 || k[0] !== p || !k[2]) return;
+      if (!hay[k[2]]) { hay[k[2]] = 1; cuantos++; }
+    });
+    return cuantos ? hay : null;
+  }
+  function opcionesProveedor(todas) {
+    var prod = productoElegido();
+    if (!prod) {
+      return { lista: todas.slice(), verTodos: false,
+               nota: 'Elige primero el mueble y la lista se acorta a quien lo hace.' };
+    }
+    if (verTodosProv) {
+      return { lista: todas.slice(), verTodos: false,
+               nota: 'Viendo los ' + fmtNum(todas.length) + ' proveedores.' };
+    }
+    var hacen = proveedoresQueHacen(prod);
+    if (!hacen) {
+      return { lista: todas.slice(), verTodos: false,
+               nota: 'De ' + prod + ' todavía no hay costos capturados, así que salen todos.' };
+    }
+    var lista = todas.filter(function (o) { return hacen[norm(o)]; });
+    if (!lista.length) {
+      return { lista: todas.slice(), verTodos: false,
+               nota: 'Quien hace ' + prod + ' no está en la Lista de Proveedores, así que salen todos.' };
+    }
+    return { lista: lista, verTodos: true,
+             nota: 'Solo los ' + fmtNum(lista.length) +
+                   (lista.length === 1 ? ' que hace ' : ' que hacen ') + prod + '.' };
   }
   // La ciudad se saca de la dirección de envío: es lo último que suele venir
   var CIUDADES = ['CDMX', 'Ciudad de México', 'Monterrey', 'Guadalajara', 'Querétaro', 'Puebla',
@@ -16626,6 +16756,9 @@
   }
   function renderForm() {
     var box = document.getElementById('formFields'); box.innerHTML = '';
+    // El refresco de proveedores apunta a los campos del formulario anterior:
+    // se olvida aquí y lo vuelve a poner el campo cuando se pinte de nuevo.
+    refrescarProveedores = function () {};
     var allow = FORM_FIELDS[state.key];
     var fields;
     var faltantes = [];
@@ -16794,9 +16927,40 @@
         cinp2.placeholder = 'Elegí de la lista o escribí uno nuevo';
         var dl = document.createElement('datalist');
         dl.id = cinp2.getAttribute('list');
-        comboOptionsFor(h).forEach(function (o) {
+        var todasCb = comboOptionsFor(h);
+        todasCb.forEach(function (o) {
           var op = document.createElement('option'); op.value = o; dl.appendChild(op);
         });
+        // El de Proveedor se acorta a quien hace el mueble elegido, y se vuelve a
+        // acortar cada vez que se cambia de mueble. En el formulario el Proveedor
+        // va ARRIBA del Producto, así que al pintarse todavía no hay mueble: la
+        // nota lo dice y la lista se estrecha en cuanto se elige.
+        if (esCampoProveedor(h)) {
+          var notaCb = document.createElement('div');
+          notaCb.className = 's';
+          notaCb.style.cssText = 'margin-top:4px;color:var(--slate);font-size:12px';
+          refrescarProveedores = function () {
+            var r = opcionesProveedor(todasCb);
+            dl.innerHTML = r.lista.map(function (o) {
+              return '<option value="' + esc(o) + '">'; }).join('');
+            notaCb.innerHTML = esc(r.nota) + (r.verTodos
+              ? ' <a href="#" data-ver-todos-prov="1">Ver todos</a>' : '');
+            var a = notaCb.querySelector('[data-ver-todos-prov]');
+            if (a) a.addEventListener('click', function (e) {
+              e.preventDefault(); verTodosProv = true; refrescarProveedores();
+            });
+          };
+          wrap.appendChild(cinp2); wrap.appendChild(dl); wrap.appendChild(notaCb);
+          refrescarProveedores();
+          box.appendChild(wrap);
+          var lkc0 = lookupFor(h);
+          cinp2.addEventListener('change', function () {
+            unificarCombo(cinp2, h);
+            if (lkc0) applyLookup(lkc0, cinp2.value);
+          });
+          cinp2.addEventListener('blur', function () { unificarCombo(cinp2, h); });
+          return;
+        }
         var lkc = lookupFor(h);
         cinp2.addEventListener('change', function () {
           unificarCombo(cinp2, h);                 // "adriana arruel" -> "ADRIANA ARRUEL"
@@ -18686,6 +18850,15 @@
             '<div class="s" style="margin-top:6px;color:var(--slate)">' +
             esc(out.porQueClasico || '') + '</div>');
         }
+        // El catálogo no se pudo leer. Va primero y va solo: cuando pasa esto, la
+        // cotización sale sin descripciones ni medidas, y las fotos que falten son
+        // consecuencia. Decir "faltan fotos" aquí manda a buscar donde no es.
+        if (out.problemaCatalogo) {
+          avisoFijo('<b>La cotización salió incompleta: no se pudo leer el catálogo.</b>' +
+            '<div style="margin-top:6px">' + esc(out.problemaCatalogo) + '</div>' +
+            '<div class="s" style="margin-top:6px;color:var(--slate)">Esto se arregla en la ' +
+            'hoja, no en el panel. Avisa antes de mandar esta cotización al cliente.</div>');
+        }
         // Muebles que salieron sin foto en el PDF.
         //
         // 6 nov. Camila: "intenté hacer una cotización y me sale sin fotos, ¿sabrás
@@ -18694,7 +18867,7 @@
         // vacía— el servidor lo manda dicho en `porQueSinFotos` y se pone primero:
         // en ese caso no faltan fotos, falta el acceso, y la explicación del
         // nombre del archivo nada más desorienta.
-        if ((out.sinFoto || []).length) {
+        if (!out.problemaCatalogo && (out.sinFoto || []).length) {
           avisoFijo('<b>La cotización salió sin la foto de ' +
             fmtNum(out.sinFoto.length) +
             (out.sinFoto.length === 1 ? ' mueble:' : ' muebles:') + '</b>' +
@@ -18711,7 +18884,7 @@
         var L = out.lectura;
         // Las fotos que no se encontraron: casi siempre el producto está escrito
         // distinto al catálogo, no es que falte la foto.
-        if (L && L.catalogo && (L.productos || []).length) {
+        if (!out.problemaCatalogo && L && L.catalogo && (L.productos || []).length) {
           // La descripción tomada de otra variante es más grave que la foto
           // faltante: la cotización describe otra madera y el cliente la lee.
           var otraVar = L.productos.filter(function (p) {
@@ -19247,7 +19420,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.11.06-540';
+    var mia = '2026.11.06-541';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
