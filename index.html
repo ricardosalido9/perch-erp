@@ -1107,7 +1107,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.06-541</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.09-543</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1770,7 +1770,17 @@
 
   // ===== Estado de cuenta por proveedor (vista propia, no es una hoja) =====
   // Todos los pedidos que están en la pestaña. El filtro de activos es opcional.
-  var provAbierto = {}, provSolo = 'todos', provSaldo = false;
+  // "La intención es poder ahí mismo en la ventana revisar y filtrar: qué es lo
+  // que debemos, qué es lo que ya pagamos, cuándo lo pagamos" (Nico, 6 nov).
+  // La ventana ya enseñaba las tres cosas —costo, pagado, por pagar, y la tabla
+  // de pagos con su fecha—, pero no se podían separar: había que leer pedido por
+  // pedido. `provPago` filtra por el dinero sin tocar el filtro de entregas.
+  var provAbierto = {}, provSolo = 'todos', provSaldo = false, provPago = 'todos';
+  function pedidoPasaPago(d2) {
+    if (provPago === 'debe') return d2.porPagar > 0.5;
+    if (provPago === 'pagados') return d2.porPagar <= 0.5 && d2.pagado > 0;
+    return true;
+  }
   // Pagos ya solicitados, por número de pedido
   var provProgramados = {};
   function loadProveedores() {
@@ -1850,6 +1860,18 @@
           '" data-saldo="1">Solo con saldo</button>' +
         '<button type="button" class="mes-chip' + (provSaldo ? '' : ' on') +
           '" data-saldo="0">Todos los proveedores</button></div>' +
+        // El dinero, aparte de las entregas: los dos filtros se combinan
+        '<div class="mes-chips" style="margin-top:6px">' +
+        '<button type="button" class="mes-chip' + (provPago === 'todos' ? ' on' : '') +
+          '" data-pago="todos">Todo el dinero</button>' +
+        '<button type="button" class="mes-chip' + (provPago === 'debe' ? ' on' : '') +
+          '" data-pago="debe">Lo que le debemos</button>' +
+        '<button type="button" class="mes-chip' + (provPago === 'pagados' ? ' on' : '') +
+          '" data-pago="pagados">Lo que ya pagamos</button>' +
+        '<span class="s" style="color:var(--muted);align-self:center">' +
+        (provPago === 'debe' ? 'Pedidos con saldo pendiente.'
+          : (provPago === 'pagados' ? 'Pedidos ya saldados, con la fecha de cada pago.'
+            : 'Abre un proveedor para ver cada pago y su fecha.')) + '</span></div>' +
         '<div class="cot-grid">';
       // Por defecto solo se ven los que deben o tienen a favor: son los que importan
       var visibles = provs.filter(function (p) {
@@ -1885,8 +1907,14 @@
           '</button>';
         if (ab) {
           h += '<div class="cot-body">';
-          p.pedidos.filter(function (d2) { return provSolo !== 'abiertos' || d2.abierto; })
-                   .forEach(function (d2) {
+          var pedsVisibles = p.pedidos
+            .filter(function (d2) { return provSolo !== 'abiertos' || d2.abierto; })
+            .filter(pedidoPasaPago);
+          if (!pedsVisibles.length) {
+            h += '<div class="s" style="color:var(--muted);padding:6px 0">' +
+              'Ningún pedido de este proveedor cumple los filtros de arriba.</div>';
+          }
+          pedsVisibles.forEach(function (d2) {
             var yaProg = provProgramados[norm(d2.pedido)];
             h += '<div style="margin-bottom:14px">' +
               '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:6px">' +
@@ -1969,6 +1997,9 @@
       document.getElementById('count').textContent = visibles.length + ' de ' + provs.length + ' proveedores';
       document.querySelectorAll('#tableWrap [data-alcance]').forEach(function (b) {
         b.addEventListener('click', function () { provSolo = b.getAttribute('data-alcance'); loadProveedores(); });
+      });
+      document.querySelectorAll('#tableWrap [data-pago]').forEach(function (b) {
+        b.addEventListener('click', function () { provPago = b.getAttribute('data-pago'); loadProveedores(); });
       });
       document.querySelectorAll('#tableWrap [data-saldo]').forEach(function (b) {
         b.addEventListener('click', function () { provSaldo = b.getAttribute('data-saldo') === '1'; loadProveedores(); });
@@ -2403,6 +2434,58 @@
     'entregada':       ['Entregada', 'var(--slate)', 'var(--paper)']
   };
 
+  // ===== Qué significa cada palabra =====
+  //
+  // "Revisar la diferencia de status de surtido, pendiente completo, pedido…
+  // aclarar el proceso completo de operación" (Nico, 6 nov).
+  //
+  // El nudo es que "entregado" quiere decir dos cosas según dónde se lea: que el
+  // PROVEEDOR nos entregó a nosotros, o que NOSOTROS le entregamos al cliente.
+  // Por eso un pedido podía verse "ENTREGADO" y la venta seguir pendiente, y al
+  // revés. Esto lo deja escrito en la pantalla, donde se usa, en vez de en un
+  // manual que nadie abre.
+  var ayudaAbierta = false;
+  function ayudaEstados() {
+    var filas = [
+      ['Por surtir', 'La venta no tiene ningún pedido al proveedor. Hay que pedirla o sacarla de bodega.'],
+      ['A medias', 'Parte de la venta ya se pidió y parte no. Falta pedir el resto.'],
+      ['Pedido completo', 'Todo lo de la venta ya está pedido al proveedor. No quiere decir que ya llegó.'],
+      ['Entregada', 'El mueble ya está con el cliente. Esta palabra es sobre el CLIENTE.'],
+      ['Papeleo pendiente', 'La venta ya se entregó pero le falta registro: su salida de bodega, su pedido, o las dos. El mueble está bien; lo que está mal es el inventario.']
+    ];
+    var prov = [
+      ['PENDIENTE COMPLETO', 'El proveedor no ha entregado nada de ese pedido.'],
+      ['EN PROCESO', 'Lo está fabricando.'],
+      ['ENTREGA PARCIAL', 'Entregó una parte.'],
+      ['ENTREGADO', 'El proveedor ya nos entregó A NOSOTROS. Esta palabra es sobre el PROVEEDOR, no sobre el cliente.']
+    ];
+    var ren = function (f) {
+      return '<div style="display:flex;gap:10px;padding:5px 0;border-top:1px solid var(--line)">' +
+        '<b style="min-width:150px;flex-shrink:0">' + esc(f[0]) + '</b>' +
+        '<span>' + esc(f[1]) + '</span></div>';
+    };
+    return '<div class="panel" style="padding:12px 16px;margin:0 0 12px">' +
+      '<button type="button" id="ayudaEst" style="background:none;border:0;padding:0;' +
+      'cursor:pointer;font:inherit;color:var(--accent)">' +
+      (ayudaAbierta ? '▾' : '▸') + ' ¿Qué significa cada estado?</button>' +
+      (ayudaAbierta
+        ? '<div class="s" style="margin-top:10px">' +
+          '<div style="font-weight:600;margin-bottom:2px">En la venta — habla del cliente</div>' +
+          filas.map(ren).join('') +
+          '<div style="font-weight:600;margin:12px 0 2px">En el pedido — habla del proveedor</div>' +
+          prov.map(ren).join('') +
+          '<div style="margin-top:12px;padding-top:8px;border-top:1px solid var(--line);' +
+          'color:var(--slate)"><b>La confusión de siempre:</b> “entregado” se usa en los dos ' +
+          'lados. En un pedido quiere decir que el proveedor ya nos lo dio; en una venta, que ' +
+          'el cliente ya lo tiene. Un pedido ENTREGADO con su venta todavía pendiente es ' +
+          'normal: llegó a bodega y falta llevárselo al cliente.</div>' +
+          '<div style="margin-top:8px;color:var(--slate)"><b>Y el orden es:</b> se cierra la ' +
+          'venta → se le pide al proveedor (o se saca de bodega) → el proveedor entrega y se ' +
+          'marca “Ya llegaron” → se le entrega al cliente y queda su salida registrada. ' +
+          'Si un paso se salta, la venta aparece en <b>Papeleo pendiente</b>.</div></div>'
+        : '') + '</div>';
+  }
+
   function pintarVentaTablero() {
     var d = tabDatos || {};
     // Cada área con sus números: las tarjetas de Exhibición no deben contar
@@ -2426,6 +2509,12 @@
       (t.entregadas ? '<div class="sum-card"><div class="k">Entregadas</div><div class="v">' +
         fmtNum(t.entregadas) + '</div><div class="k" style="text-transform:none;' +
         'letter-spacing:0">no se surten</div></div>' : '') +
+      // Lo que deja el inventario sin certeza: entregadas sin su registro
+      (t.papeleo ? '<div class="sum-card"><div class="k">Papeleo pendiente</div>' +
+        '<div class="v" style="color:var(--danger)">' + fmtNum(t.papeleo) + '</div>' +
+        '<div class="k" style="text-transform:none;letter-spacing:0">' +
+        (t.piezasSinSalida ? fmtNum(t.piezasSinSalida) + ' piezas sin salida'
+                           : 'entregadas sin registrar') + '</div></div>' : '') +
       '<div class="sum-card"><div class="k">Pedido completo</div><div class="v">' +
         fmtNum(t.completos) + '</div></div>' +
       '<div class="sum-card"><div class="k">Foráneas</div><div class="v">' +
@@ -2457,6 +2546,7 @@
       if (esExhibicion(v) !== (state.key === 'exhibicion')) return false;
       if (tabFiltro === 'surtir' &&
           (v.produccion === 'pedido completo' || v.produccion === 'entregada')) return false;
+      if (tabFiltro === 'papeleo' && !(v.papeleo || []).length) return false;
       if (tabFiltro === 'foraneas' && !(v.envio && v.envio.donde === 'foráneo')) return false;
       if (tabFiltro === 'sinenvio' && v.envio && v.envio.donde) return false;
       var q = norm(tabBusca);
@@ -2484,9 +2574,13 @@
         }).join(' · ') + (SF.length > 8 ? ' …' : '') +
       '</div>';
 
+    // "Papeleo pendiente" son las entregadas a las que les falta registro: la
+    // salida de bodega, el pedido al proveedor, o las dos. Son las que dejan el
+    // inventario sin certeza, y hasta ahora no había dónde verlas juntas.
     var FILTROS = [['todas', 'Todas'], ['surtir', 'Falta surtir'],
+                   ['papeleo', 'Papeleo pendiente'],
                    ['foraneas', 'Foráneas'], ['sinenvio', 'Sin envío']];
-    var h = hAviso +
+    var h = hAviso + ayudaEstados() +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 12px">' +
       '<input id="buscaTab" placeholder="Buscar folio, cliente, proveedor o pedido…" ' +
       'value="' + esc(tabBusca).replace(/"/g, '&quot;') + '" ' +
@@ -2517,8 +2611,22 @@
             'align-items:baseline">' +
             '<div style="min-width:0">' +
               '<b style="font-size:15px">' + esc(v.folio) + '</b> ' +
-              (v.status ? tabChip(v.status, 'var(--slate)', 'var(--paper)') + ' ' : '') +
+              // El status de la hoja y el estado de producción suelen decir lo
+              // mismo ("Entregada" las dos veces): se enseña una sola.
+              (v.status && norm(v.status) !== norm(pr[0] || '')
+                ? tabChip(v.status, 'var(--slate)', 'var(--paper)') + ' ' : '') +
               (pr[0] ? tabChip(pr[0], pr[1], pr[2]) + ' ' : '') +
+              // Qué le falta de registro, dicho en la tarjeta: es lo que hay que
+              // capturar para que el inventario vuelva a ser confiable.
+              ((v.papeleo || []).length
+                ? tabChip((v.sinSalida > 0
+                            ? (v.sinSalida === 1 ? 'Falta 1 salida'
+                                                 : 'Faltan ' + fmtNum(v.sinSalida) + ' salidas')
+                            : '') +
+                          (v.sinSalida > 0 && v.sinPedido > 0 ? ' · ' : '') +
+                          (v.sinPedido > 0 ? 'Sin pedido' : ''),
+                          'var(--danger)', 'var(--danger-bg)') + ' '
+                : '') +
               (v.envio && v.envio.donde
                 ? tabChip(v.envio.donde === 'local' ? 'Local' : 'Foráneo',
                           'var(--accent)', 'var(--paper)')
@@ -2561,6 +2669,11 @@
     // que Exhibición vive aparte, "todo" incluye las piezas de la otra área.
     document.getElementById('count').textContent = fmtNum(V.length) +
       (state.key === 'exhibicion' ? ' en exhibición' : ' ventas');
+
+    var ay = document.getElementById('ayudaEst');
+    if (ay) ay.addEventListener('click', function () {
+      ayudaAbierta = !ayudaAbierta; pintarVentaTablero();
+    });
 
     var bus = document.getElementById('buscaTab');
     if (bus) bus.addEventListener('input', function () {
@@ -5026,18 +5139,24 @@
               }
               return fila;
             }).join('') + '</tbody></table>' +
+            // Los tres documentos salen con el filtro que esté puesto arriba, y
+            // los tres lo dicen en el papel. Antes solo el último hacía caso.
             '<div class="cot-acciones"><button type="button" class="primary pdf-prov" data-prov="' +
-              esc(p.proveedor).replace(/"/g, '&quot;') + '">Estado de cuenta en PDF</button>' +
+              esc(p.proveedor).replace(/"/g, '&quot;') + '">Estado de cuenta en PDF' +
+              (provSolo === 'abiertos' ? ' (solo pendiente)' : '') + '</button>' +
               '<button type="button" class="pdf-relacion" data-prov="' +
-              esc(p.proveedor).replace(/"/g, '&quot;') + '">Relación de pedidos</button>' +
+              esc(p.proveedor).replace(/"/g, '&quot;') + '">Relación de pedidos' +
+              (provSolo === 'abiertos' ? ' (solo pendiente)' : '') + '</button>' +
               '<button type="button" class="pdf-entregas" data-prov="' +
               esc(p.proveedor).replace(/"/g, '&quot;') + '">Relación para el proveedor' +
-              (provSolo === 'abiertos' ? ' (solo por entregar)' : '') + '</button>' +
+              (provSolo === 'abiertos' ? ' (solo pendiente)' : '') + '</button>' +
               '<span class="s" style="color:var(--muted)">La de pedidos lleva costos y es ' +
-              'interna. La otra es la que se le manda a él' +
+              'interna. La otra es la que se le manda a él. ' +
               (provSolo === 'abiertos'
-                ? ', y con este filtro va solo lo que falta por entregar.'
-                : '. Con el filtro "Solo activos" va solo lo pendiente.') +
+                ? 'Con <b>Solo activos</b> los tres salen con lo que falta por entregar, y cada ' +
+                  'PDF lo dice arriba.'
+                : 'Ahorita los tres salen <b>completos</b>. Pon <b>Solo activos</b> si quieres ' +
+                  'nada más lo pendiente.') +
               '</span></div>' +
             '</div>';
         }
@@ -5068,9 +5187,15 @@
           e.stopPropagation();
           var prov = b.getAttribute('data-prov');
           b.disabled = true; b.textContent = 'Armando el PDF...';
-          api('prov-pdf', { token: state.token, proveedor: prov }).then(function (o) {
+          // El filtro de arriba manda en los TRES documentos, no solo en el que
+          // se le manda al proveedor (Nico, 6 nov).
+          api('prov-pdf', { token: state.token, proveedor: prov,
+                            soloPendientes: (provSolo === 'abiertos') ? 1 : 0
+          }).then(function (o) {
             if (!o.pdf) throw new Error('El servidor no devolvió el PDF.');
-            bajarPdf(o.pdf, 'Estado de cuenta - ' + prov + '.pdf');
+            bajarPdf(o.pdf, 'Estado de cuenta' +
+              (o.soloPendientes ? ' (pendiente)' : '') + ' - ' + prov + '.pdf');
+            if (o.filtro) toast('Estado de cuenta listo. ' + o.filtro, 'ok');
           }).catch(function (err) {
             avisoFijo('<b>No se pudo bajar el estado de cuenta.</b><div style="margin-top:6px">' +
               esc((err && err.message) || '') + '</div>');
@@ -5124,12 +5249,15 @@
           var prov = b.getAttribute('data-prov');
           b.disabled = true; b.textContent = 'Armando...';
           api('relacion-pdf', { token: state.token, proveedor: prov,
+                                soloPendientes: (provSolo === 'abiertos') ? 1 : 0,
                                 hechoPor: (state.usuario || '') })
             .then(function (o) {
               if (!o.pdf) throw new Error('El servidor no devolvió el PDF.');
-              bajarPdf(o.pdf, 'Relacion de pedidos - ' + prov + '.pdf');
+              bajarPdf(o.pdf, 'Relacion de pedidos' +
+                (o.soloPendientes ? ' (pendiente)' : '') + ' - ' + prov + '.pdf');
               toast('Relación lista: ' + fmtNum(o.renglones) + ' renglones en ' +
-                    fmtNum(o.pedidos) + (o.pedidos === 1 ? ' pedido.' : ' pedidos.'), 'ok');
+                    fmtNum(o.pedidos) + (o.pedidos === 1 ? ' pedido. ' : ' pedidos. ') +
+                    (o.filtro || ''), 'ok');
             })
             .catch(function (err) {
               avisoFijo('<b>No se pudo armar la relación.</b><div style="margin-top:6px">' +
@@ -19420,7 +19548,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.11.06-541';
+    var mia = '2026.11.09-543';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
