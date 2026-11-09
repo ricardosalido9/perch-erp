@@ -1107,7 +1107,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.09-543</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.09-544</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -8424,7 +8424,12 @@
           // complemento, no otra factura. Sin esta opción el cobro se marcaba
           // "Ya facturado" y el complemento se perdía de vista.
           '<option value="Complemento de pago">Ya facturada · falta el complemento (PPD)</option>' +
-          '<option value="Ya facturado">Ya está facturada y su complemento</option></select></div>' +
+          '<option value="Ya facturado">Ya está facturada y su complemento</option></select>' +
+          // Aquí se escribe el reclamo cuando falta la respuesta, pegado al
+          // campo. El aviso de arriba se iba solo y Ursula no alcanzaba a ver
+          // cuál era el campo que faltaba.
+          '<div id="arcFacturaNota" class="s" style="display:none;margin-top:4px;' +
+          'color:var(--danger)"></div></div>' +
         '</div>' +
         '<div class="fld" style="width:260px;margin:10px 0 0"><label>Comprobante</label>' +
           '<select id="arcComp">' +
@@ -8606,6 +8611,10 @@
 
   // Registrar el cobro, con o sin archivo de por medio.
   var cobroForzar = false;
+  // El comprobante que ya se subió pero cuyo cobro quedó a medias por falta de
+  // la respuesta de factura. Se guarda para que al reintentar el cobro quede
+  // ligado a ESE archivo y no haya que buscarlo en la lista.
+  var cobroLigaPendiente = '';
   function registrarCobro(btn, ligaComprobante) {
     var monto = (document.getElementById('arcMonto') || {}).value;
     if (!(Number(monto) > 0)) { toast('Pon cuánto pagó.', 'err'); return; }
@@ -8614,15 +8623,46 @@
     // Camila con la O15-26 y la O17-26. No es un dato opcional.
     var rf = (document.getElementById('arcFactura') || {}).value;
     if (!rf) {
-      toast('Falta decir si el cliente requiere factura. Sin eso el cobro no sale en ' +
-            '"Qué falta facturar".', 'err');
+      // 9 nov. Ursula: "me manda esta nota cuando intento subir el comprobante,
+      // antes sí me dejaba". El archivo SÍ se subía —ya está en Drive— y lo que
+      // se detenía era el registro del cobro, pero el mensaje no lo decía y
+      // parecía que había fallado todo. Y el campo que falta queda arriba, fuera
+      // de la vista: había que decirle dónde.
       var selRf = document.getElementById('arcFactura');
-      if (selRf) { selRf.style.borderColor = 'var(--amber)'; selRf.focus(); }
+      var nota = document.getElementById('arcFacturaNota');
+      if (nota) {
+        nota.textContent = 'Falta esto para registrar el cobro.';
+        nota.style.display = '';
+      }
+      if (selRf) {
+        selRf.style.borderColor = 'var(--danger)';
+        try { selRf.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) {}
+        selRf.focus();
+        selRf.addEventListener('change', function () {
+          selRf.style.borderColor = '';
+          if (nota) nota.style.display = 'none';
+        }, { once: true });
+      }
+      avisoFijo('<b>' + (ligaComprobante
+          ? 'El comprobante ya se subió, pero el cobro no se registró.'
+          : 'Falta un dato para registrar el cobro.') + '</b>' +
+        '<div style="margin-top:6px">Falta decir <b>si el cliente requiere factura</b>. ' +
+        'Está marcado en rojo arriba. Sin esa respuesta el cobro no sale en ' +
+        '“Qué falta facturar”.</div>' +
+        (ligaComprobante
+          ? '<div class="s" style="margin-top:6px;color:var(--slate)">El archivo no se ' +
+            'volverá a subir: ya está en la carpeta de la venta. Contesta y dale a ' +
+            '“Registrar cobro”.</div>'
+          : ''));
+      // Que el archivo recién subido aparezca en la lista, aunque el cobro no
+      // haya quedado: si no, parece que se perdió.
+      if (ligaComprobante) { cobroLigaPendiente = ligaComprobante; cargarArchivos(); }
       return;
     }
     var fp = document.getElementById('arcFechaPago');
     var comp = ligaComprobante ||
-      ((document.getElementById('arcComp') || {}).value || '');
+      ((document.getElementById('arcComp') || {}).value || '') ||
+      cobroLigaPendiente;
     if (btn) { btn.disabled = true; btn.textContent = 'Registrando…'; }
     return api('pago-cliente', { token: state.token, folio: arcFolio, cliente: arcCliente,
         monto: monto,
@@ -8633,6 +8673,7 @@
         comprobante: comp, forzar: cobroForzar ? 1 : 0 })
       .then(function (o) {
         cobroForzar = false;
+        cobroLigaPendiente = '';
         toast(o.mensaje || 'Cobro registrado.', 'ok');
         if (o.nota) avisoFijo('<b>' + esc(o.mensaje || '') + '</b>' +
           '<div style="margin-top:6px">' + esc(o.nota) + '</div>');
@@ -19548,7 +19589,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.11.09-543';
+    var mia = '2026.11.09-544';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
