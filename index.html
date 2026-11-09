@@ -1107,7 +1107,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.09-544</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.09-545</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -15784,6 +15784,141 @@
              nota: 'Solo los ' + fmtNum(lista.length) +
                    (lista.length === 1 ? ' que hace ' : ' que hacen ') + prod + '.' };
   }
+
+  // ===== Qué número de pedido toca =====
+  //
+  // "Al seleccionar el proveedor, que el ERP sugiera la nomenclatura del pedido
+  // correspondiente al consecutivo" (Nico, 6 nov).
+  //
+  // Es la misma lógica que lib/folio-pedido.js, repetida aquí para no ir al
+  // servidor por algo que ya está en pantalla. t-folio-pedido-cliente.js corre
+  // las dos contra los mismos casos para que no se separen.
+  var MESES3_P = ['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'];
+  var MES_NUM_P = { ENE:1, FEB:2, MAR:3, ABR:4, MAY:5, JUN:6, JN:6, JUL:7, JL:7,
+                    AGO:8, AG:8, SEP:9, SEPT:9, OCT:10, NOV:11, DIC:12 };
+  function partirFolio(s) {
+    var out = [];
+    String(s == null ? '' : s).trim().replace(
+      /([A-Za-zÁÉÍÓÚÑáéíóúñ]+)|(\d+)|([^A-Za-z0-9]+)/g,
+      function (m, le, nu, se) {
+        // v en mayúsculas para comparar; orig conserva cómo lo escriben ellos
+        if (le) out.push({ t: 'L', v: le.toUpperCase(), orig: le });
+        else if (nu) out.push({ t: 'N', v: nu });
+        else out.push({ t: 'S', v: se });
+        return '';
+      });
+    return out;
+  }
+  function formaFolio(tk) {
+    return tk.map(function (x) {
+      return x.t === 'N' ? 'N' : (x.t === 'S' ? x.v : (MES_NUM_P[x.v] ? 'M' : x.v));
+    }).join('|');
+  }
+  function siguientePedidoCliente(numeros, hoy) {
+    var H = hoy || new Date();
+    var mesHoy = H.getMonth() + 1;
+    var aaHoy = String(H.getFullYear()).slice(-2);
+    var limpios = (numeros || []).map(function (x) {
+      return String(x == null ? '' : x).trim(); }).filter(Boolean);
+    if (!limpios.length) return { sugerido: '', basadoEn: '', porque: '' };
+
+    var porForma = {};
+    limpios.forEach(function (n) {
+      var tk = partirFolio(n);
+      if (!tk.some(function (x) { return x.t === 'N'; })) return;
+      var f = formaFolio(tk);
+      (porForma[f] = porForma[f] || { forma: f, casos: [] }).casos.push(tk);
+    });
+    var grupos = Object.keys(porForma).map(function (k) { return porForma[k]; })
+      .sort(function (a, b) { return b.casos.length - a.casos.length; });
+    if (!grupos.length) return { sugerido: '', basadoEn: '', porque: '' };
+    var g = grupos[0];
+
+    var posN = [];
+    g.casos[0].forEach(function (x, i) { if (x.t === 'N') posN.push(i); });
+    var posMes = -1;
+    g.casos[0].forEach(function (x, i) {
+      if (posMes === -1 && x.t === 'L' && MES_NUM_P[x.v]) posMes = i; });
+
+    var iAnio = -1;
+    if (posN.length > 1) {
+      var ult = posN[posN.length - 1];
+      var vals = g.casos.map(function (c) { return parseInt(c[ult].v, 10); });
+      if (vals.every(function (v) { return v >= 20 && v <= 99; }) &&
+          g.casos[0][ult].v.length === 2) iAnio = ult;
+    }
+    var sinAnio = posN.filter(function (i) { return i !== iAnio; });
+    var iCons = sinAnio.length ? sinAnio[sinAnio.length - 1] : null;
+    if (iCons === null) return { sugerido: '', basadoEn: '', porque: '' };
+
+    var pegadoAlMes = false;
+    if (posMes !== -1) {
+      var coinciden = 0, mirados = 0;
+      g.casos.forEach(function (c) {
+        var m = MES_NUM_P[c[posMes].v];
+        if (!m) return;
+        mirados++;
+        if (parseInt(c[iCons].v, 10) === m) coinciden++;
+      });
+      pegadoAlMes = mirados > 0 && (coinciden / mirados) >= 0.6;
+    }
+
+    var ordenados = g.casos.slice().sort(function (a, b) {
+      return parseInt(a[iCons].v, 10) - parseInt(b[iCons].v, 10); });
+    var base = ordenados[ordenados.length - 1];
+    var largo = base[iCons].v.length;
+    var maximo = parseInt(base[iCons].v, 10);
+    var suyas = {};
+    if (posMes !== -1) g.casos.forEach(function (c) {
+      var m = MES_NUM_P[c[posMes].v]; if (m) suyas[m] = c[posMes].orig; });
+
+    var nuevo = base.map(function (x, i) {
+      if (i === iCons) {
+        var n = pegadoAlMes ? mesHoy : (maximo + 1);
+        return rellena(String(n), largo);
+      }
+      if (i === iAnio) return aaHoy;
+      if (i === posMes) return suyas[mesHoy] || MESES3_P[mesHoy - 1];
+      return x.orig || x.v;
+    }).join('');
+
+    return {
+      sugerido: nuevo,
+      basadoEn: base.map(function (x) { return x.orig || x.v; }).join(''),
+      porque: pegadoAlMes
+        ? 'El número va con el mes, como en sus pedidos anteriores.'
+        : 'Sigue el consecutivo de este proveedor.'
+    };
+  }
+  function rellena(s, n) { while (s.length < n) s = '0' + s; return s; }
+
+  // Propone el número al elegir proveedor. No pisa lo que ya esté escrito.
+  function sugerirPedidoDe(proveedor) {
+    var campo = document.querySelector('#formFields [data-col="Pedido Proveedor"]');
+    if (!campo || state.key !== 'prov_pedidos') return;
+    var nota = document.getElementById('notaPedidoSug');
+    if (!nota) {
+      nota = document.createElement('div');
+      nota.id = 'notaPedidoSug';
+      nota.className = 's';
+      nota.style.cssText = 'margin-top:4px;color:var(--slate);font-size:12px';
+      campo.parentNode.appendChild(nota);
+    }
+    var pr = norm(proveedor);
+    if (!pr) { nota.textContent = ''; return; }
+    var suyos = (state.rows || []).filter(function (r) {
+      return norm(r['Proveedor']) === pr;
+    }).map(function (r) { return r['Pedido Proveedor']; });
+    var r2 = siguientePedidoCliente(suyos);
+    if (!r2.sugerido) {
+      nota.textContent = 'De este proveedor no hay pedidos anteriores: escribe el número.';
+      return;
+    }
+    if (!String(campo.value || '').trim()) campo.value = r2.sugerido;
+    nota.textContent = (campo.value === r2.sugerido ? 'Sugerido: ' : 'El que sigue sería ') +
+      r2.sugerido + ' · va después de ' + r2.basadoEn + '. ' + r2.porque +
+      ' Puedes cambiarlo.';
+  }
   // La ciudad se saca de la dirección de envío: es lo último que suele venir
   var CIUDADES = ['CDMX', 'Ciudad de México', 'Monterrey', 'Guadalajara', 'Querétaro', 'Puebla',
                   'Cancún', 'Mérida', 'Tijuana', 'León', 'Toluca', 'Cuernavaca', 'Playa del Carmen',
@@ -17126,6 +17261,8 @@
           cinp2.addEventListener('change', function () {
             unificarCombo(cinp2, h);
             if (lkc0) applyLookup(lkc0, cinp2.value);
+            // Al elegir proveedor, se propone el número de pedido que le toca
+            sugerirPedidoDe(cinp2.value);
           });
           cinp2.addEventListener('blur', function () { unificarCombo(cinp2, h); });
           return;
@@ -19589,7 +19726,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.11.09-544';
+    var mia = '2026.11.09-545';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
