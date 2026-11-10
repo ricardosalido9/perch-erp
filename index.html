@@ -1114,7 +1114,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.10-547</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.10-548</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -9673,8 +9673,9 @@
                 'Falta surtir parte de esta venta: el costo de lo que falta está estimado ' +
                 'con el catálogo, así que la utilidad es aproximada.</div>' : '') +
               (v.productos || []).map(function (p) {
-                var ext = String(p.materialExtra || '').trim();
-                if (/^(n\/?a|no aplica|ninguno|ninguna|-)$/i.test(ext)) ext = '';
+                // CUÁL tela, no solo que lleva tela: es lo que hay que pedirle
+                // al proveedor. Misma cuenta que el PDF de la cotización.
+                var ext = juntaExtra(p.materialExtra, p.tela);
                 var falta = (p.vendidas || 0) - (p.surtidas || 0);
                 return '<div class="panel" style="margin-bottom:10px;padding:14px 16px;' +
                   'display:grid;grid-template-columns:72px minmax(150px,1fr) ' +
@@ -13901,17 +13902,24 @@
             // está vacía aunque Material Extra diga "Tela" —la O19-26 llegó así
             // a la venta—, y producción no puede pedir el mueble sin saber qué
             // tela lleva: en Surtir ventas sale como "por definir".
+            //
+            // 10 nov, Camila: "agrego la tela, pero me sigue sin aparecer en el
+            // PDF". El PDF no la traía, y aquí los dos pedazos se pegaban a lo
+            // bruto: una tela que ya se llama "Tela Marsa Beige" salía como
+            // "Tela Tela Marsa Beige". Las dos cosas las resuelve juntaExtra,
+            // que es la misma función que usa el servidor para el PDF.
             var cTelaR = findHeaderByName('Tela');
             var telaR = cTelaR ? String(r[cTelaR] || '').trim() : '';
-            var pideTela = /^(tela|piel|textil)$/i.test(ext) && !telaR;
+            var extConTela = juntaExtra(ext, telaR);
+            var pideTela = faltaDecirCual(ext, telaR);
             // El `data-th` es el nombre de la columna. En el celular la tabla se
             // vuelve una ficha por producto y cada dato se presenta con él: sin
             // eso, tres números en fila no dicen cuál es el precio y cuál el
             // importe. En la computadora no se ve, manda el encabezado.
             h += '<tr><td data-th="Producto" class="cot-prod">' + esc(r[cProd] || '') + '</td>' +
               '<td data-th="Material">' + esc(cMat ? (r[cMat] || '') : '') +
-                (ext ? ' <span class="s" style="color:var(--slate)">· ' + esc(ext) +
-                  (telaR ? ' ' + esc(telaR) : '') + '</span>' : '') +
+                (extConTela ? ' <span class="s" style="color:var(--slate)">· ' +
+                  esc(extConTela) + '</span>' : '') +
                 (pideTela ? '<div class="s" style="color:var(--amber)">falta decir qué ' +
                   esc(ext.toLowerCase()) + '</div>' : '') + '</td>' +
               '<td class="num" data-th="Cantidad">' + fmtNum(c) +
@@ -15307,6 +15315,39 @@
   };
   // Campos que se autocompletan con el siguiente número disponible (editables).
   var AUTONUM_FIELDS = ['No Producto', 'No. Producto','No. Identificación', 'No. de Identificación', 'No. de Cliente'];
+  // ===== Cómo se escribe el material en una línea =====
+  // Copia exacta de lib/material-txt.js. Tiene que ser la misma cuenta: si el
+  // panel y el PDF la escriben distinto, el cliente aprueba una cosa y
+  // producción pide otra. Lo fija t-tela-pdf.js, que compara las dos.
+  var MAT_VACIO = /^(n\/?a|no aplica|ninguno|ninguna|no|-|)$/i;
+  function limpiaTela(tela) {
+    return String(tela == null ? '' : tela).trim().replace(/^s[ií]\s*[-–—:]\s*/i, '').trim();
+  }
+  function juntaExtra(extra, tela) {
+    var ext = String(extra == null ? '' : extra).trim();
+    var tel = limpiaTela(tela);
+    var hayExt = ext && !MAT_VACIO.test(ext);
+    var hayTel = tel && !MAT_VACIO.test(tel);
+    if (hayExt && hayTel) {
+      var pe = norm(ext), pt = norm(tel);
+      if (pt === pe || pt.indexOf(pe + ' ') === 0) return tel;
+      return ext + ' ' + tel;
+    }
+    if (hayExt) return ext;
+    if (hayTel) return tel;
+    return '';
+  }
+  function juntaMaterial(material, extra, tela) {
+    var mat = String(material == null ? '' : material).trim();
+    var ext = juntaExtra(extra, tela);
+    return [mat && !MAT_VACIO.test(mat) ? mat : '', ext]
+      .filter(function (x) { return x; }).join(' · ');
+  }
+  function faltaDecirCual(extra, tela) {
+    var ext = String(extra == null ? '' : extra).trim();
+    return /^(tela|piel|textil)$/i.test(ext) && !limpiaTela(tela);
+  }
+
   function findHeaderByName(name) {
     var key = norm(name);
     var real = state.headers.filter(function (h) { return norm(h) === key; })[0];
@@ -19878,7 +19919,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.11.10-547';
+    var mia = '2026.11.10-548';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
