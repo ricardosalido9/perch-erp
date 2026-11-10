@@ -959,6 +959,13 @@
   .cal-ev.recol { background:#EDE9F5; color:#4A3B7A; border-color:#4A3B7A; }
   .cal-ev.vencida { background:var(--danger-bg); color:var(--danger); border-color:var(--danger); }
   .cal-ev.listo { background:var(--success-bg); color:var(--success); border-color:var(--success); }
+  /* Arrastrar una tarjeta a otro día para moverle la fecha */
+  .cal-ev.arrastrable { cursor:grab; }
+  .cal-ev.arrastrable:active { cursor:grabbing; }
+  .cal-ev.moviendo { opacity:.4; }
+  .cal-dia.encima { border:2px dashed var(--accent-ink); background:var(--paper); }
+  /* La vista de semana: menos días, así que caben más tarjetas por día */
+  .cal-grid.semana .cal-dia { min-height:200px; }
   .cal-mas { font-size:10px; color:var(--muted); padding-left:4px; }
   .cal-detalle { background:var(--surface); border:1px solid var(--line); border-radius:12px;
     padding:16px 18px; margin-bottom:18px; }
@@ -1107,7 +1114,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.09-546</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.10-547</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -7362,6 +7369,10 @@
 
   // ===== Calendario de logística =====
   var logMes = null, logAnio = null, logDiaAbierto = null;
+  // "Mes" para el panorama; "Semana" para programar los próximos siete días,
+  // que es lo que pidieron el 10 de noviembre para hablar con los proveedores
+  // con una semana de anticipación.
+  var logVista = 'mes';
   // ===== Estados financieros: se arman aquí, no se leen como tabla =====
   // La tabla cruda de "un renglón por año, mes y concepto" sirve para guardar y es
   // ilegible para leer. Esta pantalla la vuelve el estado de siempre: sangría por
@@ -10459,6 +10470,12 @@
         '<b>' + esc(d.nombreMes.charAt(0).toUpperCase() + d.nombreMes.slice(1)) + ' ' + d.anio + '</b>' +
         '<button type="button" class="row-btn" id="calNext">▸</button>' +
         '<button type="button" class="row-btn" id="calHoy">Hoy</button>' +
+        // Mes para ver el panorama, Semana para programar lo que viene
+        '<span class="mes-chips" style="margin-left:10px">' +
+        '<button type="button" class="mes-chip' + (logVista === 'mes' ? ' on' : '') +
+          '" data-calv="mes">Mes</button>' +
+        '<button type="button" class="mes-chip' + (logVista === 'semana' ? ' on' : '') +
+          '" data-calv="semana">Esta semana</button></span>' +
         '<span class="s" style="color:var(--muted);margin-left:auto">' +
         '<span class="cal-pill entrega">entrega</span> ' +
         '<span class="cal-pill recol">recoger en proveedor</span> ' +
@@ -10477,27 +10494,60 @@
           }).join('') + '</div>';
       }
 
-      // La rejilla del mes
+      // El lector solo consulta: no mueve fechas de nadie.
+      var puedeMover = state.rol !== 'lector';
+
+      // La rejilla. En "Mes" sale el mes completo; en "Semana", los próximos
+      // siete días, que es con lo que se programa con anticipación.
       var primero = new Date(d.anio, d.mes - 1, 1);
       var arranque = (primero.getDay() + 6) % 7;          // lunes = 0
       var ultimo = new Date(d.anio, d.mes, 0).getDate();
-      h += '<div class="cal-grid">' +
-        ['LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB', 'DOM'].map(function (x) {
-          return '<div class="cal-dow">' + x + '</div>'; }).join('');
-      for (var i = 0; i < arranque; i++) h += '<div class="cal-dia vacio"></div>';
-      for (var dia = 1; dia <= ultimo; dia++) {
+      var desde = 1, hasta = ultimo;
+      if (logVista === 'semana') {
+        // Arranca hoy si estamos en el mes de hoy; si no, el día 1
+        var hoyDia = (d.hoy && Math.floor(d.hoy / 100) === d.anio * 100 + d.mes)
+          ? (d.hoy % 100) : 1;
+        desde = hoyDia;
+        hasta = Math.min(ultimo, hoyDia + 6);
+        arranque = (new Date(d.anio, d.mes - 1, desde).getDay() + 6) % 7;
+      }
+      var DOW = ['LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB', 'DOM'];
+      h += '<div class="cal-grid' + (logVista === 'semana' ? ' semana' : '') + '">';
+      // En "Mes" manda la rejilla de lunes a domingo, con sus huecos al inicio.
+      // En "Semana" son siete días seguidos desde hoy, en un solo renglón: si se
+      // acomodaran por día de la semana, una semana que empieza en martes se
+      // partiría en dos y se perdería de un vistazo. Cada día lleva su propio
+      // nombre arriba.
+      if (logVista !== 'semana') {
+        h += DOW.map(function (x) { return '<div class="cal-dow">' + x + '</div>'; }).join('');
+        for (var i = 0; i < arranque; i++) h += '<div class="cal-dia vacio"></div>';
+      }
+      for (var dia = desde; dia <= hasta; dia++) {
         var evs = (d.dias || {})[dia] || [];
         var esHoy = (d.anio * 10000 + d.mes * 100 + dia) === d.hoy;
         h += '<div class="cal-dia' + (esHoy ? ' hoy' : '') + '" data-dia="' + dia + '">' +
-          '<div class="cal-num">' + dia +
+          '<div class="cal-num">' +
+            (logVista === 'semana'
+              ? '<span class="s" style="color:var(--muted);margin-right:5px">' +
+                DOW[(new Date(d.anio, d.mes - 1, dia).getDay() + 6) % 7] + '</span>'
+              : '') + dia +
             (evs.length ? '<span class="cal-cnt">' + evs.length + '</span>' : '') + '</div>';
-        evs.slice(0, 3).forEach(function (e) {
+        evs.slice(0, logVista === 'semana' ? 12 : 3).forEach(function (e) {
           var clase = e.tipo === 'recoleccion' ? 'recol' : (e.vencida ? 'vencida' : 'entrega');
           if (e.entregado) clase = 'listo';
           var etq = e.tipo === 'recoleccion'
             ? (e.proveedor || e.pedido)
             : (e.cliente || e.folio);
-          h += '<div class="cal-ev ' + clase + '" title="' + esc(etq) + '">' +
+          // Se arrastra para moverlo de día. Lo entregado ya no: esa fecha es un
+          // hecho, no un plan.
+          var mueve = puedeMover && !e.entregado;
+          h += '<div class="cal-ev ' + clase + (mueve ? ' arrastrable' : '') + '"' +
+            (mueve ? ' draggable="true"' : '') +
+            ' data-tipo="' + esc(e.tipo) + '"' +
+            ' data-folio="' + esc(e.folio || '').replace(/"/g, '&quot;') + '"' +
+            ' data-pedido="' + esc(e.pedido || '').replace(/"/g, '&quot;') + '"' +
+            ' data-etq="' + esc(etq).replace(/"/g, '&quot;') + '"' +
+            ' title="' + esc(etq) + (mueve ? ' — arrástralo a otro día para moverlo' : '') + '">' +
             (e.entregado ? '✓ ' : '') + esc(etq) + '</div>';
         });
         if (evs.length > 3) h += '<div class="cal-mas">+' + (evs.length - 3) + ' más</div>';
@@ -10590,8 +10640,87 @@
           '</div></div>';
       }).join('') + '</div>';
   }
+  // Mueve lo arrastrado al día que se soltó, preguntando antes.
+  function moverEnCalendario(a, dia, d) {
+    var MESL = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto',
+                'septiembre','octubre','noviembre','diciembre'];
+    var larga = dia + ' ' + MESL[d.mes - 1] + ' ' + d.anio;
+    var esRecol = a.tipo === 'recoleccion';
+    var que = esRecol
+      ? 'la recolección del pedido ' + (a.pedido || a.etq) + ' con ' + a.etq
+      : 'la entrega de ' + (a.folio || a.etq);
+    var aviso = esRecol
+      ? '\n\nOjo: esto cambia la fecha que el proveedor nos prometió, en todos los ' +
+        'renglones de ese pedido.'
+      : '\n\nEsto cambia la fecha acordada con el cliente, en toda la venta.';
+    if (!confirm('¿Mover ' + que + ' al ' + larga + '?' + aviso)) { loadLogistica(); return; }
+    var datos = { token: state.token, marcar: 'fecha', fecha: larga };
+    if (esRecol) { datos.tipo = 'recoleccion'; datos.pedido = a.pedido; }
+    else { datos.folio = a.folio; }
+    api('logistica', datos)
+      .then(function (o) { toast(o.mensaje || 'Listo.', 'ok'); loadLogistica(); })
+      .catch(function (e) { fail(e); loadLogistica(); });
+  }
+
   function engancharCalendario(d) {
     var ir = function (m, a) { logMes = m; logAnio = a; logDiaAbierto = null; loadLogistica(); };
+
+    document.querySelectorAll('#tableWrap [data-calv]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        logVista = b.getAttribute('data-calv'); logDiaAbierto = null; loadLogistica();
+      });
+    });
+
+    // ===== Arrastrar una tarjeta a otro día =====
+    //
+    // "Que en el calendario directo se puedan mover las fechas, creo que eso es
+    // fundamental para la operación interna" (10 nov).
+    //
+    // Antes la única forma era un botón que abría un `prompt` pidiendo la fecha
+    // escrita a mano como dd/mm/aaaa — y solo servía para las entregas al
+    // cliente. Ahora se arrastra, y también se mueven las recolecciones, que son
+    // las fechas de producción.
+    //
+    // Se pregunta antes de escribir: mover la fecha de un pedido es cambiarle el
+    // compromiso a un proveedor, no acomodar una tarjeta.
+    var arrastrando = null;
+    document.querySelectorAll('#tableWrap .cal-ev.arrastrable').forEach(function (ev) {
+      ev.addEventListener('dragstart', function (e) {
+        arrastrando = {
+          tipo: ev.getAttribute('data-tipo'),
+          folio: ev.getAttribute('data-folio'),
+          pedido: ev.getAttribute('data-pedido'),
+          etq: ev.getAttribute('data-etq'),
+          desde: ev.closest('.cal-dia') ? ev.closest('.cal-dia').getAttribute('data-dia') : null
+        };
+        ev.classList.add('moviendo');
+        try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', ''); }
+        catch (x) {}
+      });
+      ev.addEventListener('dragend', function () {
+        ev.classList.remove('moviendo');
+        document.querySelectorAll('#tableWrap .cal-dia.encima')
+          .forEach(function (x) { x.classList.remove('encima'); });
+      });
+    });
+    document.querySelectorAll('#tableWrap .cal-dia[data-dia]').forEach(function (celda) {
+      celda.addEventListener('dragover', function (e) {
+        if (!arrastrando) return;
+        e.preventDefault();
+        try { e.dataTransfer.dropEffect = 'move'; } catch (x) {}
+        celda.classList.add('encima');
+      });
+      celda.addEventListener('dragleave', function () { celda.classList.remove('encima'); });
+      celda.addEventListener('drop', function (e) {
+        e.preventDefault();
+        celda.classList.remove('encima');
+        var a = arrastrando; arrastrando = null;
+        if (!a) return;
+        var dia = parseInt(celda.getAttribute('data-dia'), 10);
+        if (!dia || String(dia) === String(a.desde)) return;      // al mismo día, nada
+        moverEnCalendario(a, dia, d);
+      });
+    });
     var p = document.getElementById('calPrev');
     if (p) p.addEventListener('click', function () {
       var m = logMes - 1, a = logAnio;
@@ -19749,7 +19878,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.11.09-546';
+    var mia = '2026.11.10-547';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
