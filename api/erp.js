@@ -10,6 +10,7 @@ const RUTAS = {
   login:          require('../lib/handlers/login'),
   menu:           require('../lib/handlers/menu'),
   inicio:         require('../lib/handlers/inicio'),
+  vigilancia:     require('../lib/handlers/vigilancia'),
   dashboard:      require('../lib/handlers/dashboard'),
   data:           require('../lib/handlers/data'),
   add:            require('../lib/handlers/add'),

@@ -197,8 +197,8 @@
   .quick-card:hover { border-color:var(--muted); transform:translateY(-1px); }
   .quick-card svg { width:22px; height:22px; flex:0 0 22px; fill:none; stroke:currentColor;
     stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; color:var(--slate); }
-  .quick-card .qt { font-size:14px; font-weight:600; }
-  .quick-card .qs { font-size:12px; color:var(--muted); margin-top:1px; }
+  .quick-card .qt { display:block; font-size:14px; font-weight:600; }
+  .quick-card .qs { display:block; font-size:12px; color:var(--muted); margin-top:1px; }
 
   .alert-list { display:flex; flex-direction:column; gap:10px; }
   .alert { display:flex; align-items:center; gap:14px; background:var(--surface);
@@ -1114,7 +1114,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.11-556</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.11-557</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -12599,6 +12599,11 @@
          '<button type="button" id="btnTableroInicio" ' +
          'title="Una página para enseñar o imprimir">Ver como tablero</button></div>';
 
+    // Aquí entran las alarmas de la vigilancia, que llegan por su cuenta.
+    // Va ARRIBA de todo: si a una venta le falta un renglón, eso se lee antes
+    // que los indicadores del mes.
+    h += '<div id="vigilanciaCaja"></div>';
+
     // Cuatro indicadores clave del mes en curso
     h += '<div class="kpi-grid" style="margin-bottom:28px">' +
       '<div class="kpi dark"><div class="k">Ventas del mes</div><div class="v" title="' +
@@ -12746,12 +12751,56 @@
     document.getElementById('homeView').innerHTML =
       '<div class="state" style="padding:60px 0">Cargando…</div>';
     api('inicio', { token: state.token })
-      .then(renderHome)
+      .then(function (d) { renderHome(d); revisarVigilancia(); })
       .catch(function (e) {
         document.getElementById('homeView').innerHTML =
           '<div class="state" style="padding:60px 0">No se pudo cargar la información.</div>';
         fail(e);
       });
+  }
+
+  // ===== La vigilancia: avisa cuando a un folio le falta algo =====
+  //
+  // A la AG13-26 de Sofía Sáenz le faltó un renglón de $95,200 y nadie lo vio en
+  // días: una fila borrada a mano en la hoja no deja rastro ni dispara nada.
+  // Esto es lo que la mira. Va en segundo plano, después de pintar el Inicio:
+  // si tarda o falla, la pantalla ya está puesta y no se entera nadie.
+  function revisarVigilancia() {
+    var caja = document.getElementById('vigilanciaCaja');
+    if (!caja) return;
+    api('vigilancia', { token: state.token })
+      .then(function (v) {
+        var caja2 = document.getElementById('vigilanciaCaja');
+        if (!caja2) return;
+        var al = (v && v.alarmas) || [];
+        if (!al.length) { caja2.innerHTML = ''; return; }
+        caja2.innerHTML =
+          '<div class="panel" style="border:2px solid var(--danger);' +
+            'background:var(--danger-bg);padding:16px 18px;margin-bottom:24px">' +
+          '<div style="font-weight:600;color:var(--danger);font-size:15px;margin-bottom:4px">' +
+            (al.length === 1 ? 'A un folio le falta algo' :
+              'A ' + fmtNum(al.length) + ' folios les falta algo') + '</div>' +
+          '<div class="s" style="color:var(--slate);margin-bottom:10px">Comparado con la ' +
+            'última vez que el panel los miró. Crecer es normal; encogerse casi nunca.</div>' +
+          al.slice(0, 8).map(function (a) {
+            return '<div style="padding:7px 0;border-top:1px solid var(--line)">' +
+              '<b>' + esc(a.folio) + '</b>' +
+              (a.cliente ? ' <span class="s" style="color:var(--slate)">· ' +
+                esc(a.cliente) + '</span>' : '') +
+              '<div class="s" style="margin-top:2px">' + esc(a.dice) +
+              (a.dinero > 1 ? ' <b style="color:var(--danger)">−' +
+                esc(formatMoney(a.dinero)) + '</b>' : '') +
+              (a.desde ? '<span style="color:var(--muted)"> · así estaba el ' +
+                esc(a.desde) + '</span>' : '') + '</div></div>';
+          }).join('') +
+          (al.length > 8 ? '<div class="s" style="color:var(--muted);margin-top:6px">y ' +
+            fmtNum(al.length - 8) + ' más</div>' : '') +
+          '<div class="s" style="color:var(--slate);margin-top:10px">Si fue a propósito, ' +
+            'cancela el folio y el aviso se va solo. Si no, revísalo en el historial del ' +
+            'archivo: el aviso se queda hasta que cuadre.</div>' +
+          '</div>';
+      })
+      .catch(function () { /* la vigilancia nunca estorba al Inicio */ });
   }
 
   // ===================== DASHBOARD =====================
@@ -20495,7 +20544,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.11.11-556';
+    var mia = '2026.11.11-557';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
