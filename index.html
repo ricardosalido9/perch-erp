@@ -1114,7 +1114,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.10-548</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.10-553</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1187,7 +1187,7 @@
       <div class="modal-body"><div id="aventaCuerpo"></div></div>
       <div class="modal-foot">
         <button id="aventaCancel" type="button" class="grow">Cerrar</button>
-        <button class="primary" id="aventaOk" type="button">Registrar salidas</button>
+        <button class="primary" id="aventaOk" type="button">Registrar la salida</button>
       </div>
     </div>
   </div>
@@ -1523,8 +1523,12 @@
       // Envíos lo captura quien despacha, que es este rol: tenía la pantalla en
       // solo lectura y había que pedirle a alguien más que capturara cada envío.
       // Pagos por hacer es donde pide los anticipos a proveedor.
+      // El Catálogo también: quien sabe el costo real, las medidas y el material
+      // de un mueble es Producción, y hasta ahora tenía que pedir cada
+      // corrección ("que Nico también pueda editar el catálogo", Val, 10 nov).
       return ['prov_pedidos', 'prov_entradas', 'prov_salidas',
-              'op_envios', 'pagos_pedidos', 'log_calendario'].indexOf(key) !== -1;
+              'op_envios', 'pagos_pedidos', 'log_calendario',
+              'inventario'].indexOf(key) !== -1;
     }
     return true;
   }
@@ -2438,7 +2442,9 @@
     'a medias':        ['A medias', 'var(--amber)', 'var(--paper)'],
     'pedido completo': ['Pedido completo', 'var(--success)', 'var(--paper)'],
     // El mueble ya está con el cliente: ni se surte ni se pide
-    'entregada':       ['Entregada', 'var(--slate)', 'var(--paper)']
+    'entregada':       ['Entregada', 'var(--slate)', 'var(--paper)'],
+    // Solo en Exhibición: la pieza ya llegó y está puesta en el showroom
+    'en showroom':     ['En showroom', 'var(--success)', 'var(--paper)']
   };
 
   // ===== Qué significa cada palabra =====
@@ -2495,6 +2501,13 @@
 
   function pintarVentaTablero() {
     var d = tabDatos || {};
+    // Los filtros no son los mismos en las dos áreas: si se queda uno del otro
+    // lado, la pantalla saldría vacía sin decir por qué.
+    var SOLO_EXH = ['showroom', 'porllegar'];
+    var SOLO_VTA = ['surtir', 'papeleo', 'foraneas', 'sinenvio'];
+    if ((state.key === 'exhibicion' ? SOLO_VTA : SOLO_EXH).indexOf(tabFiltro) !== -1) {
+      tabFiltro = 'todas';
+    }
     // Cada área con sus números: las tarjetas de Exhibición no deben contar
     // ventas ni margen de lo que se le vendió a un cliente.
     var t = ((state.key === 'exhibicion' ? d.resumenExhibicion : d.resumen) || {});
@@ -2505,14 +2518,20 @@
         ? '<div class="panel" style="padding:10px 14px;margin-bottom:10px">' +
           esc(d.sinCostos) + '</div>' : '') +
       '<div class="summary-cards">' +
-      // En Exhibición no son ventas: son piezas del showroom, y nadie las compró
+      // En Exhibición no son ventas: son pedidos del showroom, y nadie los compró
       '<div class="sum-card"><div class="k">' +
-        (state.key === 'exhibicion' ? 'Piezas' : 'Ventas') + '</div><div class="v">' +
-        fmtNum(t.ventas) + '</div></div>' +
-      '<div class="sum-card"><div class="k">Por surtir</div><div class="v"' +
-        (t.sinPedir ? ' style="color:var(--danger)"' : '') + '>' + fmtNum(t.sinPedir) +
-        '</div><div class="k" style="text-transform:none;letter-spacing:0">' +
-        fmtNum(t.aMedias) + ' a medias</div></div>' +
+        (state.key === 'exhibicion' ? 'Pedidos' : 'Ventas') + '</div><div class="v">' +
+        fmtNum(t.ventas) + '</div>' +
+        (state.key === 'exhibicion'
+          ? '<div class="k" style="text-transform:none;letter-spacing:0">' +
+            fmtNum(t.piezas) + (t.piezas === 1 ? ' pieza' : ' piezas') + '</div>' : '') +
+        '</div>' +
+      // "Por surtir" es de una venta: una pieza de showroom no se surte a nadie.
+      (state.key === 'exhibicion' ? '' :
+        '<div class="sum-card"><div class="k">Por surtir</div><div class="v"' +
+          (t.sinPedir ? ' style="color:var(--danger)"' : '') + '>' + fmtNum(t.sinPedir) +
+          '</div><div class="k" style="text-transform:none;letter-spacing:0">' +
+          fmtNum(t.aMedias) + ' a medias</div></div>') +
       (t.entregadas ? '<div class="sum-card"><div class="k">Entregadas</div><div class="v">' +
         fmtNum(t.entregadas) + '</div><div class="k" style="text-transform:none;' +
         'letter-spacing:0">no se surten</div></div>' : '') +
@@ -2522,11 +2541,20 @@
         '<div class="k" style="text-transform:none;letter-spacing:0">' +
         (t.piezasSinSalida ? fmtNum(t.piezasSinSalida) + ' piezas sin salida'
                            : 'entregadas sin registrar') + '</div></div>' : '') +
-      '<div class="sum-card"><div class="k">Pedido completo</div><div class="v">' +
-        fmtNum(t.completos) + '</div></div>' +
-      '<div class="sum-card"><div class="k">Foráneas</div><div class="v">' +
-        fmtNum(t.foraneos) + '</div><div class="k" style="text-transform:none;' +
-        'letter-spacing:0">' + fmtNum(t.sinEnvio) + ' sin envío</div></div>' +
+      '<div class="sum-card"><div class="k">' +
+        (state.key === 'exhibicion' ? 'Pedidas, sin llegar' : 'Pedido completo') +
+        '</div><div class="v">' + fmtNum(t.completos) + '</div></div>' +
+      // En Exhibición lo que importa es qué está puesto en el showroom ahora
+      // mismo, no si la entrega es foránea: estas piezas no se le mandan a nadie.
+      (state.key === 'exhibicion'
+        ? '<div class="sum-card"><div class="k">En showroom</div><div class="v"' +
+          (t.enShowroom ? ' style="color:var(--success)"' : '') + '>' +
+          fmtNum(t.enShowroom) + '</div><div class="k" style="text-transform:none;' +
+          'letter-spacing:0">' + fmtNum(t.piezasEnShowroom) +
+          (t.piezasEnShowroom === 1 ? ' pieza puesta' : ' piezas puestas') + '</div></div>'
+        : '<div class="sum-card"><div class="k">Foráneas</div><div class="v">' +
+          fmtNum(t.foraneos) + '</div><div class="k" style="text-transform:none;' +
+          'letter-spacing:0">' + fmtNum(t.sinEnvio) + ' sin envío</div></div>') +
       // En Exhibición no hay margen que calcular —no se vendió— así que en su
       // lugar se enseña lo que costó tener esas piezas en el showroom.
       (state.key === 'exhibicion'
@@ -2551,6 +2579,8 @@
       // tarjetas y el mismo botón de surtir: lo único que cambia es qué folios
       // entran.
       if (esExhibicion(v) !== (state.key === 'exhibicion')) return false;
+      if (tabFiltro === 'showroom' && v.produccion !== 'en showroom') return false;
+      if (tabFiltro === 'porllegar' && v.produccion !== 'pedido completo') return false;
       if (tabFiltro === 'surtir' &&
           (v.produccion === 'pedido completo' || v.produccion === 'entregada')) return false;
       if (tabFiltro === 'papeleo' && !(v.papeleo || []).length) return false;
@@ -2584,9 +2614,13 @@
     // "Papeleo pendiente" son las entregadas a las que les falta registro: la
     // salida de bodega, el pedido al proveedor, o las dos. Son las que dejan el
     // inventario sin certeza, y hasta ahora no había dónde verlas juntas.
-    var FILTROS = [['todas', 'Todas'], ['surtir', 'Falta surtir'],
-                   ['papeleo', 'Papeleo pendiente'],
-                   ['foraneas', 'Foráneas'], ['sinenvio', 'Sin envío']];
+    // En Exhibición no hay papeleo de venta ni envío que filtrar: lo que se
+    // busca es qué está puesto y qué sigue sin llegar.
+    var FILTROS = state.key === 'exhibicion'
+      ? [['todas', 'Todas'], ['showroom', 'En showroom'], ['porllegar', 'Sin llegar']]
+      : [['todas', 'Todas'], ['surtir', 'Falta surtir'],
+         ['papeleo', 'Papeleo pendiente'],
+         ['foraneas', 'Foráneas'], ['sinenvio', 'Sin envío']];
     var h = hAviso + ayudaEstados() +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 12px">' +
       '<input id="buscaTab" placeholder="Buscar folio, cliente, proveedor o pedido…" ' +
@@ -2604,12 +2638,20 @@
     if (!V.length) {
       h += '<div class="state" style="padding:40px 0">' +
         (state.key === 'exhibicion'
-          ? 'Todavía no hay piezas de exhibición. Se capturan en Ventas con el folio o el cliente “Exhibición”.'
+          ? 'Todavía no hay piezas de exhibición. Salen solas al pedirlas en ' +
+            '<b>Pedidos a proveedores</b> con el Destino en “Exhibición”.'
           : 'No hay ventas que mostrar.') + '</div>';
     }
     V.forEach(function (v) {
       var abierta = tabAbierta === v.folio;
       var pr = TAB_PROD[v.produccion] || ['', 'var(--slate)', 'var(--paper)'];
+      // En el showroom las mismas palabras significan otra cosa: "pedido
+      // completo" ahí quiere decir que la pieza está encargada y no ha llegado,
+      // y "entregada" que ya salió del showroom.
+      if (state.key === 'exhibicion') {
+        if (v.produccion === 'pedido completo') pr = ['Pedida, sin llegar', 'var(--amber)', 'var(--paper)'];
+        if (v.produccion === 'entregada') pr = ['Ya salió del showroom', 'var(--slate)', 'var(--paper)'];
+      }
       h += '<div class="panel" style="margin-bottom:12px">' +
         '<button type="button" class="tab-folio" data-folio="' +
           esc(v.folio).replace(/"/g, '&quot;') + '" style="width:100%;text-align:left;' +
@@ -2620,7 +2662,12 @@
               '<b style="font-size:15px">' + esc(v.folio) + '</b> ' +
               // El status de la hoja y el estado de producción suelen decir lo
               // mismo ("Entregada" las dos veces): se enseña una sola.
-              (v.status && norm(v.status) !== norm(pr[0] || '')
+              //
+              // En Exhibición el status del pedido se calla: ahí "ENTREGADO"
+              // quiere decir que el PROVEEDOR nos entregó, y puesto junto a
+              // "En showroom" parecía que la pieza ya se fue. El status crudo
+              // sigue visible al abrir la tarjeta.
+              (state.key !== 'exhibicion' && v.status && norm(v.status) !== norm(pr[0] || '')
                 ? tabChip(v.status, 'var(--slate)', 'var(--paper)') + ' ' : '') +
               (pr[0] ? tabChip(pr[0], pr[1], pr[2]) + ' ' : '') +
               // Qué le falta de registro, dicho en la tarjeta: es lo que hay que
@@ -2634,11 +2681,19 @@
                           (v.sinPedido > 0 ? 'Sin pedido' : ''),
                           'var(--danger)', 'var(--danger-bg)') + ' '
                 : '') +
-              (v.envio && v.envio.donde
-                ? tabChip(v.envio.donde === 'local' ? 'Local' : 'Foráneo',
-                          'var(--accent)', 'var(--paper)')
-                : tabChip('Sin envío', 'var(--muted)', 'var(--paper)')) +
-              '<div style="margin-top:4px">' + esc(v.cliente || '—') + '</div>' +
+              // Una pieza de showroom no se le manda a nadie: en vez del envío,
+              // cuándo la promete el proveedor. Si ya llegó, la fecha sobra.
+              (state.key === 'exhibicion'
+                ? (v.llega && v.produccion === 'pedido completo'
+                    ? tabChip('Llega ' + v.llega, 'var(--accent)', 'var(--paper)') : '')
+                : (v.envio && v.envio.donde
+                    ? tabChip(v.envio.donde === 'local' ? 'Local' : 'Foráneo',
+                              'var(--accent)', 'var(--paper)')
+                    : tabChip('Sin envío', 'var(--muted)', 'var(--paper)'))) +
+              '<div style="margin-top:4px">' +
+                (state.key === 'exhibicion'
+                  ? esc((v.proveedores || [])[0] || 'Sin proveedor')
+                  : esc(v.cliente || '—')) + '</div>' +
               '<div class="s" style="color:var(--muted)">' +
                 fmtNum(v.renglones) + (v.renglones === 1 ? ' producto' : ' productos') +
                 ' · ' + fmtNum(v.piezas) + (v.piezas === 1 ? ' pieza' : ' piezas') +
@@ -2667,7 +2722,8 @@
           '</div>' +
         '</button>' +
         (abierta ? '<div id="tabDet" style="padding:0 16px 16px">' +
-          detalleVentaHTML(v.folio) + '</div>' : '') +
+          (v.exhibicionDetalle ? detalleExhibicionHTML(v) : detalleVentaHTML(v.folio)) +
+          '</div>' : '') +
         '</div>';
     });
 
@@ -2700,7 +2756,10 @@
         var f = b.getAttribute('data-folio');
         tabAbierta = (tabAbierta === f) ? '' : f;
         pintarVentaTablero();
-        if (tabAbierta && !tabDetalle[tabAbierta]) pedirDetalleVenta(tabAbierta);
+        // Las piezas de exhibición ya traen su desglose: no hay a quién pedírselo.
+        var esExh = ((tabDatos || {}).ventas || []).filter(function (x) {
+          return x.folio === tabAbierta && x.exhibicionDetalle; }).length > 0;
+        if (tabAbierta && !esExh && !tabDetalle[tabAbierta]) pedirDetalleVenta(tabAbierta);
       });
     });
     oyentesDelDetalle();
@@ -2737,6 +2796,55 @@
   }
 
   // Lo que se ve al abrir una tarjeta
+  // El desglose de una pieza de showroom. No lleva cliente, ni envío, ni margen:
+  // nadie la compró. Lleva qué se pidió, a quién, cuándo llega, si ya está
+  // puesta y cuánto costó tenerla ahí.
+  function detalleExhibicionHTML(v) {
+    var filas = v.exhibicionDetalle || [];
+    var h = '<div class="panel" style="padding:12px 16px;margin-bottom:10px;display:grid;' +
+      'grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px 18px">' +
+      [['Proveedor', esc((v.proveedores || [])[0] || '')],
+       ['Pedido', esc(v.folio)],
+       ['Se pidió', esc(v.fecha || '')],
+       ['Lo prometen', esc(v.llega || '')],
+       ['Status del pedido', esc(v.status || '')],
+       ['Costo', esc(formatMoney(v.costo))]]
+      .filter(function (x) { return x[1]; })
+      .map(function (x) {
+        return '<div style="min-width:0"><div class="s" style="color:var(--muted);' +
+          'text-transform:uppercase;letter-spacing:.6px;font-size:10px">' + x[0] + '</div>' +
+          '<div style="font-size:13px;word-break:break-word">' + x[1] + '</div></div>';
+      }).join('') + '</div>';
+
+    h += '<table class="mini-table"><thead><tr><th>Mueble</th><th>Material</th>' +
+      '<th style="text-align:right">Piezas</th><th>En qué va</th>' +
+      '<th style="text-align:right">Costo</th></tr></thead><tbody>' +
+      filas.map(function (p) {
+        var falta = Math.max(0, p.cantidad - p.llegaron);
+        var estado = p.salieron >= p.cantidad && p.cantidad > 0
+          ? '<span style="color:var(--slate)">Ya salió del showroom</span>'
+          : (p.llegaron > 0
+              ? '<span style="color:var(--success)">En showroom' +
+                (falta > 0 ? ' · faltan ' + fmtNum(falta) + ' por llegar' : '') + '</span>'
+              : '<span style="color:var(--amber)">Pedida, sin llegar</span>');
+        return '<tr><td><b>' + esc(p.producto) + '</b>' +
+          (p.especificaciones ? '<div class="s" style="color:var(--muted)">' +
+            esc(p.especificaciones) + '</div>' : '') + '</td>' +
+          '<td>' + esc(p.material || '') +
+            (p.tela ? '<div class="s" style="color:var(--muted)">' + esc(p.tela) + '</div>' : '') +
+            '</td>' +
+          '<td class="num">' + fmtNum(p.cantidad) + '</td>' +
+          '<td class="s">' + estado +
+            (p.ubicacion ? '<div class="s" style="color:var(--muted)">' +
+              esc(p.ubicacion) + '</div>' : '') + '</td>' +
+          '<td class="num">' + esc(formatMoney(p.costo)) + '</td></tr>';
+      }).join('') + '</tbody></table>' +
+      '<div class="s" style="color:var(--muted);margin-top:8px">Sale de ' +
+      '<b>Pedidos a proveedores</b>: los renglones con el Destino en “Exhibición”. ' +
+      'Lo de “en showroom” se cuenta con las Entradas y las Salidas de ese pedido.</div>';
+    return h;
+  }
+
   function detalleVentaHTML(folio) {
     var o = tabDetalle[folio];
     if (!o) return '<div class="state" style="padding:24px 0">Leyendo esta venta…</div>';
@@ -2866,6 +2974,36 @@
                 (c.proveedor ? '<div style="font-size:13px">' + esc(c.proveedor) +
                   (c.pedido ? ' <span class="s" style="color:var(--slate)">· ' +
                     esc(c.pedido) + '</span>' : '') + '</div>' : '') +
+                // Una venta puede surtirse de VARIOS pedidos. Nico, junta del
+                // 10 nov, con la O19-26: "fueron dos sillones, uno salió del
+                // pedido PCH-T-031 y el otro del PCH-T-075". El tablero traía
+                // los dos desde hace versiones y solo pintaba el primero, así
+                // que el segundo pedido era invisible.
+                ((c.otrosPedidos || []).length
+                  ? '<div style="font-size:13px">' + c.otrosPedidos.map(function (q) {
+                      return esc(q.proveedor || 'Sin proveedor') +
+                        (q.pedido ? ' <span class="s" style="color:var(--slate)">· ' +
+                          esc(q.pedido) + '</span>' : '') +
+                        (q.cantidad ? ' <span class="s" style="color:var(--muted)">(' +
+                          fmtNum(q.cantidad) + ')</span>' : '');
+                    }).join('</div><div style="font-size:13px">') + '</div>'
+                  : '') +
+                // De qué pedido salió lo que ya se surtió.
+                //
+                // Val, 10 nov, con la N4-26: "¿por qué no me sale surtido y
+                // surtido pero sin el número de pedido de proveedor?". Una pieza
+                // sacada de BODEGA no tiene pedido asignado a la venta —el
+                // pedido era para Stock—, así que arriba no se pinta nada y el
+                // renglón quedaba en "Surtido" a secas. El dato estaba en la
+                // hoja de Salidas desde siempre.
+                ((c.salidas || []).length
+                  ? '<div class="s" style="color:var(--slate)">' +
+                    c.salidas.map(function (s) {
+                      return 'Salió ' + fmtNum(s.cantidad) + ' del ' +
+                        esc(s.pedido || 'pedido sin número') +
+                        (s.proveedor ? ' · ' + esc(s.proveedor) : '');
+                    }).join('<br>') + '</div>'
+                  : '') +
                 (c.statusPedido ? '<div class="s" style="color:var(--muted)">' +
                   esc(c.statusPedido) + (c.llega ? ' · llega ' + esc(c.llega) : '') +
                   (enPalabras(c.statusPedido)
@@ -7014,15 +7152,20 @@
                       '" data-prov="' + esc(p.proveedor).replace(/"/g, '&quot;') +
                       '">Subir</button>')) + '</td></tr>';
           }).join('') + '</tbody></table>';
-      } else if (!(d.grupos || []).length) {
-        h += '<div class="state" style="padding:40px 0">No hay pagos pendientes.</div>';
       } else {
-        // Barra de acción: cuántos seleccionados y el botón de marcar
+        // El botón de pedir un pago va SIEMPRE, también con la cola vacía.
+        // Estaba dentro del `else` de "hay grupos": el día que no quedaba nada
+        // pendiente, la pantalla decía "No hay pagos pendientes" y no había por
+        // dónde pedir el siguiente.
         h += '<div id="pagosBarra" class="pagos-barra"></div>';
         h += '<div class="cot-acciones" style="margin-bottom:12px">' +
           '<button type="button" class="primary" id="pedirPagoBtn">+ Pedir un pago</button>' +
-          '<span class="s" style="color:var(--muted)">Abre el mismo formulario de siempre. ' +
-          'Se guarda sin pagar, así que aparece en la cola.</span></div>';
+          '<span class="s" style="color:var(--muted)">Eliges el pedido que debe dinero y ' +
+          'cuánto se le abona. Se guarda sin pagar, así que aparece en la cola.</span></div>';
+      }
+      if (pagosVista !== 'pagados' && !(d.grupos || []).length) {
+        h += '<div class="state" style="padding:40px 0">No hay pagos pendientes.</div>';
+      } else if (pagosVista !== 'pagados') {
         h += '<div class="cot-grid">';
         d.grupos.forEach(function (g) {
           h += '<div class="cot-card open">' +
@@ -7047,7 +7190,15 @@
                 '<td><input type="checkbox" class="pago-chk" data-fila="' + p.fila +
                   '" data-monto="' + p.monto + '"' + (pagosSel[p.fila] ? ' checked' : '') + '></td>' +
                 '<td>' + esc(formatDateCell(p.fecha)) + '</td>' +
-                '<td>' + esc(p.pedido) + '</td>' +
+                // Qué parte del pedido es este pago: pedir "60% a Tandem" y
+                // luego ver un número suelto obligaba a sacar la regla de tres.
+                '<td>' + esc(p.pedido) +
+                  // El total va completo, no redondeado: en una pantalla de
+                  // pagos "$91k" se lee como una cifra, no como un redondeo.
+                  (p.pctDelPedido != null
+                    ? '<div class="s" style="color:var(--muted)">' +
+                      p.pctDelPedido + '% de ' + esc(formatMoney(p.totalPedido)) + '</div>'
+                    : '') + '</td>' +
                 '<td title="' + esc(p.descripcion || '') + '">' +
                   esc((p.concepto || p.descripcion || '').slice(0, 44)) +
                   (p.comentarios ? '<div class="s" style="color:var(--muted)">' +
@@ -7088,14 +7239,13 @@
         });
       });
       var pedirBtn = document.getElementById('pedirPagoBtn');
-      if (pedirBtn) pedirBtn.addEventListener('click', function () {
-        // El mismo formulario que todas las demás áreas, con las columnas de la hoja
-        renderForm();
-        abrirModalAlta();
-        // Nace sin pagar: es lo que lo pone en la cola de Pau
-        var elPag = document.querySelector('#formFields [data-col="Pagado"]');
-        if (elPag) elPag.value = 'FALSE';
-      });
+      // Abría el formulario genérico (`renderForm`), y Pagos por hacer es una
+      // pantalla propia: nunca carga `state.headers`, así que el formulario salía
+      // con los campos del ÁREA ANTERIOR. Val lo fotografió el 10 nov: la ventana
+      // decía "Agregar en Pagos por hacer" y adentro pedía Pedido Proveedor,
+      // Material, Tela y Costo Unitario, con un botón "Guardar pedido". Ahora
+      // abre la ventana de pedir pago, que es la que corresponde.
+      if (pedirBtn) pedirBtn.addEventListener('click', abrirPedirPago);
       document.querySelectorAll('#tableWrap .subir-comp').forEach(function (b) {
         b.addEventListener('click', function () { subirComprobante(b); });
       });
@@ -7106,7 +7256,34 @@
     });
   }
   // Nico pide un pago: se escribe en la misma hoja, sin pagar, y le sale a Pau.
-  var provsParaPago = null;
+  //
+  // Los pedidos que siguen debiendo dinero salen del MISMO sitio que el estado de
+  // cuenta de proveedores (`api('proveedores')`): total del pedido, lo que ya se
+  // pagó y lo que falta. Así el desplegable no puede decir una cosa y el estado
+  // de cuenta otra.
+  var provsParaPago = null, deudaPedidos = null, deudaCargando = false;
+  function cargarDeudaPedidos(luego) {
+    if (deudaPedidos) { luego(deudaPedidos); return; }
+    if (deudaCargando) return;
+    deudaCargando = true;
+    api('proveedores', { token: state.token }).then(function (d) {
+      var lista = [];
+      (d.proveedores || []).forEach(function (p) {
+        (p.pedidos || []).forEach(function (q) {
+          if (!(q.porPagar > 0.5)) return;        // ya está pagado o cerrado
+          lista.push({ proveedor: p.proveedor, pedido: q.pedido,
+                       total: q.costo || 0, pagado: q.pagado || 0,
+                       porPagar: q.porPagar || 0, abierto: !!q.abierto,
+                       fecha: q.fecha || '' });
+        });
+      });
+      lista.sort(function (a, b) { return b.porPagar - a.porPagar; });
+      deudaPedidos = lista; deudaCargando = false; luego(lista);
+    }).catch(function () {
+      // Si el estado de cuenta no responde, el pago se puede pedir igual a mano
+      deudaPedidos = []; deudaCargando = false; luego([]);
+    });
+  }
   function abrirPedirPago() {
     // La lista de proveedores sale de la Lista de Proveedores completa, no solo de
     // los que hoy tienen algo pendiente: si no, nunca podrías pedir el primer pago
@@ -7147,10 +7324,36 @@
           return '<option value="' + esc(p) + '">'; }).join('') + '</datalist>' +
         '<div class="s" style="color:var(--muted);margin-top:4px">' +
           fmtNum(provs.length) + ' proveedores en la lista</div></div>' +
-      '<div class="fld" style="width:150px"><label>Monto *</label>' +
-        '<input id="pp_monto" type="number" step="0.01" min="0"></div>' +
-      '<div class="fld" style="width:170px"><label>Pedido</label><input id="pp_pedido"></div>' +
+      // Los pedidos que siguen debiendo. Antes era un campo de texto en blanco y
+      // había que acordarse del número y del saldo, o irse al estado de cuenta.
+      '<div class="fld" style="flex:1;min-width:280px"><label>¿De qué pedido?</label>' +
+        // El ancho se fija: las opciones largas ("… debe $30,936.54 de $60,936.54 ·
+        // TANDEM") empujaban el desplegable fuera de la ventana.
+        '<select id="pp_pedidoSel" style="width:100%;max-width:100%">' +
+          '<option value="">Cargando los pedidos…</option></select>' +
+        '<input id="pp_pedido" style="display:none;margin-top:6px" ' +
+          'placeholder="Número del pedido">' +
+        '<div class="s" id="pp_pedidoNota" style="color:var(--muted);margin-top:4px"></div>' +
       '</div>' +
+      '</div>' +
+      // El porcentaje. "Si le pongo que quiero pagar el 60% del pedido inicial,
+      // que se ponga automático" (Val, 10 nov).
+      '<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">' +
+      '<div class="fld" style="width:150px;margin:0"><label>Monto *</label>' +
+        '<input id="pp_monto" type="number" step="0.01" min="0"></div>' +
+      '<div class="fld" style="width:120px;margin:0"><label>o un %</label>' +
+        '<input id="pp_pct" type="number" step="1" min="0" max="100" placeholder="60"></div>' +
+      '<div class="fld" style="width:210px;margin:0"><label>¿Porcentaje de qué?</label>' +
+        '<select id="pp_pctBase">' +
+          '<option value="total">Del total del pedido</option>' +
+          '<option value="falta">De lo que falta por pagar</option>' +
+        '</select></div>' +
+      '<div style="display:flex;gap:6px;padding-bottom:2px">' +
+        [30, 50, 60, 100].map(function (x) {
+          return '<button type="button" class="mes-chip pp-chip" data-pct="' + x + '">' +
+            x + '%</button>'; }).join('') +
+      '</div></div>' +
+      '<div class="s" id="pp_calculo" style="color:var(--slate);margin:6px 0 10px"></div>' +
       '<div style="display:flex;gap:12px;flex-wrap:wrap">' +
       '<div class="fld" style="flex:1;min-width:220px"><label>Concepto</label>' +
         '<input id="pp_concepto" placeholder="Anticipo, finiquito, material…"></div>' +
@@ -7170,7 +7373,115 @@
     document.getElementById('aventaCancel').textContent = 'Cancelar';
     document.getElementById('aventaModal').classList.add('on');
     aventaPedido = null; entradaPedido = null;
+    engancharPedirPago();
   }
+
+  // El desplegable de pedidos con deuda, y el % que llena el monto solo.
+  function engancharPedirPago() {
+    var elProv = document.getElementById('pp_prov');
+    var elSel = document.getElementById('pp_pedidoSel');
+    var elMan = document.getElementById('pp_pedido');
+    var elNota = document.getElementById('pp_pedidoNota');
+    var elMonto = document.getElementById('pp_monto');
+    var elPct = document.getElementById('pp_pct');
+    var elBase = document.getElementById('pp_pctBase');
+    var elCalc = document.getElementById('pp_calculo');
+    if (!elSel) return;
+    var elegido = null;
+
+    var llenar = function (lista) {
+      // Si ya escribió proveedor, solo los suyos; si no, todos los que deben
+      var p = norm((elProv || {}).value || '');
+      var suyos = lista.filter(function (x) { return !p || norm(x.proveedor) === p; });
+      if (!suyos.length && p) suyos = [];
+      elSel.innerHTML =
+        '<option value="">' + (lista.length
+          ? (p && !suyos.length ? 'Este proveedor no tiene pedidos con saldo'
+                                : '— elige un pedido —')
+          : 'No se pudo leer el estado de cuenta') + '</option>' +
+        suyos.map(function (x, i) {
+          return '<option value="' + i + '">' + esc(x.pedido) +
+            ' · debe ' + esc(formatMoney(x.porPagar)) +
+            ' de ' + esc(formatMoney(x.total)) +
+            (p ? '' : ' · ' + esc(x.proveedor)) + '</option>';
+        }).join('') +
+        '<option value="otro">Otro · escribir el número a mano</option>';
+      elSel._lista = suyos;
+      elegido = null;
+      elMan.style.display = 'none';
+      elNota.textContent = suyos.length
+        ? fmtNum(suyos.length) + (suyos.length === 1 ? ' pedido con saldo' : ' pedidos con saldo')
+        : '';
+      pinta();
+    };
+
+    var pinta = function () {
+      if (!elCalc) return;
+      if (!elegido) { elCalc.innerHTML = ''; return; }
+      var m = Number(elMonto.value || 0);
+      var queda = Math.round((elegido.porPagar - m) * 100) / 100;
+      elCalc.innerHTML =
+        '<b>' + esc(elegido.pedido) + '</b> · total ' + esc(formatMoney(elegido.total)) +
+        ' · ya pagado ' + esc(formatMoney(elegido.pagado)) +
+        ' · debe <b>' + esc(formatMoney(elegido.porPagar)) + '</b>' +
+        (m > 0
+          ? '<div style="margin-top:3px">Con este pago quedaría debiendo <b style="color:' +
+            (queda > 0.5 ? 'var(--danger)' : 'var(--success)') + '">' +
+            esc(formatMoney(Math.abs(queda))) + '</b>' +
+            (queda < -0.5 ? ' a favor' : (queda <= 0.5 ? ' · queda saldado' : '')) + '</div>'
+          : '') +
+        (m > elegido.porPagar + 0.5
+          ? '<div style="color:var(--amber);margin-top:3px">Es más de lo que debe este ' +
+            'pedido. Si es para abonar a otros, está bien; si no, revísalo.</div>'
+          : '');
+    };
+
+    // El % llena el monto; escribir el monto a mano borra el %
+    var delPct = function () {
+      var pct = Number(elPct.value || 0);
+      if (!pct) return;
+      if (!elegido) {
+        elCalc.innerHTML = '<span style="color:var(--amber)">Elige primero el pedido: ' +
+          'el porcentaje se saca de su total.</span>';
+        return;
+      }
+      var base = elBase.value === 'falta' ? elegido.porPagar : elegido.total;
+      elMonto.value = (Math.round(base * pct) / 100).toFixed(2);
+      pinta();
+    };
+    elPct.addEventListener('input', delPct);
+    elBase.addEventListener('change', delPct);
+    document.querySelectorAll('#aventaCuerpo .pp-chip').forEach(function (b) {
+      b.addEventListener('click', function () {
+        elPct.value = b.getAttribute('data-pct'); delPct();
+      });
+    });
+    elMonto.addEventListener('input', function () { elPct.value = ''; pinta(); });
+
+    elSel.addEventListener('change', function () {
+      var v = elSel.value;
+      if (v === 'otro') {
+        elegido = null; elMan.style.display = ''; elMan.value = ''; elMan.focus();
+        elNota.textContent = 'Sin saldo que consultar: el % no se puede calcular solo.';
+        pinta(); return;
+      }
+      elMan.style.display = 'none';
+      elegido = v === '' ? null : (elSel._lista || [])[+v] || null;
+      if (elegido) {
+        elMan.value = elegido.pedido;
+        // Si el proveedor estaba en blanco, se llena con el del pedido
+        if (elProv && !String(elProv.value || '').trim()) elProv.value = elegido.proveedor;
+      }
+      delPct();
+      pinta();
+    });
+    if (elProv) elProv.addEventListener('change', function () {
+      if (deudaPedidos) llenar(deudaPedidos);
+    });
+
+    cargarDeudaPedidos(llenar);
+  }
+
   // Programar el pago desde el estado de cuenta del proveedor.
   //
   // Es lo que pidió Nico: pedirlo donde se ve la deuda, y ver cuánto le queda
@@ -7252,6 +7563,8 @@
       comentarios: v('pp_com')
     }}).then(function (d) {
       toast(d.mensaje || 'Pago solicitado.', 'ok');
+      // El saldo de los pedidos cambió: la próxima vez se vuelve a leer
+      deudaPedidos = null;
       // De dónde venía, ANTES de cerrar: cerrar el diálogo limpia la bandera.
       var volverAProveedores = progDesdeProveedores;
       cerrarMandarAVenta();
@@ -8174,19 +8487,22 @@
       }).join('');
 
     var h = '<div class="s" style="color:var(--slate);margin-bottom:10px">' +
-      'Cada mueble puede ir a un folio distinto y con su propia fecha. Lo que dejes ' +
-      'en blanco se queda como está.</div>' +
+      'Esto <b>no mueve nada de bodega</b>: solo deja dicho para qué venta es cada ' +
+      'mueble y cuándo nos lo entrega el proveedor. Para que la pieza salga de verdad ' +
+      'es <b>Salida física de bodega</b>.' +
+      '<div style="margin-top:6px">Cada mueble puede ir a un folio distinto y con su ' +
+      'propia fecha. Lo que dejes en blanco se queda como está.</div></div>' +
       '<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px">' +
-        '<div class="fld" style="width:230px;margin:0"><label>Poner a todos</label>' +
+        '<div class="fld" style="width:230px;margin:0"><label>Mismo folio para todos</label>' +
           '<select id="asigTodosFolio">' + opciones + '</select></div>' +
-        '<div class="fld" style="width:170px;margin:0"><label>Fecha para todos</label>' +
+        '<div class="fld" style="width:190px;margin:0"><label>Misma fecha para todos</label>' +
           '<input type="date" id="asigTodosFecha"></div>' +
         '<button type="button" id="asigAplicar">Aplicar a todos</button></div>' +
       '<div class="est-wrap"><table class="est-tabla"><thead><tr>' +
       '<th class="est-con">MUEBLE</th><th>CANT.</th>' +
       '<th style="text-align:left">TELA</th>' +
       '<th style="text-align:left">FOLIO / DESTINO</th>' +
-      '<th style="text-align:left">ENTREGA</th></tr></thead><tbody>' +
+      '<th style="text-align:left">NOS LO ENTREGA EL PROVEEDOR</th></tr></thead><tbody>' +
       asigLineas.map(function (l, i) {
         return '<tr><td class="est-con">' + esc(l.producto || '') +
             (l.material ? '<div class="s" style="color:var(--muted)">' + esc(l.material) + '</div>' : '') +
@@ -8198,7 +8514,7 @@
             '" value="' + esc(aIsoFecha(l.fecha)) + '"></td></tr>';
       }).join('') + '</tbody></table></div>';
 
-    document.getElementById('aventaTitulo').textContent = 'Cliente y fecha · ' + pedido;
+    document.getElementById('aventaTitulo').textContent = 'Asignar a una venta · ' + pedido;
     document.getElementById('aventaCuerpo').innerHTML = h;
     document.getElementById('aventaOk').textContent = 'Guardar';
     modalModo = 'asignar';
@@ -8862,10 +9178,15 @@
       return yaLaHicieron.map(norm).indexOf(norm(x)) === -1;
     });
     var orden = yaLaHicieron.length ? yaLaHicieron : otros;
-    // Lo último que cobró quien la hizo; si nadie la ha hecho, el del catálogo.
-    // Antes se quedaba vacío y había que ir a buscarlo.
+    // El costo del COMPONENTE, no el del mueble armado.
+    //
+    // "El costo automático que viene por default nos arroja el precio completo
+    // del mueble en vez del componente" (Nico, junta del 10 nov). El catálogo
+    // trae madera + tela juntas: para pedirle a TANDEM solo la carpintería ese
+    // número siempre sobra. Cuando la pieza está partida ya no se usa.
     var costoSug = ((c.proveedores || [])[0] && (c.proveedores || [])[0].costo) ||
-                   c.costoSugerido || c.costoCatalogo || 0;
+                   c.costoSugerido ||
+                   (c.costoCatalogoEsDelMueble ? 0 : c.costoCatalogo) || 0;
 
     var h = '<div class="s" style="color:var(--slate);margin-bottom:14px">' +
       esc(p.producto) + (c.componente ? ' · <b>' + esc(c.componente) + '</b>' : '') +
@@ -8992,8 +9313,18 @@
       '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
       '<div class="fld" style="flex:1;min-width:120px"><label>Cantidad</label>' +
       '<input id="suCant" type="number" min="1" value="' + fmtNum(c.falta) + '"></div>' +
-      '<div class="fld" style="flex:1;min-width:120px"><label>Costo unitario</label>' +
-      '<input id="suCosto" type="number" step="0.01" value="' + (costoSug || '') + '"></div>' +
+      '<div class="fld" style="flex:1;min-width:120px"><label>Costo unitario' +
+      (c.componente ? ' <span class="s" style="font-weight:400;color:var(--muted)">de ' +
+        esc(c.componente) + '</span>' : '') + '</label>' +
+      '<input id="suCosto" type="number" step="0.01" value="' + (costoSug || '') + '">' +
+      '<div class="s" id="suCostoNota" style="color:var(--muted);margin-top:4px;font-size:12px">' +
+        (costoSug ? '' :
+          (c.costoCatalogoEsDelMueble
+            ? 'De este componente no hay costo capturado. El de la lista de precios (' +
+              esc(formatMoney(c.costoCatalogo)) + ') es el del <b>mueble armado</b>, madera ' +
+              'más tela, así que no se propone. Escríbelo.'
+            : 'De esta pieza no hay costo capturado todavía. Escríbelo.')) +
+      '</div></div>' +
       '</div>' +
       // Caja alta y de ancho completo: aquí va lo que Ursula escribió del mueble
       // —medidas, acabado, tela— y en un renglón de una línea no se leía.
@@ -9052,10 +9383,27 @@
       return norm(q.proveedor) === norm(prov.value); })[0] : null;
     var ci = document.getElementById('suCosto');
     if (ci) {
-      // Si ese proveedor ya la hizo, su último costo; si no, el que se conozca
-      // de la pieza. Cambiar de proveedor no debe dejar el campo en blanco.
-      var cc = (yo && yo.costo) || (c && (c.costoSugerido || c.costoCatalogo)) || 0;
+      // Si ese proveedor ya la hizo, su último costo; si no, lo que cobra por
+      // este componente según Costos Unitarios; y si tampoco, el de la pieza.
+      // El total del catálogo NO entra cuando la pieza está partida: ahí incluye
+      // la otra parte y se le pediría de más al proveedor.
+      var cc = (yo && yo.costo) ||
+               (c && (c.costoPorProveedor || {})[norm(prov.value)]) ||
+               (c && c.costoSugerido) ||
+               (c && !c.costoCatalogoEsDelMueble ? c.costoCatalogo : 0) || 0;
       if (cc) ci.value = cc;
+      else ci.value = '';
+      // Y se dice por qué está vacío, en vez de dejar al usuario adivinando
+      var avi = document.getElementById('suCostoNota');
+      if (avi) {
+        avi.innerHTML = cc
+          ? ''
+          : (c && c.costoCatalogoEsDelMueble
+              ? 'De este componente no hay costo capturado. El de la lista de precios ' +
+                '(' + esc(formatMoney(c.costoCatalogo)) + ') es el del <b>mueble armado</b>, ' +
+                'madera más tela, así que no se propone. Escríbelo.'
+              : 'De esta pieza no hay costo capturado todavía. Escríbelo.');
+      }
     }
     // Y el número del pedido nuevo, con la nomenclatura de ESE proveedor.
     //
@@ -10560,20 +10908,17 @@
       if (logDiaAbierto && (d.dias || {})[logDiaAbierto]) {
         h += detalleDelDia(logDiaAbierto, d.dias[logDiaAbierto], d);
       }
-      // Lo que ya se pasó de fecha
-      if ((d.vencidas || []).length) {
-        h += '<h3 class="sec-t">Ya pasaron su fecha y siguen sin entregarse</h3>' +
-          '<table class="mini-table"><thead><tr><th>Folio</th><th>Cliente</th><th>Zona</th>' +
-          '<th>Era para</th><th style="text-align:right">Piezas</th><th></th></tr></thead><tbody>' +
-          d.vencidas.map(function (e) {
-            return '<tr style="background:var(--danger-bg)"><td><b>' + esc(e.folio) + '</b></td>' +
-              '<td>' + esc(e.cliente) + '</td><td class="s">' + esc(e.zona) + '</td>' +
-              '<td>' + esc(formatDateCell(e.fecha)) + '</td>' +
-              '<td class="num">' + fmtNum(e.piezas) + '</td>' +
-              '<td><button type="button" class="row-btn primary log-entregar" data-folio="' +
-                esc(e.folio).replace(/"/g, '&quot;') + '">Ya se entregó</button></td></tr>';
-          }).join('') + '</tbody></table>';
-      }
+      // Lo que falta por entregar: primero lo atrasado, en rojo, y debajo lo que
+      // todavía está en fecha.
+      //
+      // "Aquí esto está bien, pero que de todas formas salgan todos los demás que
+      // siguen pendientes por entregar — que salgan más abajo, y estos sí que se
+      // pongan en rojo" (Val, 10 nov). Antes solo se veía lo vencido: para saber
+      // qué venía después había que ir mes por mes en el calendario.
+      h += tablaEntregas('Ya pasaron su fecha y siguen sin entregarse',
+                         d.vencidas || [], true, d);
+      h += tablaEntregas('Pendientes por entregar',
+                         d.pendientes || [], false, d);
       document.getElementById('tableWrap').innerHTML = h;
       document.getElementById('count').textContent =
         fmtNum(t.entregasDelMes + t.recoleccionesDelMes) + ' movimientos';
@@ -10583,6 +10928,50 @@
         '<div class="state">' + esc((e && e.message) || 'No se pudo armar el calendario.') + '</div>';
     });
   }
+  // Las dos tablas de abajo del calendario. Es la misma tabla; lo que cambia es
+  // si va en rojo (atrasada) o en calma (todavía en fecha).
+  function tablaEntregas(titulo, lista, roja, d) {
+    if (!(lista || []).length) return '';
+    var hoy = d && d.hoy ? d.hoy : 0;
+    var dias = function (n) {
+      // Cuántos días lleva de atraso, contados de verdad y no restando números
+      if (!hoy || !n) return 0;
+      var f = function (x) {
+        return new Date(Math.floor(x / 10000), Math.floor(x / 100) % 100 - 1, x % 100); };
+      return Math.round((f(hoy) - f(n)) / 86400000);
+    };
+    return '<h3 class="sec-t"' + (roja ? ' style="color:var(--danger)"' : '') + '>' +
+      esc(titulo) + ' <span class="s" style="color:var(--muted);font-weight:400">· ' +
+      fmtNum(lista.length) + '</span></h3>' +
+      '<table class="mini-table"><thead><tr><th>Folio</th><th>Cliente</th><th>Zona</th>' +
+      '<th>' + (roja ? 'Era para' : 'Es para') + '</th>' +
+      '<th style="text-align:right">Piezas</th><th></th></tr></thead><tbody>' +
+      lista.map(function (e) {
+        var atraso = roja ? dias(e.dia) : 0;
+        return '<tr' + (roja ? ' style="background:var(--danger-bg)"' : '') + '>' +
+          '<td><b' + (roja ? ' style="color:var(--danger)"' : '') + '>' +
+            esc(e.folio) + '</b></td>' +
+          '<td>' + esc(e.cliente) + '</td><td class="s">' + esc(e.zona) + '</td>' +
+          '<td' + (roja ? ' style="color:var(--danger)"' : '') + '>' +
+            esc(formatDateCell(e.fecha)) +
+            (roja && atraso > 0
+              ? '<div class="s" style="color:var(--danger)">' + fmtNum(atraso) +
+                (atraso === 1 ? ' día tarde' : ' días tarde') + '</div>' : '') + '</td>' +
+          '<td class="num">' + fmtNum(e.piezas) + '</td>' +
+          '<td style="white-space:nowrap">' +
+            (state.rol === 'lector' ? '' :
+              '<button type="button" class="row-btn primary log-entregar" data-folio="' +
+                esc(e.folio).replace(/"/g, '&quot;') + '" data-cli="' +
+                esc(e.cliente || '').replace(/"/g, '&quot;') + '">Ya se entregó</button> ' +
+              '<button type="button" class="row-btn log-editar" data-folio="' +
+                esc(e.folio).replace(/"/g, '&quot;') + '" data-cli="' +
+                esc(e.cliente || '').replace(/"/g, '&quot;') + '" data-fecha="' +
+                esc(e.fecha || '').replace(/"/g, '&quot;') + '" data-com="' +
+                esc(e.comentario || '').replace(/"/g, '&quot;') + '">Editar</button>') +
+          '</td></tr>';
+      }).join('') + '</tbody></table>';
+  }
+
   function detalleDelDia(dia, evs, d) {
     return '<div class="cal-detalle"><h3 class="sec-t" style="margin-top:0">' +
       dia + ' de ' + esc(d.nombreMes) + '</h3>' +
@@ -10641,6 +11030,71 @@
           '</div></div>';
       }).join('') + '</div>';
   }
+  // ===== Editar una entrega, dejando dicho quién la movió =====
+  //
+  // Antes la única forma de cambiar una fecha desde la lista era arrastrar la
+  // tarjeta en el calendario, o un `prompt` pidiendo dd/mm/aaaa a mano. Y el
+  // cambio no quedaba anotado en ningún lado: la fecha vieja desaparecía.
+  //
+  // Ahora se abre esta ventana, se cambia la fecha y se puede dejar el motivo.
+  // El servidor escribe en la hoja de qué fecha a qué fecha se movió, quién lo
+  // hizo y a qué hora, debajo de lo que ya hubiera anotado.
+  var logEditando = null;
+  var MESES_LARGOS_L = ['enero','febrero','marzo','abril','mayo','junio','julio',
+                        'agosto','septiembre','octubre','noviembre','diciembre'];
+  function deIsoALarga(iso) {
+    var m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return '';
+    return (+m[3]) + ' ' + MESES_LARGOS_L[(+m[2]) - 1] + ' ' + m[1];
+  }
+  function abrirEditarEntrega(folio, cliente, fecha, comentario) {
+    logEditando = { folio: folio, fecha: fecha || '' };
+    modalModo = 'logEditar';
+    document.getElementById('aventaTitulo').textContent = 'Editar la entrega de ' + folio;
+    document.getElementById('aventaCuerpo').innerHTML =
+      '<div class="s" style="color:var(--slate);margin-bottom:12px">' +
+        esc(cliente || 'Sin cliente') +
+        (fecha ? ' · hoy está acordada para el <b>' + esc(formatDateCell(fecha)) + '</b>' : '') +
+        '</div>' +
+      '<div class="fld"><label>Nueva fecha de entrega</label>' +
+        '<input type="date" id="leFecha" value="' + esc(aIsoFecha(fecha)) + '">' +
+        '<div class="s" style="color:var(--muted);margin-top:2px">Se cambia en todos los ' +
+        'renglones de la venta: la fecha es del pedido, no de cada mueble.</div></div>' +
+      '<div class="fld"><label>¿Por qué se movió? <span class="s" ' +
+        'style="color:var(--muted);font-weight:400">(opcional)</span></label>' +
+        '<textarea id="leNota" rows="3" placeholder="El proveedor se atrasó, el cliente ' +
+        'pidió otra fecha, no había quién recibiera…"></textarea></div>' +
+      (comentario ? '<div class="s" style="background:var(--paper);border:1px solid ' +
+        'var(--line);border-radius:10px;padding:10px 12px;white-space:pre-wrap">' +
+        '<b>Lo que ya estaba anotado</b><br>' + esc(comentario) + '</div>' : '') +
+      '<div class="s" style="color:var(--muted);margin-top:10px">Queda escrito en la hoja ' +
+        'de qué fecha a qué fecha se movió, quién lo hizo y a qué hora.</div>';
+    document.getElementById('aventaOk').textContent = 'Guardar el cambio';
+    document.getElementById('aventaCancel').textContent = 'Cancelar';
+    document.getElementById('aventaModal').classList.add('on');
+  }
+  function guardarEditarEntrega() {
+    if (!logEditando) return;
+    var iso = (document.getElementById('leFecha') || {}).value || '';
+    var nota = (document.getElementById('leNota') || {}).value || '';
+    var larga = deIsoALarga(iso);
+    if (iso && !larga) { toast('Esa fecha no se entiende.', 'err'); return; }
+    if (!larga && !nota.trim()) { toast('Cambia la fecha o escribe el motivo.', 'err'); return; }
+    var btn = document.getElementById('aventaOk');
+    btn.disabled = true; btn.textContent = 'Guardando…';
+    api('logistica', { token: state.token, marcar: 'editar', folio: logEditando.folio,
+                       fecha: larga, comentario: nota.trim() })
+      .then(function (o) {
+        toast(o.mensaje || 'Listo.', 'ok');
+        logEditando = null;
+        cerrarMandarAVenta();
+        loadLogistica();
+      })
+      .catch(function (e) {
+        fail(e); btn.disabled = false; btn.textContent = 'Guardar el cambio';
+      });
+  }
+
   // Mueve lo arrastrado al día que se soltó, preguntando antes.
   function moverEnCalendario(a, dia, d) {
     var MESL = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto',
@@ -10774,6 +11228,14 @@
     });
     marcar('log-revisar', 'revisado');
     marcar('log-comentar', 'comentario', true);
+    // Editar la entrega desde la lista de abajo, con su ventana y su rastro
+    document.querySelectorAll('#tableWrap .log-editar').forEach(function (b) {
+      b.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        abrirEditarEntrega(b.getAttribute('data-folio'), b.getAttribute('data-cli'),
+                           b.getAttribute('data-fecha'), b.getAttribute('data-com'));
+      });
+    });
     // Mover la entrega de día. La fecha es de la venta, así que se mueven todos
     // sus renglones de una vez.
     document.querySelectorAll('.log-mover').forEach(function (b) {
@@ -14090,10 +14552,15 @@
           '<div class="cot-acciones">' +
             '<button type="button" class="primary llegaron-btn" data-ped="' +
               esc(k).replace(/"/g, '&quot;') + '">Ya llegaron</button>' +
+            // Los dos botones se confund\u00edan. Val: "de los comentarios de los
+            // botones que no hacen tanto sentido, podr\u00edas ser m\u00e1s claro: decir
+            // salida f\u00edsica / asignar a venta". Son dos cosas distintas:
+            // uno MUEVE la pieza (sale de bodega y baja el stock) y el otro solo
+            // DICE para qui\u00e9n es (escribe folio y fecha en el rengl\u00f3n).
             '<button type="button" class="aventa-btn" data-ped="' +
-            esc(k).replace(/"/g, '&quot;') + '">Registrar salidas\u2026</button>' +
+            esc(k).replace(/"/g, '&quot;') + '">Salida f\u00edsica de bodega\u2026</button>' +
             '<button type="button" class="asignar-btn" data-ped="' +
-            esc(k).replace(/"/g, '&quot;') + '">Cliente y fecha por mueble</button>' +
+            esc(k).replace(/"/g, '&quot;') + '">Asignar a una venta\u2026</button>' +
             '<button type="button" class="oc-btn" data-ped="' +
             esc(k).replace(/"/g, '&quot;') + '">Orden de compra (PDF)</button>' +
             // Sumarle un mueble a un pedido que ya existe. Antes había que dar
@@ -14108,8 +14575,11 @@
             (esSoloLectura(state.key) ? '' :
               '<button type="button" class="row-btn ped-nombre" data-ped="' +
               esc(k).replace(/"/g, '&quot;') + '">Cambiar el número</button>') +
-            '<span class="s" style="color:var(--muted)">Registra la salida de bodega de las ' +
-            'piezas de este pedido. A qué venta van ya quedó al pedirlas.</span>' +
+            '<span class="s" style="color:var(--muted);flex-basis:100%;line-height:1.6">' +
+            '<b>Ya llegaron</b>: el proveedor nos entregó y las piezas entran a bodega. · ' +
+            '<b>Salida física de bodega</b>: la pieza se sale de verdad, hacia el cliente, ' +
+            'y el stock baja. · <b>Asignar a una venta</b>: solo dice para qué folio es cada ' +
+            'mueble y cuándo nos lo entrega el proveedor; no mueve nada de bodega.</span>' +
           '</div></div>';
       }
       h += '</div>';
@@ -14967,6 +15437,50 @@
     set();
   }
 
+  // ===== Cómo se llama cada columna EN PANTALLA =====
+  //
+  // "Que la fecha de entrega diga que es la fecha de entrega del proveedor a
+  // nosotros, o sea tener más claridad" (Val, 10 nov).
+  //
+  // "Entrega" quiere decir dos cosas según dónde se lea: que el PROVEEDOR nos
+  // entrega a nosotros, o que NOSOTROS le entregamos al cliente. En Pedidos a
+  // proveedores es siempre la primera, y el nombre de la columna no lo decía.
+  // La hoja NO se toca —esa columna se llama así en todos lados y la leen seis
+  // pantallas—: lo único que cambia es la etiqueta y la línea de abajo.
+  var ETIQUETA_CAMPO = {
+    prov_pedidos: {
+      'fecha': ['Fecha del pedido', 'El día que se le encarga al proveedor.'],
+      'fecha estimada de entrega': ['Cuándo nos lo entrega el proveedor',
+        'Es del proveedor hacia nosotros, no de nosotros al cliente.'],
+      'folio cliente': ['Para qué venta es',
+        'El folio de la venta, o Stock / Exhibición si todavía no es de nadie.'],
+      'destino': ['A dónde llega la pieza',
+        'Bodega Perch, directo a cliente, el showroom o se queda en el proveedor.'],
+      // "Nada más sería decir si lo vamos a poner en metros o en centímetros,
+      // para que no haya confusión; plantearlo desde el principio" (Val, junta
+      // del 10 nov). Se queda en METROS, que es como se le pide a la tapicería.
+      'metraje': ['Metraje de la tela (metros)',
+        'En metros, con decimales: 1.3 son un metro treinta.'],
+      'pedido proveedor': ['Número de pedido del proveedor', '']
+    },
+    // El catálogo: el metraje de referencia de cada mueble, para saber cuánta
+    // tela pedir sin tener que preguntarle al tapicero cada vez.
+    inventario: {
+      'metraje': ['Metraje de tela (metros)',
+        'Cuánta tela lleva este mueble, en metros. Es de referencia: al pedir se ' +
+        'puede cambiar.']
+    },
+    op_envios: {
+      'fecha estimada de entrega': ['Cuándo se le entrega al cliente',
+        'Esta sí es de nosotros hacia el cliente.'],
+      'fecha de entrega real': ['Cuándo se le entregó de verdad', '']
+    }
+  };
+  function etiquetaDe(h) {
+    var m = ETIQUETA_CAMPO[state.key];
+    return (m && m[norm(h)]) || null;
+  }
+
   var FORM_FIELDS = {
     // Vacío = cada área muestra todas sus columnas (en el orden de la hoja).
     // Pedidos a proveedores: primero el pedido, luego uno o varios productos
@@ -14984,9 +15498,23 @@
     // El folio del cliente NO se pregunta aquí: el pedido al proveedor es general y a
     // quién le toca cada pieza se decide al darle salida ("Mandar a venta"), que es
     // quien llena esa columna. Preguntarlo antes obligaba a adivinar.
+    // EL ORDEN IMPORTA: primero el mueble, después quién lo hace.
+    //
+    // Nico pidió que el desplegable de proveedores enseñe solo a los que hacen
+    // esa pieza, y el filtro existe desde la 518… pero aquí el campo Proveedor
+    // iba ANTES que Producto, así que al abrir el formulario todavía no había
+    // mueble elegido y la lista salía con los 40 de siempre. Él lo volvió a
+    // reportar —"esto no se ha hecho"— y tenía razón: el filtro nunca alcanzaba
+    // a actuar. Con Producto y Material arriba, para cuando llega a Proveedor
+    // la lista ya viene corta.
+    //
+    // Pedido Proveedor va después de Proveedor porque el número se propone a
+    // partir de él (`sugerirPedidoDe`).
     prov_pedidos: [
-      'Fecha', 'Fecha Estimada de Entrega', 'Pedido Proveedor', 'Proveedor',
-      'Producto', 'Material', 'Tela', 'Especificaciones', 'Cantidad', 'Costo Unitario',
+      'Fecha', 'Fecha Estimada de Entrega',
+      'Producto', 'Material', 'Tela', 'Metraje',
+      'Proveedor', 'Pedido Proveedor',
+      'Especificaciones', 'Cantidad', 'Costo Unitario',
       'Costo Total', 'Costo Total + IVA', 'Destino'
     ],
     // Leads: captura mínima a propósito. Si toma más de 15 segundos, nadie la va a llenar.
@@ -16098,19 +16626,50 @@
       campo.parentNode.appendChild(nota);
     }
     var pr = norm(proveedor);
-    if (!pr) { nota.textContent = ''; return; }
-    var suyos = (state.rows || []).filter(function (r) {
-      return norm(r['Proveedor']) === pr;
-    }).map(function (r) { return r['Pedido Proveedor']; });
+    if (!pr) { nota.innerHTML = ''; return; }
+    var renglones = (state.rows || []).filter(function (r) {
+      return norm(r['Proveedor']) === pr && String(r['Pedido Proveedor'] || '').trim();
+    });
+    var suyos = renglones.map(function (r) { return r['Pedido Proveedor']; });
+
+    // El último que se le pidió, POR FECHA.
+    //
+    // "Si le voy a pedir algo a Sergio, que abajo me salga su última
+    // nomenclatura —la última que se pidió de fecha— y entonces ya pueda poner
+    // la que le sigue" (Val, 10 nov).
+    //
+    // No es lo mismo que el número más alto: un proveedor puede traer dos series
+    // corriendo a la vez, o un pedido viejo capturado tarde. Lo que sirve para
+    // saber qué toca es lo ÚLTIMO que se le pidió, con su fecha a la vista.
+    var ultimo = null;
+    renglones.forEach(function (r) {
+      var iso = aIsoFecha(r['Fecha']);
+      if (!iso) return;
+      if (!ultimo || iso > ultimo.iso) {
+        ultimo = { iso: iso, pedido: String(r['Pedido Proveedor']).trim(),
+                   fecha: r['Fecha'] };
+      }
+    });
+    // Si ningún renglón trae fecha, al menos se dice cuál fue el último capturado
+    if (!ultimo && suyos.length) {
+      ultimo = { iso: '', pedido: String(suyos[suyos.length - 1]).trim(), fecha: '' };
+    }
+
     var r2 = siguientePedidoCliente(suyos);
+    var deAntes = ultimo
+      ? '<div><b>Lo último que se le pidió fue ' + esc(ultimo.pedido) + '</b>' +
+        (ultimo.fecha ? ' · ' + esc(formatDateCell(ultimo.fecha)) : '') + '</div>'
+      : '';
     if (!r2.sugerido) {
-      nota.textContent = 'De este proveedor no hay pedidos anteriores: escribe el número.';
+      nota.innerHTML = deAntes ||
+        'De este proveedor no hay pedidos anteriores: escribe el número.';
       return;
     }
     if (!String(campo.value || '').trim()) campo.value = r2.sugerido;
-    nota.textContent = (campo.value === r2.sugerido ? 'Sugerido: ' : 'El que sigue sería ') +
-      r2.sugerido + ' · va después de ' + r2.basadoEn + '. ' + r2.porque +
-      ' Puedes cambiarlo.';
+    nota.innerHTML = deAntes +
+      '<div>' + (campo.value === r2.sugerido ? 'Sugerido: ' : 'El que sigue sería ') +
+      '<b>' + esc(r2.sugerido) + '</b> · va después de ' + esc(r2.basadoEn) + '. ' +
+      esc(r2.porque) + ' Puedes cambiarlo.</div>';
   }
   // La ciudad se saca de la dirección de envío: es lo último que suele venir
   var CIUDADES = ['CDMX', 'Ciudad de México', 'Monterrey', 'Guadalajara', 'Querétaro', 'Puebla',
@@ -17282,7 +17841,11 @@
         if (lcE && lcE.envioOnce && norm(lcE.envioOnce) === norm(h)) { envioCampo = h; return; }
       var wrap = document.createElement('div'); wrap.className = 'fld';
       var lab = document.createElement('label');
-      lab.innerHTML = esc(String(h).trim()) + (isRequiredField(h) ? ' <span style="color:var(--danger)">*</span>' : '');
+      // El nombre de la hoja no siempre dice qué significa el campo: donde haya
+      // una etiqueta más clara, se usa ésa (la columna de la hoja no cambia).
+      var et = etiquetaDe(h);
+      lab.innerHTML = esc(et ? et[0] : String(h).trim()) +
+        (isRequiredField(h) ? ' <span style="color:var(--danger)">*</span>' : '');
       wrap.appendChild(lab);
       // --- Cascada de producto: niveles encadenados y campos autocompletados ---
       var cLevel = cascadeLevelIndex(h);
@@ -17549,6 +18112,15 @@
           nf.style.cssText = 'color:var(--muted);margin-top:4px;font-size:12px';
           wrap.appendChild(nf);
         }
+      }
+      // La explicación va DEBAJO del campo, no entre la etiqueta y el campo: ahí
+      // empujaba el input hacia abajo y la rejilla salía desalineada.
+      if (et && et[1]) {
+        var pista = document.createElement('div');
+        pista.className = 's';
+        pista.style.cssText = 'color:var(--muted);margin-top:4px;font-size:12px';
+        pista.textContent = et[1];
+        wrap.appendChild(pista);
       }
       box.appendChild(wrap);
       } catch (err) {
@@ -18281,7 +18853,7 @@
       if (/^(stock|bodega|showroom|exhibici)/i.test(norm(f))) return;
       aventaDest[i] = [{ cant: '', folio: f, dir: '' }];
     });
-    document.getElementById('aventaTitulo').textContent = 'Registrar salidas · ' + pedido;
+    document.getElementById('aventaTitulo').textContent = 'Salida física de bodega · ' + pedido;
     document.getElementById('aventaCuerpo').innerHTML =
       '<div class="state" style="padding:30px 0">Buscando ventas que pidieron estos productos…</div>';
     document.getElementById('aventaModal').classList.add('on');
@@ -18308,7 +18880,7 @@
         aventaPend = (d || {}).pendientes || [];
         pintarMandarAVenta();
         var b = document.getElementById('aventaOk');
-        b.disabled = false; b.textContent = 'Registrar salidas';
+        b.disabled = false; b.textContent = 'Registrar la salida';
         // Y ahora lo de después, sin bloquear
         api('inv-prov', { token: state.token })
           .then(function (inv) {
@@ -18412,7 +18984,11 @@
   }
   function pintarMandarAVenta() {
     modalModo = 'salidas';
-    var h = '';
+    // Lo que de verdad hace esta ventana, dicho arriba: aquí la pieza SE MUEVE.
+    var h = '<div class="s" style="color:var(--slate);margin-bottom:12px">' +
+      'Esto <b>saca la pieza de bodega</b> y la manda al cliente: se escribe el ' +
+      'renglón en <b>Salidas de Inventario</b> y el stock baja. Si solo quieres dejar ' +
+      'dicho para qué venta es, sin moverla, usa <b>Asignar a una venta</b>.</div>';
     aventaLineas.forEach(function (l, i) {
       // Primero las ventas que coinciden en producto Y material.
       var mismoProd = aventaPend.filter(function (p) {
@@ -18584,7 +19160,7 @@
     aventaYaSalio = {};
     entradaPedido = null; entradaLineas = []; entradaPend = null;
     var bOk = document.getElementById('aventaOk');
-    bOk.textContent = 'Registrar salidas';
+    bOk.textContent = 'Registrar la salida';
     bOk.style.display = '';
     bOk.disabled = false; bOk.title = ''; bOk.style.opacity = ''; bOk.style.cursor = '';
   }
@@ -18639,7 +19215,7 @@
       avisoFijo('<b>Las salidas se registraron, pero no se pudo marcar el folio en ' +
         'el pedido.</b><div class="s" style="margin-top:6px">El pedido va a seguir ' +
         'apareciendo como "Sin asignar" en Ventas por folio. Se puede corregir con ' +
-        '"Cliente y fecha por mueble".</div>');
+        '"Asignar a una venta".</div>');
     });
   }
 
@@ -18724,7 +19300,7 @@
       cerrarMandarAVenta(); loadArea();
       mostrarAvisoProveedor();
     }).catch(fail).then(function () {
-      btn.disabled = false; btn.textContent = 'Registrar salidas';
+      btn.disabled = false; btn.textContent = 'Registrar la salida';
     });
   }
 
@@ -19919,7 +20495,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.11.10-548';
+    var mia = '2026.11.10-553';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
@@ -20005,6 +20581,7 @@
       case 'cerrar':          cerrarMandarAVenta(); return;
       case 'pedirPago':       guardarPedirPago(); return;
       case 'pedNombre':       guardarCambiarNumeroPedido(); return;
+      case 'logEditar':       guardarEditarEntrega(); return;
       case 'tabNota':         guardarInstrucciones(); return;
       case 'tabEnvio':        guardarEnvioTablero(); return;
       case 'cierre':
