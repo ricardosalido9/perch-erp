@@ -1114,7 +1114,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.10-553</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.11-556</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -20495,7 +20495,7 @@
   // Ahora sale un aviso arriba que no se puede pasar por alto, con botón de recargar.
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.11.10-553';
+    var mia = '2026.11.11-556';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
@@ -20714,15 +20714,27 @@
       if (!confirm('¿Quitar ' + prodQ + ' del pedido?\n\nEl renglón queda en blanco con una ' +
                    'nota de quién lo quitó. Los totales se recalculan solos.')) return;
       qr.disabled = true; qr.textContent = 'Quitando…';
-      api('quitar-renglon', { token: state.token, key: state.key, row: filaQ, producto: prodQ })
-        .then(function (o) { toast(o.mensaje || 'Renglón quitado.', 'ok'); loadArea(); })
-        .catch(function (err) {
-          avisoFijo('<b>No se pudo quitar el producto.</b><div style="margin-top:6px">' +
-            esc((err && err.message) || '') + '</div>' +
-            (err && err.pista ? '<div class="s" style="margin-top:6px;color:var(--slate)">' +
-              esc(err.pista) + '</div>' : ''));
-          qr.disabled = false; qr.textContent = 'Quitar';
-        });
+      var pedirQuitar = function (forzando) {
+        return api('quitar-renglon', { token: state.token, key: state.key, row: filaQ,
+                                       producto: prodQ, confirmaCerrado: !!forzando })
+          .then(function (o) { toast(o.mensaje || 'Renglón quitado.', 'ok'); loadArea(); })
+          .catch(function (err) {
+            // Un pedido ya entregado se pregunta una segunda vez, con el motivo
+            // a la vista: ese papel ya existe del lado del proveedor.
+            if (err && err.codigo === 'pedido-cerrado' && !forzando) {
+              if (confirm((err.message || '') + '\n\n' + (err.pista || '') +
+                          '\n\n¿Quitarlo de todas formas?')) return pedirQuitar(true);
+              qr.disabled = false; qr.textContent = 'Quitar';
+              return;
+            }
+            avisoFijo('<b>No se pudo quitar el producto.</b><div style="margin-top:6px">' +
+              esc((err && err.message) || '') + '</div>' +
+              (err && err.pista ? '<div class="s" style="margin-top:6px;color:var(--slate)">' +
+                esc(err.pista) + '</div>' : ''));
+            qr.disabled = false; qr.textContent = 'Quitar';
+          });
+      };
+      pedirQuitar(false);
       return;
     }
     // La fecha de entrega acordada es del pedido completo, no de un producto:
