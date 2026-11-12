@@ -1,0 +1,15 @@
+{
+  "name": "perch-erp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Perch Diseño y Mobiliario — Panel de datos (Vercel + Google Sheets)",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@pdf-lib/fontkit": "^1.1.1",
+    "googleapis": "^144.0.0",
+    "pdf-lib": "^1.17.1",
+    "pdf-parse": "^1.1.4"
+  }
+}
