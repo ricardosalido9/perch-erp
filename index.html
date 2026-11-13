@@ -1114,7 +1114,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.13-562</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.13-563</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -8406,7 +8406,7 @@
         'gap:12px;flex-wrap:wrap;margin-bottom:10px">' +
         '<h4 class="sec-t" style="margin:0">' + esc(q) + '</h4>' +
         '<div class="s" style="color:var(--slate)">' + formatMoney(totVentas) +
-        ' vendidos en ' + comAnio + ' · <b style="color:var(--vino)">' + formatMoney(tot) +
+        ' de ventas en ' + comAnio + ' (sin IVA) · <b style="color:var(--vino)">' + formatMoney(tot) +
         '</b> de comisión</div></div>' +
         '<table class="mini-table"><thead><tr>' +
         '<th>Periodo</th><th style="text-align:right">Ventas (base)</th>' +
@@ -20713,7 +20713,7 @@
     ? '⌘⇧R' : 'Ctrl+Shift+R';
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.11.13-562';
+    var mia = '2026.11.13-563';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
