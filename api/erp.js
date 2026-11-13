@@ -11,6 +11,7 @@ const RUTAS = {
   menu:           require('../lib/handlers/menu'),
   inicio:         require('../lib/handlers/inicio'),
   vigilancia:     require('../lib/handlers/vigilancia'),
+  comisiones:     require('../lib/handlers/comisiones'),
   dashboard:      require('../lib/handlers/dashboard'),
   data:           require('../lib/handlers/data'),
   add:            require('../lib/handlers/add'),
