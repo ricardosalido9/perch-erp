@@ -1114,7 +1114,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.13-563</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.17-566</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1503,7 +1503,7 @@
     fin_bancos:   'Se calcula desde Ingresos y Egresos más el saldo de arranque.',
     ventas_folios:'Sale de cruzar Ventas contra Pedidos a proveedores.'
   };
-  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'cxc_cotejo', 'fin_cobros', 'fac_pendientes', 'fac_control', 'cfdi_control', 'cfdi_comp_rec', 'cfdi_prov', 'prov_razon', 'rh_resumen', 'fin_gastos_op', 'fin_efectivo', 'fac_impuestos', 'fac_emitidos', 'fin_estados', 'fin_flujo', 'fin_balance', 'fin_bancos', 'ventas_folios', 'ventas_comisiones',
+  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'cxc_cotejo', 'fin_cobros', 'fac_pendientes', 'fac_control', 'cfdi_control', 'cfdi_comp_rec', 'cfdi_prov', 'prov_razon', 'rh_resumen', 'fin_gastos_op', 'fin_efectivo', 'fac_impuestos', 'fac_emitidos', 'fin_estados', 'fin_flujo', 'fin_balance', 'fin_bancos', 'ventas_folios', 'ventas_comisiones', 'ventas_marketing',
     // El stock sale de pedidos, entradas y salidas: se recalcula, no se edita
     'op_stock', 'op_traza', 'op_revisar', 'prov_revision'];
   function esLector() {
@@ -1941,7 +1941,7 @@
                 // Un pedido anterior al corte se ve, pero su dinero ya está dentro
                 // del saldo inicial: si no se dijera, parecería que falta sumarlo.
                 (d2.antesDelCorte
-                  ? ' <span class="s" style="background:var(--linea);color:var(--slate);' +
+                  ? ' <span class="s" style="background:var(--line);color:var(--slate);' +
                     'padding:2px 8px;border-radius:20px;font-size:11px">antes del corte · ' +
                     'su dinero ya está en el saldo inicial</span>' : '') +
                 '<span>' + esc(formatMoney(d2.costo)) + ' · pagado ' + esc(formatMoney(d2.pagado)) +
@@ -8324,6 +8324,196 @@
   // La comisión no se guarda en ningún lado: se calcula de las ventas cada vez
   // que se abre. Lo único que se captura es el bono trimestral de Nico.
   var comAnio = 0;
+  // ===== Reporte de marketing: B2B / B2C y lo demás del cierre =====
+  //
+  // Camila llena Ciudad, Proyecto, Línea de negocio, Tipo de línea, Cómo llegó y
+  // Showroom en cada venta, y no tenía dónde verlo junto. Esto es esa pantalla.
+  var mkAnio = 0, mkMes = 0;
+  function loadMarketingRep() {
+    document.getElementById('summary').innerHTML = '';
+    document.getElementById('summary').style.display = 'none';
+    mostrarAlta(false);
+    document.getElementById('count').textContent = '';
+    document.getElementById('tableWrap').innerHTML =
+      '<div class="state" style="padding:50px 0">Armando el reporte…</div>';
+    api('reporte-marketing', { token: state.token, anio: mkAnio || '', mes: mkMes || '' })
+      .then(pintarMarketingRep)
+      .catch(function (e) {
+        document.getElementById('tableWrap').innerHTML =
+          '<div class="state" style="color:var(--danger);padding:40px 0">' +
+          esc((e && e.message) || 'No se pudo armar.') + '</div>';
+      });
+  }
+  var MK_MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio',
+                  'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+  // `destacar` es el corte principal (B2B/B2C), que va a todo lo ancho y con
+  // ticket promedio. Los demás van en rejilla de tres y ahí cinco columnas no
+  // caben: se quedan en categoría, pedidos y monto con su porcentaje.
+  function tablaCorte(titulo, filas, destacar) {
+    if (!filas || !filas.length) return '';
+    var h = '<div class="panel"><h4>' + esc(titulo) + '</h4><div class="panel-body">' +
+      '<table class="mini-table"><thead><tr><th>' + esc(titulo) + '</th>' +
+      '<th style="text-align:right">Pedidos</th>' +
+      '<th style="text-align:right">Monto</th>' +
+      (destacar ? '<th style="text-align:right">% del monto</th>' +
+                  '<th style="text-align:right">Ticket promedio</th>' : '') +
+      '</tr></thead><tbody>';
+    filas.forEach(function (f) {
+      var fuerte = destacar && /^b2[bc]$/i.test(f.que);
+      h += '<tr><td>' + (fuerte ? '<b>' : '') + esc(f.que) + (fuerte ? '</b>' : '') +
+        '<div style="margin-top:4px;height:6px;border-radius:3px;' +
+        'background:var(--line);overflow:hidden"><div style="height:100%;width:' +
+        Math.max(1, Math.min(100, f.pctMonto)) + '%;background:var(--accent)"></div></div></td>' +
+        '<td style="text-align:right">' + fmtNum(f.pedidos) + '</td>' +
+        '<td style="text-align:right">' + formatMoney(f.monto) +
+        (destacar ? '' : '<div class="s" style="color:var(--muted)">' + f.pctMonto + '%</div>') +
+        '</td>' +
+        (destacar ? '<td style="text-align:right"><b>' + f.pctMonto + '%</b></td>' +
+                    '<td style="text-align:right">' + formatMoney(f.ticket) + '</td>' : '') +
+        '</tr>';
+    });
+    return h + '</tbody></table></div></div>';
+  }
+  function pintarMarketingRep(d) {
+    mkAnio = d.anio; mkMes = d.mes || 0;
+    var h = '<div class="est-top"><div>' +
+      '<h3 class="sec-t" style="margin:0">Reporte de marketing</h3>' +
+      '<div class="s" style="color:var(--muted)">' + esc(d.base || '') + '</div></div>' +
+      '<div style="display:flex;gap:8px">' +
+      '<div><label class="s" style="color:var(--muted);display:block">Año</label>' +
+      '<select id="mkAnio" class="inp">' +
+      (d.anios || []).map(function (a) {
+        return '<option value="' + a + '"' + (Number(a) === d.anio ? ' selected' : '') +
+          '>' + a + '</option>';
+      }).join('') + '</select></div>' +
+      '<div><label class="s" style="color:var(--muted);display:block">Mes</label>' +
+      '<select id="mkMes" class="inp"><option value="0">Todo el año</option>' +
+      MK_MESES.map(function (m, i) {
+        return '<option value="' + (i + 1) + '"' + (d.mes === i + 1 ? ' selected' : '') +
+          '>' + m + '</option>';
+      }).join('') + '</select></div>' +
+      '<div style="align-self:flex-end"><button class="row-btn" id="mkPdf">Guardar como PDF</button></div>' +
+      '</div></div>';
+
+    if (!d.pedidos) {
+      h += '<div class="state" style="padding:40px 0">No hay pedidos capturados en ese periodo.</div>';
+      document.getElementById('tableWrap').innerHTML = h;
+      engancharMarketingRep(d);
+      return;
+    }
+
+    var tarjeta = function (k, v) {
+      return '<div class="sum-card"><div class="k">' + esc(k) + '</div><div class="v">' +
+        esc(v) + '</div></div>';
+    };
+    h += '<div class="summary-cards" style="margin-bottom:14px">' +
+      tarjeta('Pedidos', fmtNum(d.pedidos)) +
+      tarjeta('Monto', formatMoney(d.monto)) +
+      tarjeta('Piezas', fmtNum(d.piezas)) +
+      tarjeta('Ticket promedio', formatMoney(d.pedidos ? d.monto / d.pedidos : 0)) +
+      '</div>';
+
+    if (d.sinTipo) {
+      h += '<div class="aviso-caja">A <b>' + fmtNum(d.sinTipo) + '</b> ' +
+        (d.sinTipo === 1 ? 'pedido le falta' : 'pedidos les falta') +
+        ' el <b>Tipo de línea</b> (B2B / B2C). Salen agrupados como ' +
+        '<i>Sin especificar</i>.</div>';
+    }
+
+    h += '<div class="dash-cols" style="margin-bottom:14px">' +
+      tablaCorte('B2B / B2C', d.tipoLinea, true) + '</div>';
+
+    // Mes por mes, que es como se ve si una línea está creciendo
+    if ((d.porMes || []).length > 1) {
+      var tipos = [];
+      d.porMes.forEach(function (m) {
+        Object.keys(m.tipos).forEach(function (t) {
+          if (tipos.indexOf(t) === -1) tipos.push(t);
+        });
+      });
+      h += '<div class="panel" style="margin-bottom:14px"><h4>B2B / B2C mes por mes · ' +
+        d.anio + '</h4><div class="panel-body"><table class="mini-table"><thead><tr><th>Mes</th>' +
+        tipos.map(function (t) {
+          return '<th style="text-align:right">' + esc(t) + '</th>';
+        }).join('') + '<th style="text-align:right">Total</th></tr></thead><tbody>';
+      d.porMes.forEach(function (m) {
+        h += '<tr><td><b>' + esc(m.nombre) + '</b><div class="s" style="color:var(--muted)">' +
+          fmtNum(m.pedidos) + (m.pedidos === 1 ? ' pedido' : ' pedidos') + '</div></td>' +
+          tipos.map(function (t) {
+            var x = m.tipos[t];
+            return '<td style="text-align:right">' + (x ? formatMoney(x.monto) +
+              '<div class="s" style="color:var(--muted)">' + fmtNum(x.pedidos) + '</div>' : '') +
+              '</td>';
+          }).join('') +
+          '<td style="text-align:right"><b>' + formatMoney(m.monto) + '</b></td></tr>';
+      });
+      h += '</tbody></table></div></div>';
+    }
+
+    h += '<div class="dash-cols">' +
+      (d.cortes || []).map(function (c) { return tablaCorte(c.titulo, c.filas); }).join('') +
+      '</div>';
+
+    document.getElementById('tableWrap').innerHTML = h;
+    engancharMarketingRep(d);
+  }
+  function engancharMarketingRep(d) {
+    var a = document.getElementById('mkAnio'), m = document.getElementById('mkMes');
+    if (a) a.onchange = function () { mkAnio = Number(this.value); loadMarketingRep(); };
+    if (m) m.onchange = function () { mkMes = Number(this.value); loadMarketingRep(); };
+    var b = document.getElementById('mkPdf');
+    if (b) b.onclick = function () { pdfMarketing(d); };
+  }
+  // La versión para imprimir: sin menú, sin botones, con el logo arriba.
+  function pdfMarketing(d) {
+    var periodo = (d.mes ? MK_MESES[d.mes - 1] + ' ' : '') + d.anio;
+    var tabla = function (titulo, filas) {
+      if (!filas || !filas.length) return '';
+      return '<h2>' + esc(titulo) + '</h2><table><thead><tr><th>' + esc(titulo) +
+        '</th><th class="r">Pedidos</th><th class="r">Monto</th><th class="r">% del monto</th>' +
+        '<th class="r">Ticket promedio</th></tr></thead><tbody>' +
+        filas.map(function (f) {
+          return '<tr><td>' + esc(f.que) + '</td><td class="r">' + fmtNum(f.pedidos) +
+            '</td><td class="r">' + formatMoney(f.monto) + '</td><td class="r">' +
+            f.pctMonto + '%</td><td class="r">' + formatMoney(f.ticket) + '</td></tr>';
+        }).join('') + '</tbody></table>';
+    };
+    var html = '<!doctype html><html lang="es"><head><meta charset="utf-8">' +
+      '<title>Reporte de marketing ' + esc(periodo) + '</title>' +
+      '<link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600;700&display=swap" rel="stylesheet">' +
+      '<style>@page { size:A4; margin:14mm; }' +
+      'body { font-family:"Jost",sans-serif; color:#2b1f14; margin:0; padding:22px; font-size:12px; }' +
+      '.hd { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:22px; }' +
+      '.wm { font-size:28px; font-weight:600; letter-spacing:7px; text-transform:uppercase; }' +
+      '.web { font-size:11px; letter-spacing:1px; }' +
+      'h1 { font-size:16px; margin:0 0 2px; } h2 { font-size:13px; margin:18px 0 6px; color:#5d293a; }' +
+      '.sub { color:#6b6358; font-size:11px; margin-bottom:14px; }' +
+      'table { width:100%; border-collapse:collapse; margin-bottom:6px; }' +
+      'th, td { border-bottom:1px solid #e3e2d6; padding:5px 7px; text-align:left; }' +
+      'th { font-size:10.5px; text-transform:uppercase; letter-spacing:.5px; color:#6b6358; }' +
+      '.r { text-align:right; }' +
+      '.tot { display:flex; gap:22px; margin:10px 0 4px; }' +
+      '.tot div b { display:block; font-size:16px; }' +
+      '@media print { .noprint { display:none; } body { padding:0; } }' +
+      '.noprint { position:fixed; top:14px; right:14px; }' +
+      '.noprint button { font:inherit; padding:9px 16px; border-radius:8px; border:1px solid #5d293a;' +
+      'background:#5d293a; color:#fff; cursor:pointer; }' +
+      '</style></head><body>' +
+      '<div class="noprint"><button onclick="window.print()">Guardar como PDF</button></div>' +
+      '<div class="hd"><div class="wm">Pērch</div><div class="web">WWW.PERCH.MX</div></div>' +
+      '<h1>Reporte de marketing · ' + esc(periodo) + '</h1>' +
+      '<div class="sub">' + esc(d.base || '') + '</div>' +
+      '<div class="tot"><div><b>' + fmtNum(d.pedidos) + '</b>pedidos</div>' +
+      '<div><b>' + formatMoney(d.monto) + '</b>monto</div>' +
+      '<div><b>' + formatMoney(d.pedidos ? d.monto / d.pedidos : 0) + '</b>ticket promedio</div></div>' +
+      tabla('B2B / B2C', d.tipoLinea) +
+      (d.cortes || []).map(function (c) { return tabla(c.titulo, c.filas); }).join('') +
+      '</body></html>';
+    var w = window.open('', '_blank');
+    if (w) { w.document.open(); w.document.write(html); w.document.close(); }
+    else { toast('El navegador bloqueó la ventana. Permite las ventanas emergentes.', 'err'); }
+  }
+
   function loadComisiones() {
     document.getElementById('summary').innerHTML = '';
     document.getElementById('summary').style.display = 'none';
@@ -8343,7 +8533,11 @@
     if (!r.escalones || !r.escalones.length) return '';
     // Con un solo escalón no hay "hasta" ni "desde": es un porcentaje y ya.
     if (r.escalones.length === 1) {
-      return r.escalones[0].pct + '% de lo que venda' +
+      return r.escalones[0].pct + '% siempre' +
+        (r.topeComision
+          ? '   ·   topado a ' + formatMoney(r.topeComision) + ' por ' +
+            (r.periodo === 'mes' ? 'mes' : 'trimestre')
+          : '') +
         (r.bonoTope ? '   ·   bono topado a ' + formatMoney(r.bonoTope) : '');
     }
     var partes = r.escalones.map(function (e, i) {
@@ -8380,7 +8574,10 @@
 
     (d.reglas || []).forEach(function (r) {
       h += '<div class="s" style="color:var(--slate);margin:2px 0 10px">' +
-        '<b>' + esc(r.quien) + '</b> · por ' + (r.periodo === 'mes' ? 'mes' : 'trimestre') +
+        '<b>' + esc(r.quien) + '</b> · ' +
+        (r.base === 'todas' ? 'sobre toda la venta de Perch' : 'sobre lo que él/ella cerró') +
+        ' · por ' + (r.periodo === 'mes' ? 'mes' : 'trimestre') +
+        (r.agrupaEn ? ', se paga por ' + r.agrupaEn : '') +
         ' · ' + esc(reglaEnPalabras(r)) + '</div>';
     });
 
@@ -8392,6 +8589,9 @@
       return;
     }
 
+    // Si hoy nadie tiene bono aparte, la columna sobra: dejarla llena de $0.00
+    // es justo lo que la regla 8 de la casa prohíbe.
+    var hayBono = (d.reglas || []).some(function (r) { return r.bonoTope > 0; });
     var quienes = [];
     delAnio.forEach(function (f) {
       if (quienes.indexOf(f.vendedor) === -1) quienes.push(f.vendedor);
@@ -8401,17 +8601,23 @@
       var suyas = delAnio.filter(function (f) { return f.vendedor === q; });
       var tot = suyas.reduce(function (a, f) { return a + f.total; }, 0);
       var totVentas = suyas.reduce(function (a, f) { return a + f.base; }, 0);
+      // Los bonos del trimestre no están en los renglones del mes: se suman aquí
+      // para que el total de arriba sea lo que de verdad se le paga en el año.
+      (d.resumenes || []).forEach(function (t) {
+        if (t.vendedor === q && (!comAnio || t.anio === comAnio)) tot += t.bono;
+      });
       h += '<div class="card" style="margin-bottom:18px">' +
         '<div style="display:flex;justify-content:space-between;align-items:baseline;' +
         'gap:12px;flex-wrap:wrap;margin-bottom:10px">' +
         '<h4 class="sec-t" style="margin:0">' + esc(q) + '</h4>' +
         '<div class="s" style="color:var(--slate)">' + formatMoney(totVentas) +
-        ' de ventas en ' + comAnio + ' (sin IVA) · <b style="color:var(--vino)">' + formatMoney(tot) +
+        ' de ventas en ' + comAnio + ' (sin IVA) · <b style="color:var(--accent)">' + formatMoney(tot) +
         '</b> de comisión</div></div>' +
         '<table class="mini-table"><thead><tr>' +
         '<th>Periodo</th><th style="text-align:right">Ventas (base)</th>' +
         '<th style="text-align:right">%</th><th style="text-align:right">Comisión</th>' +
-        '<th style="text-align:right">Bono</th><th style="text-align:right">Total</th>' +
+        (hayBono ? '<th style="text-align:right">Bono</th>' : '') +
+        '<th style="text-align:right">Total</th>' +
         '<th></th></tr></thead><tbody>';
       suyas.forEach(function (f) {
         h += '<tr><td><b>' + esc(f.periodoNombre) + '</b>' +
@@ -8422,18 +8628,53 @@
             formatMoney(f.siguiente.falta) + ' para el ' + f.siguiente.pct + '%</div>' : '') +
           '</td>' +
           '<td style="text-align:right">' + f.pct + '%</td>' +
-          '<td style="text-align:right">' + formatMoney(f.comision) + '</td>' +
-          '<td style="text-align:right">' + (f.bonoTope
-            ? formatMoney(f.bono) + (f.bonoRecortado
-              ? '<div class="s" style="color:var(--danger)">topado</div>' : '')
+          '<td style="text-align:right">' + formatMoney(f.comision) +
+          (f.comisionTopada
+            ? '<div class="s" style="color:var(--danger)">topado · el 1% daba ' +
+              formatMoney(f.comisionSinTope) + '</div>'
             : '') + '</td>' +
+          (hayBono
+            ? '<td style="text-align:right">' + (f.bonoTope
+              ? formatMoney(f.bono) + (f.bonoRecortado
+                ? '<div class="s" style="color:var(--danger)">topado</div>' : '')
+              : '') + '</td>'
+            : '') +
           '<td style="text-align:right"><b>' + formatMoney(f.total) + '</b></td>' +
           '<td style="text-align:right">' + (f.bonoTope && d.puedeBono !== false
             ? '<button class="row-btn com-bono" data-v="' + esc(f.vendedor) +
               '" data-p="' + esc(f.periodo) + '" data-b="' + f.bono + '">Bono</button>'
             : '') + '</td></tr>';
       });
-      h += '</tbody></table></div>';
+      h += '</tbody></table>';
+      // Lo que de verdad se deposita. A Nico la comisión se le saca por mes pero
+      // se le paga por trimestre, y el bono es del trimestre, no de cada mes.
+      var suyos = (d.resumenes || []).filter(function (x) {
+        return x.vendedor === q && (!comAnio || x.anio === comAnio);
+      });
+      if (suyos.length) {
+        h += '<div style="margin-top:14px;border-top:1px solid var(--line);padding-top:10px">' +
+          '<div class="s" style="color:var(--muted);margin-bottom:6px">Lo que se le paga, ' +
+          'por trimestre</div><table class="mini-table"><tbody>';
+        suyos.forEach(function (t) {
+          h += '<tr><td><b>' + esc(t.periodoNombre) + '</b>' +
+            '<div class="s" style="color:var(--muted)">' + esc(t.meses.join(' · ')) + '</div></td>' +
+            '<td style="text-align:right">' + formatMoney(t.base) + '</td>' +
+            '<td style="text-align:right">' + formatMoney(t.comision) + '</td>' +
+            (hayBono
+              ? '<td style="text-align:right">' + formatMoney(t.bono) +
+                (t.bonoRecortado
+                  ? '<div class="s" style="color:var(--danger)">topado</div>' : '') + '</td>'
+              : '') +
+            '<td style="text-align:right"><b style="color:var(--accent)">' +
+            formatMoney(t.total) + '</b></td>' +
+            '<td style="text-align:right">' + (t.bonoTope && d.puedeBono !== false
+              ? '<button class="row-btn com-bono" data-v="' + esc(t.vendedor) +
+                '" data-p="' + esc(t.periodo) + '" data-b="' + t.bono + '">Bono</button>'
+              : '') + '</td></tr>';
+        });
+        h += '</tbody></table></div>';
+      }
+      h += '</div>';
     });
 
     if (!d.hayLibreta) {
@@ -11483,7 +11724,7 @@
   // proveedores en una tabla pelona. Parecía que lo había mandado a otra
   // pantalla, y en efecto eso hacía.
   var PANTALLA_PROPIA = ['fin_estados', 'fin_flujo', 'fin_balance', 'fin_bancos',
-    'ventas_folios', 'ventas_comisiones', 'surtir', 'op_traza', 'cxc_cotejo', 'fin_cobros', 'fac_pendientes',
+    'ventas_folios', 'ventas_comisiones', 'ventas_marketing', 'surtir', 'op_traza', 'cxc_cotejo', 'fin_cobros', 'fac_pendientes',
     'log_calendario', 'fin_banco', 'fac_emitidos', 'pagos_pedidos', 'fac_impuestos',
     'fin_efectivo', 'fin_gastos_op', 'rh_resumen', 'prov_razon', 'cfdi_prov',
     'cfdi_control', 'cfdi_comp_rec', 'fac_control', 'cta_clientes', 'expediente',
@@ -11512,6 +11753,7 @@
     if (state.key === 'fin_bancos')  return loadSaldos();
     if (state.key === 'ventas_folios') return loadVentasFolios();
     if (state.key === 'ventas_comisiones') return loadComisiones();
+    if (state.key === 'ventas_marketing') return loadMarketingRep();
     if (state.key === 'op_stock' && Date.now() - stockRecalculado > 5 * 60 * 1000) {
       return recalcularStockSiHaceFalta().then(function () { return loadArea(); });
     }
@@ -20713,7 +20955,7 @@
     ? '⌘⇧R' : 'Ctrl+Shift+R';
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.11.13-563';
+    var mia = '2026.11.17-566';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
