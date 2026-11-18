@@ -760,6 +760,10 @@
   .mini-table th { text-transform:uppercase; letter-spacing:.6px; }
 
   /* Pastillas de color para valores de catálogo */
+  .pills { display:flex; gap:6px; flex-wrap:wrap; }
+  .pills .pill { cursor:pointer; border:1px solid var(--line); background:var(--surface);
+    color:var(--ink); padding:6px 14px; font-size:13px; font:inherit; }
+  .pills .pill.on { background:var(--accent); color:#fff; border-color:var(--accent); }
   .pill { display:inline-block; padding:3px 10px; border-radius:999px; font-size:12px;
     font-weight:500; line-height:1.5; max-width:100%; overflow:hidden; text-overflow:ellipsis;
     vertical-align:middle; }
@@ -1114,7 +1118,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.17-568</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.18-569</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1503,7 +1507,7 @@
     fin_bancos:   'Se calcula desde Ingresos y Egresos más el saldo de arranque.',
     ventas_folios:'Sale de cruzar Ventas contra Pedidos a proveedores.'
   };
-  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'cxc_cotejo', 'fin_cobros', 'fac_pendientes', 'fac_control', 'cfdi_control', 'cfdi_comp_rec', 'cfdi_prov', 'prov_razon', 'rh_resumen', 'fin_gastos_op', 'fin_efectivo', 'fac_impuestos', 'fac_emitidos', 'fin_estados', 'fin_flujo', 'fin_balance', 'fin_bancos', 'ventas_folios', 'ventas_comisiones', 'ventas_marketing',
+  var READ_ONLY_AREAS = ['ingresos', 'egresos', 'cxc', 'proveedores', 'costos', 'conciliacion', 'inv_prov', 'expediente', 'cta_clientes', 'cxc_cotejo', 'fin_cobros', 'fac_pendientes', 'fac_control', 'cfdi_control', 'cfdi_comp_rec', 'cfdi_prov', 'prov_razon', 'rh_resumen', 'fin_gastos_op', 'fin_efectivo', 'fac_impuestos', 'fac_emitidos', 'fin_estados', 'fin_flujo', 'fin_balance', 'fin_bancos', 'ventas_folios', 'ventas_comisiones', 'ventas_marketing', 'fin_caja',
     // El stock sale de pedidos, entradas y salidas: se recalcula, no se edita
     'op_stock', 'op_traza', 'op_revisar', 'prov_revision'];
   function esLector() {
@@ -8329,6 +8333,381 @@
   // Camila llena Ciudad, Proyecto, Línea de negocio, Tipo de línea, Cómo llegó y
   // Showroom en cada venta, y no tenía dónde verlo junto. Esto es esa pantalla.
   var mkAnio = 0, mkMes = 0;
+  // ===== Efectivo y Bancos =====
+  //
+  // Pills arriba: Resumen · una por cuenta · Flujo de efectivo. Las cuentas
+  // salen del archivo de Efectivo, no están escritas aquí: el día que entre
+  // BBVA aparece sola.
+  var cajaD = null, cajaPill = 'resumen', cajaAnio = 0, cajaMes = 0, cajaBusca = '';
+  var CAJA_MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio',
+                    'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+  function loadCaja() {
+    document.getElementById('summary').innerHTML = '';
+    document.getElementById('summary').style.display = 'none';
+    mostrarAlta(false);
+    document.getElementById('count').textContent = '';
+    document.getElementById('tableWrap').innerHTML =
+      '<div class="state" style="padding:50px 0">Leyendo cuentas…</div>';
+    api('caja-bancos', { token: state.token })
+      .then(function (d) { cajaD = d; pintarCaja(); })
+      .catch(function (e) {
+        document.getElementById('tableWrap').innerHTML =
+          '<div class="state" style="color:var(--danger);padding:40px 0">' +
+          esc((e && e.message) || 'No se pudo leer.') + '</div>';
+      });
+  }
+  function cajaTodos() {
+    var t = [];
+    (cajaD.cuentas || []).forEach(function (c) {
+      (c.movs || []).forEach(function (m) {
+        t.push(Object.assign({ cuenta: c.cuenta }, m));
+      });
+    });
+    return t.sort(function (a, b) { return (a.orden || 9e14) - (b.orden || 9e14); });
+  }
+  function pintarCaja() {
+    var d = cajaD;
+    if (!cajaAnio && (d.anios || []).length) cajaAnio = Number(d.anios[0]);
+    var h = '<div class="est-top"><div>' +
+      '<h3 class="sec-t" style="margin:0">Efectivo y Bancos</h3>' +
+      '<div class="s" style="color:var(--muted)">' + esc(d.nota || '') + '</div></div>' +
+      (state.rol === 'admin'
+        ? '<a class="row-btn" href="' + esc(d.archivo) + '" target="_blank" rel="noopener">Abrir la hoja</a>'
+        : '') + '</div>';
+
+    // Pills
+    h += '<div class="pills" style="margin-bottom:14px">' +
+      '<button class="pill' + (cajaPill === 'resumen' ? ' on' : '') + '" data-pill="resumen">Resumen</button>' +
+      (d.cuentas || []).map(function (c) {
+        return '<button class="pill' + (cajaPill === c.cuenta ? ' on' : '') +
+          '" data-pill="' + esc(c.cuenta) + '">' + esc(c.cuenta) + '</button>';
+      }).join('') +
+      '<button class="pill' + (cajaPill === 'flujo' ? ' on' : '') + '" data-pill="flujo">Flujo de efectivo</button>' +
+      '</div>';
+
+    if (cajaPill === 'resumen') h += cajaResumen(d);
+    else if (cajaPill === 'flujo') h += cajaFlujo(d);
+    else h += cajaCuenta(d, cajaPill);
+
+    document.getElementById('tableWrap').innerHTML = h;
+    engancharCaja();
+  }
+  function cajaResumen(d) {
+    var hoy = new Date(), mesHoy = hoy.getMonth() + 1, anioHoy = hoy.getFullYear();
+    var total = 0, h = '<div class="summary-cards" style="margin-bottom:16px">';
+    (d.cuentas || []).forEach(function (c) {
+      if (c.error) {
+        h += '<div class="sum-card"><div class="k">' + esc(c.cuenta) + '</div>' +
+          '<div class="v" style="font-size:13px;color:var(--danger)">' + esc(c.error) + '</div></div>';
+        return;
+      }
+      total += c.saldo;
+      var ent = 0, sal = 0;
+      (c.movs || []).forEach(function (m) {
+        if (m.anio === anioHoy && m.mes === mesHoy) { ent += m.entrada; sal += m.salida; }
+      });
+      h += '<div class="sum-card"><div class="k">' + esc(c.cuenta) + '</div>' +
+        '<div class="v">' + formatMoney(c.saldo) + '</div>' +
+        '<div class="s" style="color:var(--muted);margin-top:4px">' +
+        (ent ? '+' + formatMoney(ent) + ' · ' : '') +
+        (sal ? '−' + formatMoney(sal) : (ent ? '' : 'sin movimientos este mes')) +
+        '</div>' +
+        (c.ultimo ? '<div class="s" style="color:var(--muted)">último: ' +
+          esc(c.ultimo.fecha) + (c.ultimo.descripcion ? ' · ' + esc(c.ultimo.descripcion) : '') +
+          '</div>' : '') + '</div>';
+    });
+    h += '</div><div class="card" style="margin-bottom:16px;display:flex;' +
+      'justify-content:space-between;align-items:baseline"><b>Total consolidado</b>' +
+      '<b style="font-size:22px;color:var(--accent)">' + formatMoney(total) + '</b></div>';
+
+    // Tablero de estados de cuenta
+    var anio = cajaAnio || anioHoy;
+    var porClave = {};
+    (d.conciliaciones || []).forEach(function (r) {
+      var cta = r['Cuenta'] || '', per = String(r['Periodo'] || r['Mes'] || '');
+      porClave[(cta + '|' + per).toLowerCase()] = r;
+    });
+    h += '<div class="panel"><h4>Estados de cuenta ' + anio + '</h4><div class="panel-body">' +
+      '<table class="mini-table"><thead><tr><th>Cuenta</th>' +
+      CAJA_MESES.map(function (m) {
+        return '<th style="text-align:center">' + m.slice(0, 3) + '</th>';
+      }).join('') + '</tr></thead><tbody>';
+    (d.cuentas || []).forEach(function (c) {
+      h += '<tr><td>' + esc(c.cuenta) + '</td>';
+      for (var m = 1; m <= 12; m++) {
+        var r = porClave[(c.cuenta + '|' + anio + '-' + String(m).padStart(2, '0')).toLowerCase()];
+        var dif = r ? Number(String(r['Diferencia'] || '0').replace(/[^0-9.\-]/g, '')) : null;
+        var marca = '<span style="color:var(--muted)">·</span>', tit = 'falta el estado de cuenta';
+        if (r && Math.abs(dif || 0) < 0.01) { marca = '<b style="color:#2e7d32">✓</b>'; tit = 'cuadra'; }
+        else if (r) { marca = '<b style="color:var(--danger)">≠</b>'; tit = 'diferencia de ' + formatMoney(dif); }
+        var liga = r && r['Link'] ? r['Link'] : '';
+        h += '<td style="text-align:center" title="' + esc(tit) + '">' +
+          (liga ? '<a href="' + esc(liga) + '" target="_blank" rel="noopener">' + marca + '</a>' : marca) +
+          '</td>';
+      }
+      h += '</tr>';
+    });
+    h += '</tbody></table>' +
+      '<div class="s" style="color:var(--muted);margin-top:8px">' +
+      '<b>✓</b> cuadra · <b>≠</b> hay diferencia · <b>·</b> todavía no se sube el estado de cuenta.' +
+      (d.hayConciliaciones ? '' : ' <b>No se pudo crear la pestaña Conciliaciones.</b>') +
+      '</div></div></div>';
+    return h;
+  }
+  function cajaCuenta(d, nombre) {
+    var c = (d.cuentas || []).filter(function (x) { return x.cuenta === nombre; })[0];
+    if (!c) return '<div class="state">Esa cuenta ya no está.</div>';
+    if (c.error) return '<div class="state" style="color:var(--danger);padding:40px 0">' +
+      esc(c.error) + '</div>';
+    var movs = (c.movs || []).filter(function (m) {
+      if (cajaAnio && m.anio && m.anio !== cajaAnio) return false;
+      if (cajaMes && m.mes !== cajaMes) return false;
+      if (!cajaBusca) return true;
+      var t = (m.descripcion + ' ' + m.concepto + ' ' + m.cliente + ' ' + m.proveedor +
+               ' ' + m.referencia).toLowerCase();
+      return t.indexOf(cajaBusca.toLowerCase()) !== -1;
+    });
+    var ent = movs.reduce(function (a, m) { return a + m.entrada; }, 0);
+    var sal = movs.reduce(function (a, m) { return a + m.salida; }, 0);
+    var h = '<div class="est-top"><div class="s" style="color:var(--slate)">' +
+      '<b>' + esc(c.cuenta) + '</b> · saldo ' + formatMoney(c.saldo) +
+      ' · ' + fmtNum(movs.length) + ' movimientos' +
+      '</div><div style="display:flex;gap:8px;align-items:flex-end">' +
+      cajaFiltros(d) +
+      (d.puedeEscribir ? '<button class="row-btn" id="cajaNuevo">Agregar movimiento</button>' : '') +
+      '<button class="row-btn" id="cajaCSV">Descargar</button></div></div>';
+    h += '<div class="summary-cards" style="margin-bottom:12px">' +
+      '<div class="sum-card"><div class="k">Entradas</div><div class="v">' + formatMoney(ent) + '</div></div>' +
+      '<div class="sum-card"><div class="k">Salidas</div><div class="v">' + formatMoney(sal) + '</div></div>' +
+      '<div class="sum-card"><div class="k">Saldo de la cuenta</div><div class="v">' + formatMoney(c.saldo) + '</div></div>' +
+      '</div>';
+    h += '<table class="mini-table"><thead><tr><th>Fecha</th><th>Concepto</th>' +
+      '<th>Descripción</th><th>Cliente / Proveedor</th>' +
+      '<th style="text-align:right">Entrada</th><th style="text-align:right">Salida</th>' +
+      '<th style="text-align:right">Saldo</th></tr></thead><tbody>';
+    if (!movs.length) {
+      h += '<tr><td colspan="7"><div class="state" style="padding:26px 0">' +
+        'No hay movimientos con esos filtros.</div></td></tr>';
+    }
+    movs.forEach(function (m) {
+      h += '<tr><td>' + esc(m.fecha) + '</td>' +
+        '<td>' + esc(m.concepto) + (m.traspaso
+          ? ' <span class="s" style="color:var(--muted)">(traspaso)</span>' : '') + '</td>' +
+        '<td>' + esc(m.descripcion) + '</td>' +
+        '<td>' + esc(m.cliente || m.proveedor) + '</td>' +
+        '<td style="text-align:right">' + (m.entrada ? formatMoney(m.entrada) : '') + '</td>' +
+        '<td style="text-align:right">' + (m.salida ? formatMoney(m.salida) : '') + '</td>' +
+        '<td style="text-align:right"><b>' + formatMoney(m.saldo) + '</b></td></tr>';
+    });
+    return h + '</tbody></table>';
+  }
+  function cajaFiltros(d) {
+    return '<div><label class="s" style="color:var(--muted);display:block">Año</label>' +
+      '<select id="cajaAnio" class="inp">' +
+      (d.anios || []).map(function (a) {
+        return '<option value="' + a + '"' + (Number(a) === cajaAnio ? ' selected' : '') + '>' + a + '</option>';
+      }).join('') + '</select></div>' +
+      '<div><label class="s" style="color:var(--muted);display:block">Mes</label>' +
+      '<select id="cajaMes" class="inp"><option value="0">Todo el año</option>' +
+      CAJA_MESES.map(function (m, i) {
+        return '<option value="' + (i + 1) + '"' + (cajaMes === i + 1 ? ' selected' : '') + '>' + m + '</option>';
+      }).join('') + '</select></div>' +
+      '<div><label class="s" style="color:var(--muted);display:block">Buscar</label>' +
+      '<input id="cajaBusca" class="inp" value="' + esc(cajaBusca) + '" placeholder="descripción, cliente…"></div>';
+  }
+  function cajaFlujo(d) {
+    var todos = cajaTodos().filter(function (m) { return !cajaAnio || m.anio === cajaAnio; });
+    var sinTras = todos.filter(function (m) { return !m.traspaso; });
+    var saldoHoy = (d.cuentas || []).reduce(function (a, c) { return a + (c.saldo || 0); }, 0);
+    var porMes = {};
+    todos.forEach(function (m) {
+      if (!m.mes) return;
+      var g = porMes[m.mes] = porMes[m.mes] || { mes: m.mes, ent: 0, sal: 0, todoEnt: 0, todoSal: 0 };
+      g.todoEnt += m.entrada; g.todoSal += m.salida;
+      if (!m.traspaso) { g.ent += m.entrada; g.sal += m.salida; }
+    });
+    var meses = Object.keys(porMes).map(function (k) { return porMes[k]; })
+      .sort(function (a, b) { return a.mes - b.mes; });
+    var ent = sinTras.reduce(function (a, m) { return a + m.entrada; }, 0);
+    var sal = sinTras.reduce(function (a, m) { return a + m.salida; }, 0);
+    var hoy = new Date();
+    var completos = meses.filter(function (m) {
+      return !(cajaAnio === hoy.getFullYear() && m.mes >= hoy.getMonth() + 1);
+    });
+    var promEnt = completos.length ? completos.reduce(function (a, m) { return a + m.ent; }, 0) / completos.length : 0;
+    var promSal = completos.length ? completos.reduce(function (a, m) { return a + m.sal; }, 0) / completos.length : 0;
+    var colchon = promSal ? saldoHoy / promSal : 0;
+    // ¿Los traspasos cuadran entre cuentas?
+    var tEnt = 0, tSal = 0;
+    todos.forEach(function (m) { if (m.traspaso) { tEnt += m.entrada; tSal += m.salida; } });
+    var descuadre = Math.round((tEnt - tSal) * 100) / 100;
+
+    var h = '<div class="est-top"><div class="s" style="color:var(--slate)">' +
+      'Todas las cuentas juntas. Entradas y salidas <b>sin traspasos</b>.' +
+      '</div><div style="display:flex;gap:8px;align-items:flex-end">' + cajaFiltros(d) + '</div></div>';
+    h += '<div class="summary-cards" style="margin-bottom:14px">' +
+      '<div class="sum-card"><div class="k">Entradas del periodo</div><div class="v">' + formatMoney(ent) + '</div></div>' +
+      '<div class="sum-card"><div class="k">Salidas del periodo</div><div class="v">' + formatMoney(sal) + '</div></div>' +
+      '<div class="sum-card"><div class="k">Flujo neto</div><div class="v">' + formatMoney(ent - sal) + '</div></div>' +
+      '<div class="sum-card"><div class="k">Saldo a hoy</div><div class="v">' + formatMoney(saldoHoy) + '</div></div>' +
+      '</div>' +
+      '<div class="summary-cards" style="margin-bottom:14px">' +
+      '<div class="sum-card"><div class="k">Promedio mensual de entradas</div><div class="v">' + formatMoney(promEnt) + '</div>' +
+      '<div class="s" style="color:var(--muted)">' + completos.length + ' meses completos</div></div>' +
+      '<div class="sum-card"><div class="k">Promedio mensual de salidas</div><div class="v">' + formatMoney(promSal) + '</div></div>' +
+      '<div class="sum-card"><div class="k">Meses de colchón</div><div class="v">' +
+      (promSal ? (Math.round(colchon * 10) / 10) : '') + '</div>' +
+      '<div class="s" style="color:var(--muted)">saldo ÷ salida promedio</div></div>' +
+      '</div>';
+    if (Math.abs(descuadre) >= 0.01) {
+      h += '<div class="aviso-caja">Los traspasos no cuadran entre cuentas: hay ' +
+        '<b>' + formatMoney(Math.abs(descuadre)) + '</b> de diferencia entre lo que sale ' +
+        'de unas y lo que entra en otras. Revisa que cada traspaso esté en las dos.</div>';
+    }
+    h += '<div class="panel"><h4>Mes por mes</h4><div class="panel-body">' +
+      '<table class="mini-table"><thead><tr><th>Mes</th>' +
+      '<th style="text-align:right">Saldo inicial</th><th style="text-align:right">Entradas</th>' +
+      '<th style="text-align:right">Salidas</th><th style="text-align:right">Flujo neto</th>' +
+      '<th style="text-align:right">Saldo final</th></tr></thead><tbody>';
+    var corrido = 0;
+    meses.forEach(function (m) {
+      var ini = corrido;
+      corrido = Math.round((corrido + m.todoEnt - m.todoSal) * 100) / 100;
+      h += '<tr><td><b>' + CAJA_MESES[m.mes - 1] + '</b></td>' +
+        '<td style="text-align:right">' + formatMoney(ini) + '</td>' +
+        '<td style="text-align:right">' + formatMoney(m.ent) + '</td>' +
+        '<td style="text-align:right">' + formatMoney(m.sal) + '</td>' +
+        '<td style="text-align:right">' + formatMoney(m.ent - m.sal) + '</td>' +
+        '<td style="text-align:right"><b>' + formatMoney(corrido) + '</b></td></tr>';
+    });
+    h += '</tbody></table><div class="s" style="color:var(--muted);margin-top:8px">' +
+      'El saldo usa todos los movimientos; las entradas y salidas excluyen traspasos.' +
+      '</div></div></div>';
+
+    // Desgloses
+    var corte = function (titulo, saca) {
+      var g = {}, tot = 0;
+      sinTras.forEach(function (m) {
+        var k = saca(m) || 'Sin especificar';
+        var x = g[k] = g[k] || { que: k, ent: 0, sal: 0 };
+        x.ent += m.entrada; x.sal += m.salida; tot += m.salida;
+      });
+      var filas = Object.keys(g).map(function (k) { return g[k]; })
+        .sort(function (a, b) { return (b.sal + b.ent) - (a.sal + a.ent); }).slice(0, 12);
+      if (!filas.length) return '';
+      // Dos columnas, no tres: en la rejilla de tres paneles una tercera se
+      // corta. La entrada va debajo del monto, en chico.
+      var out = '<div class="panel"><h4>' + esc(titulo) + '</h4><div class="panel-body">' +
+        '<table class="mini-table"><thead><tr><th>' + esc(titulo) + '</th>' +
+        '<th style="text-align:right">Salidas / entradas</th>' +
+        '</tr></thead><tbody>';
+      filas.forEach(function (f) {
+        out += '<tr><td>' + esc(f.que) +
+          '<div style="margin-top:4px;height:6px;border-radius:3px;background:var(--line);' +
+          'overflow:hidden"><div style="height:100%;width:' +
+          Math.max(1, Math.min(100, tot ? f.sal / tot * 100 : 0)) +
+          '%;background:var(--accent)"></div></div></td>' +
+          '<td style="text-align:right">' + (f.sal ? formatMoney(f.sal) : '') +
+          (f.ent ? '<div class="s" style="color:var(--muted)">+' + formatMoney(f.ent) +
+                   ' de entrada</div>' : '') + '</td></tr>';
+      });
+      return out + '</tbody></table></div></div>';
+    };
+    h += '<div class="dash-cols">' +
+      corte('Concepto', function (m) { return m.categoria || m.concepto; }) +
+      corte('Cliente / Proveedor', function (m) { return m.cliente || m.proveedor; }) +
+      corte('Cuenta', function (m) { return m.cuenta; }) +
+      '</div>';
+    return h;
+  }
+  function engancharCaja() {
+    Array.prototype.forEach.call(document.querySelectorAll('.pill[data-pill]'), function (b) {
+      b.onclick = function () { cajaPill = b.getAttribute('data-pill'); pintarCaja(); };
+    });
+    var a = document.getElementById('cajaAnio'), m = document.getElementById('cajaMes'),
+        q = document.getElementById('cajaBusca');
+    if (a) a.onchange = function () { cajaAnio = Number(this.value); pintarCaja(); };
+    if (m) m.onchange = function () { cajaMes = Number(this.value); pintarCaja(); };
+    if (q) q.oninput = function () { cajaBusca = this.value; pintarCaja(); q.focus(); };
+    var n = document.getElementById('cajaNuevo');
+    if (n) n.onclick = function () { abrirMovimientoCaja(); };
+    var cs = document.getElementById('cajaCSV');
+    if (cs) cs.onclick = function () { bajarCajaCSV(); };
+  }
+  function bajarCajaCSV() {
+    var c = (cajaD.cuentas || []).filter(function (x) { return x.cuenta === cajaPill; })[0];
+    if (!c) return;
+    var filas = [['Fecha', 'Concepto', 'Descripción', 'Cliente', 'Proveedor',
+                  'Entrada', 'Salida', 'Saldo']];
+    (c.movs || []).forEach(function (m) {
+      if (cajaAnio && m.anio && m.anio !== cajaAnio) return;
+      if (cajaMes && m.mes !== cajaMes) return;
+      filas.push([m.fecha, m.concepto, m.descripcion, m.cliente, m.proveedor,
+                  m.entrada || '', m.salida || '', m.saldo]);
+    });
+    var csv = filas.map(function (f) {
+      return f.map(function (x) { return '"' + String(x == null ? '' : x).replace(/"/g, '""') + '"'; }).join(',');
+    }).join('\n');
+    var a = document.createElement('a');
+    a.href = 'data:text/csv;charset=utf-8,﻿' + encodeURIComponent(csv);
+    a.download = cajaPill.replace(/[^\w]+/g, '-') + '.csv';
+    a.click();
+  }
+  // Un solo formulario: entrada, salida o traspaso. Nada de botones separados.
+  function abrirMovimientoCaja() {
+    var cuentas = (cajaD.cuentas || []).filter(function (c) { return !c.error; });
+    var opc = function (sel) {
+      return cuentas.map(function (c) {
+        return '<option value="' + esc(c.cuenta) + '"' +
+          (c.cuenta === sel ? ' selected' : '') + '>' + esc(c.cuenta) + '</option>';
+      }).join('');
+    };
+    modalModo = 'cajaMov';
+    document.getElementById('aventaTitulo').textContent = 'Agregar movimiento';
+    document.getElementById('aventaCuerpo').innerHTML =
+      '<div class="fld"><label>Tipo</label><select id="mvTipo">' +
+        '<option value="salida">Salida</option>' +
+        '<option value="entrada">Entrada</option>' +
+        '<option value="traspaso">Traspaso entre cuentas</option></select></div>' +
+      '<div class="fld"><label>Fecha</label><input id="mvFecha" placeholder="18 noviembre 2026"></div>' +
+      '<div class="fld"><label id="mvLblCuenta">Cuenta</label><select id="mvCuenta">' +
+        opc(cajaPill) + '</select></div>' +
+      '<div class="fld" id="mvDestinoBox" style="display:none"><label>Cuenta destino</label>' +
+        '<select id="mvDestino">' + opc('') + '</select></div>' +
+      '<div class="fld"><label>Monto</label><input id="mvMonto" inputmode="decimal"></div>' +
+      '<div class="fld"><label>Concepto</label><input id="mvConcepto" ' +
+        'placeholder="como aparece en el estado de cuenta"></div>' +
+      '<div class="fld"><label>Descripción</label><input id="mvDesc"></div>' +
+      '<div class="fld"><label>Cliente</label><input id="mvCliente"></div>' +
+      '<div class="fld"><label>Proveedor</label><input id="mvProveedor"></div>';
+    document.getElementById('aventaOk').textContent = 'Guardar';
+    document.getElementById('aventaCancel').textContent = 'Cancelar';
+    document.getElementById('aventaModal').classList.add('on');
+    document.getElementById('mvTipo').onchange = function () {
+      var t = this.value === 'traspaso';
+      document.getElementById('mvDestinoBox').style.display = t ? '' : 'none';
+      document.getElementById('mvLblCuenta').textContent = t ? 'Cuenta de origen' : 'Cuenta';
+    };
+  }
+  function guardarMovimientoCaja() {
+    var v = function (id) { return (document.getElementById(id) || {}).value || ''; };
+    var btn = document.getElementById('aventaOk');
+    btn.disabled = true; btn.textContent = 'Guardando…';
+    api('caja-bancos', {
+      token: state.token, guardar: 1, tipo: v('mvTipo'), fecha: v('mvFecha'),
+      cuenta: v('mvCuenta'), cuentaDestino: v('mvDestino'), monto: v('mvMonto'),
+      concepto: v('mvConcepto'), descripcion: v('mvDesc'),
+      cliente: v('mvCliente'), proveedor: v('mvProveedor')
+    }).then(function (r) {
+      toast(r.mensaje || 'Guardado.', 'ok');
+      cerrarMandarAVenta();
+      loadCaja();
+    }).catch(function (e) {
+      toast((e && e.message) || 'No se pudo guardar.', 'err');
+      btn.disabled = false; btn.textContent = 'Guardar';
+    });
+  }
+
   function loadMarketingRep() {
     document.getElementById('summary').innerHTML = '';
     document.getElementById('summary').style.display = 'none';
@@ -11724,7 +12103,7 @@
   // proveedores en una tabla pelona. Parecía que lo había mandado a otra
   // pantalla, y en efecto eso hacía.
   var PANTALLA_PROPIA = ['fin_estados', 'fin_flujo', 'fin_balance', 'fin_bancos',
-    'ventas_folios', 'ventas_comisiones', 'ventas_marketing', 'surtir', 'op_traza', 'cxc_cotejo', 'fin_cobros', 'fac_pendientes',
+    'ventas_folios', 'ventas_comisiones', 'ventas_marketing', 'fin_caja', 'surtir', 'op_traza', 'cxc_cotejo', 'fin_cobros', 'fac_pendientes',
     'log_calendario', 'fin_banco', 'fac_emitidos', 'pagos_pedidos', 'fac_impuestos',
     'fin_efectivo', 'fin_gastos_op', 'rh_resumen', 'prov_razon', 'cfdi_prov',
     'cfdi_control', 'cfdi_comp_rec', 'fac_control', 'cta_clientes', 'expediente',
@@ -11754,6 +12133,7 @@
     if (state.key === 'ventas_folios') return loadVentasFolios();
     if (state.key === 'ventas_comisiones') return loadComisiones();
     if (state.key === 'ventas_marketing') return loadMarketingRep();
+    if (state.key === 'fin_caja') return loadCaja();
     if (state.key === 'op_stock' && Date.now() - stockRecalculado > 5 * 60 * 1000) {
       return recalcularStockSiHaceFalta().then(function () { return loadArea(); });
     }
@@ -20955,7 +21335,7 @@
     ? '⌘⇧R' : 'Ctrl+Shift+R';
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.11.17-568';
+    var mia = '2026.11.18-569';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
@@ -21042,6 +21422,7 @@
       case 'pedirPago':       guardarPedirPago(); return;
       case 'pedNombre':       guardarCambiarNumeroPedido(); return;
       case 'logEditar':       guardarEditarEntrega(); return;
+      case 'cajaMov':        guardarMovimientoCaja(); return;
       case 'tabNota':         guardarInstrucciones(); return;
       case 'tabEnvio':        guardarEnvioTablero(); return;
       case 'cierre':
