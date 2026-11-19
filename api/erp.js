@@ -14,6 +14,7 @@ const RUTAS = {
   comisiones:     require('../lib/handlers/comisiones'),
   'reporte-marketing': require('../lib/handlers/reporte-marketing'),
   marketing:      require('../lib/handlers/marketing'),
+  'conectar-cot': require('../lib/handlers/conectar-cot'),
   'caja-bancos': require('../lib/handlers/caja-bancos'),
   dashboard:      require('../lib/handlers/dashboard'),
   data:           require('../lib/handlers/data'),

@@ -1118,7 +1118,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.19-572</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.19-573</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1147,6 +1147,7 @@
           <div class="ph-s" id="areaFuente" style="font-size:12px;margin-top:3px;opacity:.85"></div>
         </div>
         <div class="ph-actions" id="pageActions">
+          <span id="accionesArea" style="display:flex;gap:8px"></span>
           <button class="btn-add" id="openAddBtn" type="button">
             <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             <span>Agregar</span>
@@ -8785,6 +8786,125 @@
       if (propias && propias.length === 1) sub.value = propias[0];
     };
   }
+  // ===== La venta y su cotización, conectadas =====
+  //
+  // Val, 19 nov: *"no me guarda la misma información que ingreso de cotización,
+  // no están conectadas, ahora las ingreso de nuevo a los viejos, pero ayúdame
+  // a que sí tengan conexión"*.
+  //
+  // No era un error de copiado: las columnas Tipo de Cliente, Forma de
+  // Contacto, Visito Showroom, Notas, Tiempo de entrega y CP destino se
+  // agregaron a la hoja de Ventas el 5 de noviembre. Todo lo cerrado antes se
+  // convirtió cuando no existían, así que el dato se quedó en la cotización.
+  // Esto lo pasa, sin que nadie recapture nada.
+  function revisarConexionCot() {
+    var b = document.getElementById('btnConectarCot');
+    if (b) { b.disabled = true; b.textContent = 'Revisando…'; }
+    api('conectar-cot', { token: state.token, que: 'revisar' })
+      .then(function (d) {
+        var plan = d.plan || [];
+        if (!plan.length) {
+          avisoFijo('<b>Todas las ventas ya tienen lo de su cotización.</b>' +
+            '<div class="s" style="margin-top:6px">Se revisaron ' + fmtNum(d.ventas) +
+            ' ventas; ' + fmtNum(d.conCotizacion) + ' vienen de una cotización.</div>');
+          return;
+        }
+        var h = '<div style="font-size:13px;color:var(--slate);margin-bottom:10px">' +
+          'A <b>' + fmtNum(plan.length) + '</b> ' + (plan.length === 1 ? 'venta' : 'ventas') +
+          ' les falta lo que su cotización sí tiene. Se van a llenar <b>' + fmtNum(d.celdas) +
+          '</b> celdas. ' + esc(d.nota) + '</div>' +
+          '<table class="mini-table"><thead><tr><th>Venta</th><th>Cotización</th>' +
+          '<th>Cliente</th><th>Qué se le va a poner</th></tr></thead><tbody>' +
+          plan.map(function (p) {
+            return '<tr><td><b>' + esc(p.folio) + '</b></td><td class="s">' + esc(p.cot || '') +
+              '</td><td>' + esc(p.cliente || '') + '</td><td class="s">' +
+              Object.keys(p.datos).map(function (k) {
+                return esc(k) + ': <b>' + esc(String(p.datos[k]).trim()) + '</b>';
+              }).join(' · ') + '</td></tr>';
+          }).join('') + '</tbody></table>';
+        confirmarAccion('Conectar con sus cotizaciones', h, 'Escribir en la hoja', function () {
+          api('conectar-cot', { token: state.token, que: 'aplicar' })
+            .then(function (r) { toast(r.mensaje || 'Listo.', 'ok'); loadArea(); })
+            .catch(fail);
+        });
+      })
+      .catch(fail)
+      .then(function () {
+        var b2 = document.getElementById('btnConectarCot');
+        if (b2) { b2.disabled = false; b2.textContent = 'Conectar con sus cotizaciones'; }
+      });
+  }
+
+  // ===== "Este cliente ya tiene una cotización" =====
+  //
+  // Capturar la venta a mano es lo que rompe la conexión: el panel no tiene de
+  // dónde jalar. Cuando se escribe el cliente en el alta de una venta, se busca
+  // si ya tiene una cotización sin vender y se ofrece convertirla, que copia
+  // todo y deja las dos ligadas.
+  var cotDelClienteUlt = '', cotDelClienteTimer = null;
+  function avisarCotizacionDelCliente() {
+    // Se espera a que deje de escribir: si no, es una llamada por tecla
+    clearTimeout(cotDelClienteTimer);
+    cotDelClienteTimer = setTimeout(buscarCotizacionDelCliente, 600);
+  }
+  function buscarCotizacionDelCliente() {
+    if (state.key !== 'ventas_registro') return;
+    var caja = document.getElementById('avisoYaTiene');
+    if (!caja) return;
+    var el = fieldEl('Cliente');
+    var cliente = el ? String(el.value || '').trim() : '';
+    if (cliente.length < 3) { caja.innerHTML = ''; cotDelClienteUlt = ''; return; }
+    if (norm(cliente) === norm(cotDelClienteUlt)) return;      // ya se preguntó por éste
+    cotDelClienteUlt = cliente;
+    api('conectar-cot', { token: state.token, que: 'del-cliente', cliente: cliente })
+      .then(function (d) {
+        if (norm(cliente) !== norm(cotDelClienteUlt)) return;  // ya escribió otro
+        var cs = d.cotizaciones || [];
+        if (!cs.length) { caja.innerHTML = ''; return; }
+        caja.innerHTML = '<div class="aviso-caja"><b>' + esc(cliente) + ' ya tiene ' +
+          (cs.length === 1 ? 'una cotización' : fmtNum(cs.length) + ' cotizaciones') +
+          ' sin vender.</b>' +
+          '<div class="s" style="margin-top:4px">Si esta venta es de ahí, conviértela en vez de ' +
+          'capturarla: se copian los productos y también el tipo de cliente, cómo llegó, si visitó ' +
+          'el showroom y el tiempo de entrega. Si la capturas a mano, esos datos no viajan.</div>' +
+          '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">' +
+          cs.map(function (c) {
+            return '<button type="button" class="row-btn cot-del-cli" data-folio="' +
+              esc(c.folio).replace(/"/g, '&quot;') + '" data-cliente="' +
+              esc(c.cliente).replace(/"/g, '&quot;') + '">' + esc(c.folio) +
+              ' · ' + formatMoney(c.total) +
+              (c.piezas ? ' · ' + fmtNum(c.piezas) + (c.piezas === 1 ? ' pieza' : ' piezas') : '') +
+              '</button>';
+          }).join('') + '</div></div>';
+        Array.prototype.forEach.call(caja.querySelectorAll('.cot-del-cli'), function (b) {
+          b.onclick = function () {
+            var folio = b.getAttribute('data-folio');
+            var cli = b.getAttribute('data-cliente');
+            cerrarModalAlta();
+            // Se cambia al área de Cotizaciones y, cuando ya cargó, se abre la
+            // ventana de convertir: `abrirConvertirVenta` necesita los renglones
+            // de esa cotización para saber qué preguntar y qué no.
+            selectArea('cotizaciones', 'Cotizaciones');
+            var intentos = 0;
+            var esperar = setInterval(function () {
+              intentos++;
+              var cRef = findHeaderByName('No. de Referencia') || findHeaderByName('Folio');
+              var listo = state.key === 'cotizaciones' && cRef &&
+                (state.rows || []).some(function (r) {
+                  return String(r[cRef] || '').trim() === folio;
+                });
+              if (listo) { clearInterval(esperar); abrirConvertirVenta(folio, cli); }
+              else if (intentos > 40) {
+                clearInterval(esperar);
+                toast('Abre la cotización ' + folio + ' y dale "Marcar como vendida".', 'warn');
+              }
+            }, 250);
+          };
+        });
+      })
+      .catch(function () { caja.innerHTML = ''; });
+  }
+
   // ===== Cuadrar con el banco =====
   //
   // Val, 19 nov: *"quiero ver cuáles cuadran y cuáles no, entonces dónde subirte
@@ -12652,6 +12772,23 @@
           base += (base ? ' · ' : '') + '<span style="color:var(--amber)">' + esc(motivo) + '</span>';
         }
         fuente.innerHTML = base;
+      }
+      // Botones propios del área. Se vacía siempre: si no, el de un área se
+      // queda puesto en la siguiente.
+      var acc = document.getElementById('accionesArea');
+      if (acc) {
+        acc.innerHTML = '';
+        // Val, 19 nov: *"no me guarda la misma información que ingreso de
+        // cotización, no están conectadas"*. Las ventas cerradas antes del 5 de
+        // noviembre se convirtieron cuando esas columnas todavía no existían en
+        // la hoja de Ventas, así que el dato se quedó en la cotización.
+        if (state.key === 'ventas_registro' && !esSoloLectura(state.key)) {
+          acc.innerHTML = '<button type="button" class="row-btn" id="btnConectarCot" ' +
+            'title="Rellena lo que la cotización tiene y a la venta le falta">' +
+            'Conectar con sus cotizaciones</button>';
+          var bc2 = document.getElementById('btnConectarCot');
+          if (bc2) bc2.onclick = function () { revisarConexionCot(); };
+        }
       }
       // Área creada pero sin archivo: se explica qué falta en vez de salir vacía
       if (data.sinArchivo) {
@@ -18073,6 +18210,7 @@
 
   function aplicarTabla() {
     avisarSiYaTiene();
+    avisarCotizacionDelCliente();
     var t = tablaLU();
     if (!t) return;
     var claves = t.campos.map(function (c) {
@@ -22004,7 +22142,7 @@
     ? '⌘⇧R' : 'Ctrl+Shift+R';
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.11.19-572';
+    var mia = '2026.11.19-573';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
