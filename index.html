@@ -1118,7 +1118,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.18-569</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.19-571</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -1205,7 +1205,7 @@
       <div class="modal-body">
         <div id="ventaResumen" style="background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:18px;font-size:14px"></div>
         <div class="form-grid" id="ventaMkt"></div>
-        <div class="form-grid">
+        <div class="form-grid" id="ventaFechaBloque">
           <div class="fld">
             <label>¿Ya hay fecha de entrega acordada?</label>
             <select id="ventaSabeFecha">
@@ -1218,7 +1218,7 @@
             <input type="date" id="ventaFecha">
           </div>
         </div>
-        <div style="font-size:12.5px;color:var(--muted);margin-top:10px">
+        <div id="ventaNota" style="font-size:12.5px;color:var(--muted);margin-top:10px">
           Se copian todos los productos de la cotización a Ventas con un folio nuevo, y la cotización
           queda marcada como vendida. Después se te pregunta lo de la factura.
         </div>
@@ -1512,6 +1512,11 @@
     'op_stock', 'op_traza', 'op_revisar', 'prov_revision'];
   function esLector() {
     return state.rol === 'lector' || state.rol === 'viewer' || state.rol === 'lectura';
+  }
+  // Admin: lo que escribe en bloque sobre las hojas del cliente no lo abre nadie más
+  function esAdmin() {
+    var r = String(state.rol || '').toLowerCase();
+    return r === 'admin' || r === 'administrador';
   }
   // El rol también decide si se puede capturar
   function rolPuedeEditar(key) {
@@ -8348,8 +8353,8 @@
     document.getElementById('count').textContent = '';
     document.getElementById('tableWrap').innerHTML =
       '<div class="state" style="padding:50px 0">Leyendo cuentas…</div>';
-    api('caja-bancos', { token: state.token })
-      .then(function (d) { cajaD = d; pintarCaja(); })
+    api('caja-bancos', { token: state.token, anio: cajaAnio || '' })
+      .then(function (d) { cajaD = d; cajaAnio = d.anio || cajaAnio; pintarCaja(); })
       .catch(function (e) {
         document.getElementById('tableWrap').innerHTML =
           '<div class="state" style="color:var(--danger);padding:40px 0">' +
@@ -8383,17 +8388,29 @@
           '" data-pill="' + esc(c.cuenta) + '">' + esc(c.cuenta) + '</button>';
       }).join('') +
       '<button class="pill' + (cajaPill === 'flujo' ? ' on' : '') + '" data-pill="flujo">Flujo de efectivo</button>' +
+      '<button class="pill' + (cajaPill === 'cuadrar' ? ' on' : '') + '" data-pill="cuadrar">Cuadrar con el banco</button>' +
+      '<button class="pill' + (cajaPill === 'ayuda' ? ' on' : '') + '" data-pill="ayuda">Cómo se usa</button>' +
       '</div>';
 
     if (cajaPill === 'resumen') h += cajaResumen(d);
     else if (cajaPill === 'flujo') h += cajaFlujo(d);
+    else if (cajaPill === 'cuadrar') h += cajaCuadrar(d);
+    else if (cajaPill === 'ayuda') h += cajaAyuda(d);
     else h += cajaCuenta(d, cajaPill);
 
     document.getElementById('tableWrap').innerHTML = h;
     engancharCaja();
   }
   function cajaResumen(d) {
-    var hoy = new Date(), mesHoy = hoy.getMonth() + 1, anioHoy = hoy.getFullYear();
+    var hoy = new Date(), anioHoy = hoy.getFullYear();
+    // El "este mes" de las tarjetas es el último mes CON movimientos del año que
+    // se está viendo: con el filtro de año puesto en 2025, el mes de hoy no
+    // existe y las tarjetas salían todas en cero sin explicar por qué.
+    var mesHoy = 0;
+    (d.cuentas || []).forEach(function (c) {
+      (c.movs || []).forEach(function (m) { if (m.mes > mesHoy) mesHoy = m.mes; });
+    });
+    var anioVisto = d.anio || anioHoy;
     var total = 0, h = '<div class="summary-cards" style="margin-bottom:16px">';
     (d.cuentas || []).forEach(function (c) {
       if (c.error) {
@@ -8404,24 +8421,29 @@
       total += c.saldo;
       var ent = 0, sal = 0;
       (c.movs || []).forEach(function (m) {
-        if (m.anio === anioHoy && m.mes === mesHoy) { ent += m.entrada; sal += m.salida; }
+        if (m.mes === mesHoy) { ent += m.entrada; sal += m.salida; }
       });
       h += '<div class="sum-card"><div class="k">' + esc(c.cuenta) + '</div>' +
         '<div class="v">' + formatMoney(c.saldo) + '</div>' +
         '<div class="s" style="color:var(--muted);margin-top:4px">' +
         (ent ? '+' + formatMoney(ent) + ' · ' : '') +
-        (sal ? '−' + formatMoney(sal) : (ent ? '' : 'sin movimientos este mes')) +
+        (sal ? '−' + formatMoney(sal) : (ent ? '' : 'sin movimientos en ' +
+          (mesHoy ? CAJA_MESES[mesHoy - 1] : 'el periodo'))) +
         '</div>' +
         (c.ultimo ? '<div class="s" style="color:var(--muted)">último: ' +
           esc(c.ultimo.fecha) + (c.ultimo.descripcion ? ' · ' + esc(c.ultimo.descripcion) : '') +
           '</div>' : '') + '</div>';
     });
-    h += '</div><div class="card" style="margin-bottom:16px;display:flex;' +
+    h += '</div>' +
+      (mesHoy ? '<div class="s" style="color:var(--muted);margin:-6px 0 12px">Las entradas y ' +
+        'salidas de cada tarjeta son de <b>' + CAJA_MESES[mesHoy - 1] + ' ' + anioVisto +
+        '</b>, el último mes con movimientos capturados.</div>' : '') +
+      '<div class="card" style="margin-bottom:16px;display:flex;' +
       'justify-content:space-between;align-items:baseline"><b>Total consolidado</b>' +
       '<b style="font-size:22px;color:var(--accent)">' + formatMoney(total) + '</b></div>';
 
     // Tablero de estados de cuenta
-    var anio = cajaAnio || anioHoy;
+    var anio = cajaAnio || anioVisto;
     var porClave = {};
     (d.conciliaciones || []).forEach(function (r) {
       var cta = r['Cuenta'] || '', per = String(r['Periodo'] || r['Mes'] || '');
@@ -8463,30 +8485,44 @@
       if (cajaAnio && m.anio && m.anio !== cajaAnio) return false;
       if (cajaMes && m.mes !== cajaMes) return false;
       if (!cajaBusca) return true;
-      var t = (m.descripcion + ' ' + m.concepto + ' ' + m.cliente + ' ' + m.proveedor +
-               ' ' + m.referencia).toLowerCase();
+      var t = (m.descripcion + ' ' + m.concepto + ' ' + (m.quien || '') + ' ' +
+               (m.categoria || '') + ' ' + m.referencia).toLowerCase();
       return t.indexOf(cajaBusca.toLowerCase()) !== -1;
     });
     var ent = movs.reduce(function (a, m) { return a + m.entrada; }, 0);
     var sal = movs.reduce(function (a, m) { return a + m.salida; }, 0);
     var h = '<div class="est-top"><div class="s" style="color:var(--slate)">' +
       '<b>' + esc(c.cuenta) + '</b> · saldo ' + formatMoney(c.saldo) +
-      ' · ' + fmtNum(movs.length) + ' movimientos' +
+      ' · ' + fmtNum(movs.length) + ' movimientos de ' + fmtNum(c.totalMovs || 0) +
       '</div><div style="display:flex;gap:8px;align-items:flex-end">' +
       cajaFiltros(d) +
       (d.puedeEscribir ? '<button class="row-btn" id="cajaNuevo">Agregar movimiento</button>' : '') +
       '<button class="row-btn" id="cajaCSV">Descargar</button></div></div>';
+    // Cuando la columna Saldo de la hoja no es un saldo corrido, se dice. Pasa en
+    // American Express: 382 de 383 renglones enseñan su propio monto, no el
+    // acumulado. El panel siempre usa el corrido que calcula él.
+    if (c.saldoRoto) {
+      h += '<div class="aviso-caja"><b>La columna <i>Saldo</i> de esta pestaña no cuadra</b> en ' +
+        fmtNum(c.saldoRoto) + (c.saldoRoto === 1 ? ' renglón' : ' renglones') +
+        (c.primerRoto ? ': desde el ' + esc(c.primerRoto.fecha) + ' (renglón ' + c.primerRoto.fila +
+          ') la hoja dice ' + formatMoney(c.primerRoto.hoja) + ' y el corrido va en ' +
+          formatMoney(c.primerRoto.erp) : '') +
+        '. Aquí se usa el saldo que calcula el panel, movimiento a movimiento. ' +
+        'Conviene arreglar la fórmula de esa columna en la hoja.</div>';
+    }
     h += '<div class="summary-cards" style="margin-bottom:12px">' +
+      (c.saldoInicial ? '<div class="sum-card"><div class="k">Saldo al empezar ' + (cajaAnio || '') +
+        '</div><div class="v">' + formatMoney(c.saldoInicial) + '</div></div>' : '') +
       '<div class="sum-card"><div class="k">Entradas</div><div class="v">' + formatMoney(ent) + '</div></div>' +
       '<div class="sum-card"><div class="k">Salidas</div><div class="v">' + formatMoney(sal) + '</div></div>' +
       '<div class="sum-card"><div class="k">Saldo de la cuenta</div><div class="v">' + formatMoney(c.saldo) + '</div></div>' +
       '</div>';
     h += '<table class="mini-table"><thead><tr><th>Fecha</th><th>Concepto</th>' +
-      '<th>Descripción</th><th>Cliente / Proveedor</th>' +
+      '<th>Descripción</th><th>Cliente / Proveedor</th><th>Categoría</th>' +
       '<th style="text-align:right">Entrada</th><th style="text-align:right">Salida</th>' +
       '<th style="text-align:right">Saldo</th></tr></thead><tbody>';
     if (!movs.length) {
-      h += '<tr><td colspan="7"><div class="state" style="padding:26px 0">' +
+      h += '<tr><td colspan="8"><div class="state" style="padding:26px 0">' +
         'No hay movimientos con esos filtros.</div></td></tr>';
     }
     movs.forEach(function (m) {
@@ -8494,7 +8530,10 @@
         '<td>' + esc(m.concepto) + (m.traspaso
           ? ' <span class="s" style="color:var(--muted)">(traspaso)</span>' : '') + '</td>' +
         '<td>' + esc(m.descripcion) + '</td>' +
-        '<td>' + esc(m.cliente || m.proveedor) + '</td>' +
+        '<td>' + esc(m.quien || '') + '</td>' +
+        '<td class="s">' + esc(m.categoria || '') +
+          (m.subcategoria ? '<div style="color:var(--muted)">' + esc(m.subcategoria) + '</div>' : '') +
+          '</td>' +
         '<td style="text-align:right">' + (m.entrada ? formatMoney(m.entrada) : '') + '</td>' +
         '<td style="text-align:right">' + (m.salida ? formatMoney(m.salida) : '') + '</td>' +
         '<td style="text-align:right"><b>' + formatMoney(m.saldo) + '</b></td></tr>';
@@ -8615,7 +8654,7 @@
     };
     h += '<div class="dash-cols">' +
       corte('Concepto', function (m) { return m.categoria || m.concepto; }) +
-      corte('Cliente / Proveedor', function (m) { return m.cliente || m.proveedor; }) +
+      corte('Cliente / Proveedor', function (m) { return m.quien; }) +
       corte('Cuenta', function (m) { return m.cuenta; }) +
       '</div>';
     return h;
@@ -8626,23 +8665,38 @@
     });
     var a = document.getElementById('cajaAnio'), m = document.getElementById('cajaMes'),
         q = document.getElementById('cajaBusca');
-    if (a) a.onchange = function () { cajaAnio = Number(this.value); pintarCaja(); };
+    if (a) a.onchange = function () { cajaAnio = Number(this.value); loadCaja(); };
     if (m) m.onchange = function () { cajaMes = Number(this.value); pintarCaja(); };
     if (q) q.oninput = function () { cajaBusca = this.value; pintarCaja(); q.focus(); };
     var n = document.getElementById('cajaNuevo');
     if (n) n.onclick = function () { abrirMovimientoCaja(); };
     var cs = document.getElementById('cajaCSV');
     if (cs) cs.onclick = function () { bajarCajaCSV(); };
+    var cq = document.getElementById('crCuadrar');
+    if (cq) cq.onclick = function () { correrCruce(); };
+    var ca = document.getElementById('crAlta');
+    if (ca) ca.onclick = function () { altaDelCruce(); };
+    var cc = document.getElementById('cajaCrearCats');
+    if (cc) cc.onclick = function () {
+      cc.disabled = true; cc.textContent = 'Creando…';
+      api('caja-bancos', { token: state.token, que: 'categorias' })
+        .then(function (r) { toast(r.mensaje || 'Listo.', 'ok'); loadCaja(); })
+        .catch(fail)
+        .then(function () { cc.disabled = false; cc.textContent = 'Crear la pestaña Categorías'; });
+    };
+    var ct = document.getElementById('crTexto');
+    if (ct && cruceTexto) ct.value = cruceTexto;
   }
   function bajarCajaCSV() {
     var c = (cajaD.cuentas || []).filter(function (x) { return x.cuenta === cajaPill; })[0];
     if (!c) return;
-    var filas = [['Fecha', 'Concepto', 'Descripción', 'Cliente', 'Proveedor',
-                  'Entrada', 'Salida', 'Saldo']];
+    var filas = [['Fecha', 'Concepto', 'Descripción', 'Cliente/Proveedor', 'Categoría',
+                  'Subcategoría', 'Referencia', 'Entrada', 'Salida', 'Saldo']];
     (c.movs || []).forEach(function (m) {
       if (cajaAnio && m.anio && m.anio !== cajaAnio) return;
       if (cajaMes && m.mes !== cajaMes) return;
-      filas.push([m.fecha, m.concepto, m.descripcion, m.cliente, m.proveedor,
+      filas.push([m.fecha, m.concepto, m.descripcion, m.quien || '', m.categoria || '',
+                  m.subcategoria || '', m.referencia || '',
                   m.entrada || '', m.salida || '', m.saldo]);
     });
     var csv = filas.map(function (f) {
@@ -8656,6 +8710,10 @@
   // Un solo formulario: entrada, salida o traspaso. Nada de botones separados.
   function abrirMovimientoCaja() {
     var cuentas = (cajaD.cuentas || []).filter(function (c) { return !c.error; });
+    var L = cajaD.listas || {};
+    var lista = function (arr) {
+      return (arr || []).map(function (x) { return '<option>' + esc(x) + '</option>'; }).join('');
+    };
     var opc = function (sel) {
       return cuentas.map(function (c) {
         return '<option value="' + esc(c.cuenta) + '"' +
@@ -8675,11 +8733,23 @@
       '<div class="fld" id="mvDestinoBox" style="display:none"><label>Cuenta destino</label>' +
         '<select id="mvDestino">' + opc('') + '</select></div>' +
       '<div class="fld"><label>Monto</label><input id="mvMonto" inputmode="decimal"></div>' +
-      '<div class="fld"><label>Concepto</label><input id="mvConcepto" ' +
-        'placeholder="como aparece en el estado de cuenta"></div>' +
-      '<div class="fld"><label>Descripción</label><input id="mvDesc"></div>' +
-      '<div class="fld"><label>Cliente</label><input id="mvCliente"></div>' +
-      '<div class="fld"><label>Proveedor</label><input id="mvProveedor"></div>';
+      // Concepto, categoría y subcategoría salen de listas: escribirlos a mano es
+      // lo que llena la hoja de "Viaticos" y "viáticos" como si fueran dos cosas.
+      '<div class="fld"><label>Concepto</label><select id="mvConcepto">' +
+        '<option value="">—</option>' + lista(L.conceptos) + '</select></div>' +
+      '<div class="fld"><label>Categoría</label><select id="mvCategoria">' +
+        '<option value="">—</option>' + lista(L.categorias) + '</select></div>' +
+      '<div class="fld"><label>Subcategoría</label><select id="mvSub">' +
+        '<option value="">—</option>' + lista(L.subcategorias) + '</select></div>' +
+      '<div class="fld"><label>Descripción</label><input id="mvDesc" ' +
+        'placeholder="folio, nombre, para qué fue"></div>' +
+      '<div class="fld"><label>Cliente / Proveedor</label><input id="mvQuien" ' +
+        'list="mvQuienes"><datalist id="mvQuienes">' +
+        (L.quien || []).slice(0, 300).map(function (x) {
+          return '<option value="' + esc(x) + '"></option>';
+        }).join('') + '</datalist></div>' +
+      '<div class="fld"><label>Referencia del estado de cuenta</label>' +
+        '<input id="mvRef" placeholder="opcional"></div>';
     document.getElementById('aventaOk').textContent = 'Guardar';
     document.getElementById('aventaCancel').textContent = 'Cancelar';
     document.getElementById('aventaModal').classList.add('on');
@@ -8687,8 +8757,260 @@
       var t = this.value === 'traspaso';
       document.getElementById('mvDestinoBox').style.display = t ? '' : 'none';
       document.getElementById('mvLblCuenta').textContent = t ? 'Cuenta de origen' : 'Cuenta';
+      if (t) {
+        var c = document.getElementById('mvConcepto');
+        if (c && [].some.call(c.options, function (o) { return o.value === 'Traspaso entre cuentas'; })) {
+          c.value = 'Traspaso entre cuentas';
+          if (c.onchange) c.onchange();
+        }
+      }
+    };
+    // Al elegir el concepto se propone la categoría que suele llevar, y la
+    // subcategoría se recorta a las de esa categoría.
+    document.getElementById('mvConcepto').onchange = function () {
+      var cat = document.getElementById('mvCategoria');
+      var prop = (L.categoriaDe || {})[this.value];
+      if (prop && cat && !cat.value) cat.value = prop;
+      if (cat && cat.onchange) cat.onchange();
+    };
+    document.getElementById('mvCategoria').onchange = function () {
+      var sub = document.getElementById('mvSub');
+      if (!sub) return;
+      var propias = (L.subsDe || {})[this.value];
+      var antes = sub.value;
+      sub.innerHTML = '<option value="">—</option>' +
+        lista(propias && propias.length ? propias : L.subcategorias);
+      if (antes) sub.value = antes;
+      // Si la categoría solo tiene una subcategoría, se pone sola
+      if (propias && propias.length === 1) sub.value = propias[0];
     };
   }
+  // ===== Cuadrar con el banco =====
+  //
+  // Val, 19 nov: *"quiero ver cuáles cuadran y cuáles no, entonces dónde subirte
+  // los movimientos para ver si me hace falta algo"*. Aquí se pega el estado de
+  // cuenta —copiado de Excel, del CSV del banco o separado por comas— y el ERP
+  // lo cruza contra lo capturado: empareja por monto igual y fecha cercana, uno
+  // a uno, y parte el resultado en tres montones.
+  //
+  // **No escribe nada** hasta que se confirme, y la vista previa dice
+  // exactamente qué se va a dar de alta.
+  var cruceD = null, cruceCuenta = '', cruceTol = 3;
+  function cajaCuadrar(d) {
+    var cuentas = (d.cuentas || []).filter(function (c) { return !c.error; });
+    if (!cruceCuenta) {
+      cruceCuenta = cuentas.filter(function (c) { return c.cuenta === cajaPill; })[0]
+        ? cajaPill : (cuentas[0] ? cuentas[0].cuenta : '');
+    }
+    var h = '<div class="panel" style="margin-bottom:14px"><h4>Pega aquí el estado de cuenta</h4>' +
+      '<div class="panel-body">' +
+      '<div class="s" style="color:var(--slate);margin-bottom:10px">' +
+      'Cópialo del Excel o del CSV que baja el banco y pégalo tal cual, <b>con su renglón de ' +
+      'encabezados</b> (Fecha, Descripción y Cargo/Abono o Importe). Si no trae encabezados ' +
+      'también se lee, pero el panel te avisa cómo lo entendió antes de que des nada por bueno. ' +
+      'Nada se escribe en la hoja hasta que lo confirmes.</div>' +
+      '<div class="form-grid" style="margin-bottom:10px">' +
+      '<div class="fld"><label>Cuenta</label><select id="crCuenta">' +
+      cuentas.map(function (c) {
+        return '<option value="' + esc(c.cuenta) + '"' +
+          (c.cuenta === cruceCuenta ? ' selected' : '') + '>' + esc(c.cuenta) + '</option>';
+      }).join('') + '</select></div>' +
+      '<div class="fld"><label>Días de diferencia que se permiten</label>' +
+      '<select id="crTol">' + [0, 1, 2, 3, 5, 7, 10].map(function (n) {
+        return '<option value="' + n + '"' + (n === cruceTol ? ' selected' : '') + '>' +
+          (n === 0 ? 'el mismo día' : '± ' + n + ' días') + '</option>';
+      }).join('') + '</select></div></div>' +
+      '<textarea id="crTexto" rows="8" class="inp" style="width:100%;font-family:ui-monospace,monospace;' +
+      'font-size:12px" placeholder="Fecha\tDescripción\tCargo\tAbono\n17/11/2026\tTRASPASO A TERCEROS\t7174.41\t"></textarea>' +
+      '<div style="margin-top:10px"><button class="primary" id="crCuadrar">Cuadrar</button></div>' +
+      '</div></div>';
+    if (cruceD) h += cajaCrucePintado(cruceD);
+    return h;
+  }
+  function cajaCrucePintado(r) {
+    var tabla = function (titulo, filas, color, cuerpo, cabecera) {
+      return '<div class="panel"><h4 style="color:' + color + '">' + titulo + '</h4>' +
+        '<div class="panel-body">' +
+        (filas.length
+          ? '<table class="mini-table"><thead><tr>' + cabecera + '</tr></thead><tbody>' +
+            filas.map(cuerpo).join('') + '</tbody></table>'
+          : '<div class="state" style="padding:20px 0">Ninguno.</div>') +
+        '</div></div>';
+    };
+    var dineroCols = '<th style="text-align:right">Entrada</th><th style="text-align:right">Salida</th>';
+    var h = '';
+    if (r.aviso) h += '<div class="aviso-caja">' + esc(r.aviso) + '</div>';
+    h += '<div class="summary-cards" style="margin-bottom:12px">' +
+      '<div class="sum-card"><div class="k">En el banco</div><div class="v">' +
+        fmtNum(r.banco.movs) + '</div><div class="s" style="color:var(--muted)">+' +
+        formatMoney(r.banco.entradas) + ' · −' + formatMoney(r.banco.salidas) + '</div></div>' +
+      '<div class="sum-card"><div class="k">En el ERP</div><div class="v">' +
+        fmtNum(r.erp.movs) + '</div><div class="s" style="color:var(--muted)">+' +
+        formatMoney(r.erp.entradas) + ' · −' + formatMoney(r.erp.salidas) + '</div></div>' +
+      '<div class="sum-card"><div class="k">Cuadran</div><div class="v" style="color:var(--success)">' +
+        fmtNum(r.cuadran.length) + '</div></div>' +
+      '<div class="sum-card"><div class="k">Diferencia</div><div class="v" style="color:' +
+        (Math.abs(r.diferencia) < 0.5 ? 'var(--success)' : 'var(--danger)') + '">' +
+        formatMoney(r.diferencia) + '</div></div>' +
+      '</div>' +
+      '<div class="s" style="color:var(--muted);margin-bottom:12px">' +
+      esc(r.cuenta) + ' · del ' + esc(r.periodo.desde) + ' al ' + esc(r.periodo.hasta) +
+      ' · ' + esc(r.nota) + '</div>';
+
+    h += '<div style="display:grid;gap:14px">';
+    h += tabla('Solo en el banco — falta capturarlos (' + fmtNum(r.soloBanco.length) + ')',
+      r.soloBanco, 'var(--danger)',
+      function (x) {
+        return '<tr><td>' + esc(x.fecha) + (x.dudoso
+            ? ' <span class="s" style="color:var(--amber)">¿entrada o salida?</span>' : '') +
+          '</td><td>' + esc(x.descripcion) + '</td>' +
+          '<td style="text-align:right">' + (x.entrada ? formatMoney(x.entrada) : '') + '</td>' +
+          '<td style="text-align:right">' + (x.salida ? formatMoney(x.salida) : '') + '</td></tr>';
+      }, '<th>Fecha</th><th>Descripción</th>' + dineroCols);
+    if (r.soloBanco.length && cajaD && cajaD.puedeEscribir) {
+      h += '<div><button class="primary" id="crAlta">Dar de alta los ' +
+        fmtNum(r.soloBanco.length) + ' que faltan</button>' +
+        '<span class="s" style="color:var(--muted);margin-left:10px">Te enseño antes qué se va a escribir.</span></div>';
+    }
+    h += tabla('Solo en el ERP — están capturados y no aparecen en el banco (' +
+      fmtNum(r.soloErp.length) + ')', r.soloErp, 'var(--amber)',
+      function (x) {
+        return '<tr><td>' + esc(x.fecha) + '</td><td>' + esc(x.concepto) + '</td>' +
+          '<td>' + esc(x.descripcion) + '</td>' +
+          '<td style="text-align:right">' + (x.entrada ? formatMoney(x.entrada) : '') + '</td>' +
+          '<td style="text-align:right">' + (x.salida ? formatMoney(x.salida) : '') + '</td>' +
+          '<td class="s" style="color:var(--muted)">renglón ' + x.fila + '</td></tr>';
+      }, '<th>Fecha</th><th>Concepto</th><th>Descripción</th>' + dineroCols + '<th></th>');
+    h += tabla('Cuadran (' + fmtNum(r.cuadran.length) + ')', r.cuadran, 'var(--success)',
+      function (x) {
+        return '<tr><td>' + esc(x.fecha) + '</td><td>' + esc(x.descripcion) + '</td>' +
+          '<td style="text-align:right">' + (x.entrada ? formatMoney(x.entrada) : '') + '</td>' +
+          '<td style="text-align:right">' + (x.salida ? formatMoney(x.salida) : '') + '</td>' +
+          '<td class="s" style="color:var(--muted)">' +
+          (x.dias ? 'con ' + x.dias + (x.dias === 1 ? ' día' : ' días') + ' de diferencia' : 'mismo día') +
+          ' · renglón ' + x.filaErp + '</td></tr>';
+      }, '<th>Fecha</th><th>Descripción</th>' + dineroCols + '<th></th>');
+    return h + '</div>';
+  }
+  function correrCruce() {
+    var btn = document.getElementById('crCuadrar');
+    var texto = (document.getElementById('crTexto') || {}).value || '';
+    if (!texto.trim()) { toast('Pega el estado de cuenta primero.', 'warn'); return; }
+    cruceCuenta = (document.getElementById('crCuenta') || {}).value || cruceCuenta;
+    cruceTol = Number((document.getElementById('crTol') || {}).value || 3);
+    btn.disabled = true; btn.textContent = 'Cuadrando…';
+    api('caja-bancos', { token: state.token, que: 'cruce', cuenta: cruceCuenta,
+                         texto: texto, tolerancia: cruceTol })
+      .then(function (r) { cruceD = r; cruceTexto = texto; pintarCaja(); })
+      .catch(function (e) { fail(e); })
+      .then(function () {
+        var b = document.getElementById('crCuadrar');
+        if (b) { b.disabled = false; b.textContent = 'Cuadrar'; }
+      });
+  }
+  var cruceTexto = '';
+  function altaDelCruce() {
+    if (!cruceD || !cruceD.soloBanco.length) return;
+    var h = '<div style="font-size:13px;color:var(--slate);margin-bottom:10px">' +
+      'Se van a agregar <b>' + fmtNum(cruceD.soloBanco.length) + '</b> movimientos al final de ' +
+      '<b>' + esc(cruceD.cuenta) + '</b>, con la fecha y el monto del banco. ' +
+      'Quedan con el comentario «Dado de alta del estado de cuenta» para que se distingan, ' +
+      'y después les puedes poner concepto y categoría.</div>' +
+      '<table class="mini-table"><thead><tr><th>Fecha</th><th>Descripción</th>' +
+      '<th style="text-align:right">Entrada</th><th style="text-align:right">Salida</th>' +
+      '</tr></thead><tbody>' +
+      cruceD.soloBanco.map(function (x) {
+        return '<tr><td>' + esc(x.fecha) + '</td><td>' + esc(x.descripcion) + '</td>' +
+          '<td style="text-align:right">' + (x.entrada ? formatMoney(x.entrada) : '') + '</td>' +
+          '<td style="text-align:right">' + (x.salida ? formatMoney(x.salida) : '') + '</td></tr>';
+      }).join('') + '</tbody></table>';
+    confirmarAccion('Dar de alta lo que falta', h, 'Escribir en la hoja', function () {
+      api('caja-bancos', { token: state.token, que: 'alta-cruce', cuenta: cruceD.cuenta,
+                           texto: cruceTexto, tolerancia: cruceD.tolerancia })
+        .then(function (r) {
+          toast(r.mensaje || 'Listo.', 'ok');
+          cruceD = null; loadCaja();
+        })
+        .catch(fail);
+    });
+  }
+
+  // ===== Cómo se usa (el manual, dentro de la propia pantalla) =====
+  //
+  // Val lo pidió el 19 nov. Va aquí y no en un PDF aparte a propósito: el manual
+  // que se abre en el lugar donde se trabaja es el que se lee.
+  function cajaAyuda(d) {
+    var paso = function (n, t, c) {
+      return '<div style="display:flex;gap:12px;margin-bottom:14px">' +
+        '<div style="flex:0 0 26px;height:26px;border-radius:50%;background:var(--accent);' +
+        'color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;' +
+        'font-weight:600">' + n + '</div><div><b>' + t + '</b>' +
+        '<div class="s" style="color:var(--slate);margin-top:3px">' + c + '</div></div></div>';
+    };
+    var L = d.listas || {};
+    return '<div class="dash-cols">' +
+      '<div class="panel"><h4>Qué es cada pestaña</h4><div class="panel-body">' +
+      '<div class="s" style="color:var(--slate);line-height:1.7">' +
+      '<b>Resumen</b> · el saldo de cada cuenta y el total. Abajo, el tablero de estados de ' +
+      'cuenta: <b>✓</b> ese mes cuadra, <b>≠</b> hay diferencia, <b>·</b> todavía no se sube.<br>' +
+      '<b>Una pestaña por cuenta</b> · todos sus movimientos, del más viejo al más nuevo, con ' +
+      'el saldo corrido. Se filtra por año y mes, se busca y se descarga.<br>' +
+      '<b>Flujo de efectivo</b> · todas las cuentas juntas: entradas, salidas y en qué se va el ' +
+      'dinero. Los traspasos entre cuentas <b>no</b> cuentan como entrada ni salida — mover ' +
+      'dinero de BBVA a Caja Chica no es un ingreso.<br>' +
+      '<b>Cuadrar con el banco</b> · pegas el estado de cuenta y te dice qué falta.' +
+      '</div></div></div>' +
+
+      '<div class="panel"><h4>Capturar un movimiento</h4><div class="panel-body">' +
+      paso(1, 'Entra a la cuenta', 'Elige la pestaña de la cuenta donde pasó el movimiento y ' +
+              'dale <b>Agregar movimiento</b>.') +
+      paso(2, 'Entrada, salida o traspaso', 'Entrada es dinero que llega; salida, dinero que ' +
+              'sale. <b>Traspaso</b> es dinero que se mueve entre dos cuentas tuyas: se captura ' +
+              '<b>una sola vez</b> y el panel escribe la salida en una cuenta y la entrada en la ' +
+              'otra. No lo captures dos veces.') +
+      paso(3, 'La fecha, como la escribes siempre', 'Sirve «17 noviembre 2026», «17/11/2026» o ' +
+              '«2026-11-17».') +
+      paso(4, 'Concepto y categoría', 'Salen de listas, no se escriben a mano. Al elegir el ' +
+              'concepto, el panel propone la categoría que suele llevar.') +
+      paso(5, 'El saldo no se captura', 'Lo calcula el panel solo, movimiento a movimiento.') +
+      '</div></div>' +
+
+      '<div class="panel"><h4>Cuadrar contra el banco</h4><div class="panel-body">' +
+      paso(1, 'Baja el estado de cuenta', 'En Excel o CSV. Si solo tienes el PDF, copia la tabla ' +
+              'de movimientos y pégala.') +
+      paso(2, 'Pégalo y elige la cuenta', 'Con su renglón de encabezados si lo trae. El panel ' +
+              'solo compara el periodo que viene en lo que pegaste, no todo el año.') +
+      paso(3, 'Lee los tres montones',
+              '<b>Solo en el banco</b>: pasó y no está capturado — eso es lo que te falta.<br>' +
+              '<b>Solo en el ERP</b>: está capturado y el banco no lo trae — puede estar en otro ' +
+              'mes, duplicado, o con el monto mal.<br>' +
+              '<b>Cuadran</b>: el mismo monto en los dos lados.') +
+      paso(4, 'Da de alta lo que falta', 'Con un botón, y antes te enseña exactamente qué va a ' +
+              'escribir. Quedan marcados con el comentario «Dado de alta del estado de cuenta».') +
+      '<div class="s" style="color:var(--muted);margin-top:4px">Se empareja por monto igual y ' +
+      'fecha cercana. Si el banco registra un día después, sube los días de diferencia que se ' +
+      'permiten.</div>' +
+      '</div></div>' +
+
+      '<div class="panel"><h4>Las listas de conceptos</h4><div class="panel-body">' +
+      '<div class="s" style="color:var(--slate);line-height:1.7">' +
+      'Hoy las listas salen <b>' + esc(L.deDonde || '') + '</b>: ' +
+      fmtNum((L.conceptos || []).length) + ' conceptos, ' +
+      fmtNum((L.categorias || []).length) + ' categorías y ' +
+      fmtNum((L.subcategorias || []).length) + ' subcategorías.<br>' +
+      (L.hayPestana
+        ? 'Para agregar o quitar opciones, edita la pestaña <b>Categorías</b> del archivo.'
+        : 'El archivo <b>no tiene pestaña de categorías</b>, así que el panel las arma de lo que ' +
+          'ya está capturado. Si quieres controlarlas a mano, créala con el botón de abajo: se ' +
+          'llena con lo que hoy se usa y de ahí en adelante esa pestaña manda.') +
+      '</div>' +
+      (!L.hayPestana && state.rol === 'admin'
+        ? '<div style="margin-top:10px"><button class="row-btn" id="cajaCrearCats">' +
+          'Crear la pestaña Categorías</button></div>' : '') +
+      '</div></div>' +
+      '</div>';
+  }
+
   function guardarMovimientoCaja() {
     var v = function (id) { return (document.getElementById(id) || {}).value || ''; };
     var btn = document.getElementById('aventaOk');
@@ -8697,7 +9019,8 @@
       token: state.token, guardar: 1, tipo: v('mvTipo'), fecha: v('mvFecha'),
       cuenta: v('mvCuenta'), cuentaDestino: v('mvDestino'), monto: v('mvMonto'),
       concepto: v('mvConcepto'), descripcion: v('mvDesc'),
-      cliente: v('mvCliente'), proveedor: v('mvProveedor')
+      categoria: v('mvCategoria'), subcategoria: v('mvSub'),
+      quien: v('mvQuien'), referencia: v('mvRef')
     }).then(function (r) {
       toast(r.mensaje || 'Guardado.', 'ok');
       cerrarMandarAVenta();
@@ -8798,6 +9121,75 @@
         ' el <b>Tipo de línea</b> (B2B / B2C). Salen agrupados como ' +
         '<i>Sin especificar</i>.</div>';
     }
+    if (d.deVenta || d.sinRenglon) {
+      h += '<div class="aviso-caja">' +
+        (d.deVenta ? 'De <b>' + fmtNum(d.deVenta) + '</b> ' +
+          (d.deVenta === 1 ? 'pedido' : 'pedidos') + ' el dato se tomó de la propia ' +
+          'venta, porque su renglón de Marketing estaba vacío. ' : '') +
+        (d.sinRenglon ? '<b>' + fmtNum(d.sinRenglon) + '</b> ' +
+          (d.sinRenglon === 1 ? 'venta no tiene' : 'ventas no tienen') +
+          ' renglón en la pestaña Marketing; aquí sí cuentan, con lo que trae la venta.' : '') +
+        '</div>';
+    }
+    // Las ventas repetidas en la hoja: antes el reporte las sumaba dos veces
+    if ((d.duplicados || []).length) {
+      h += '<div class="aviso-caja"><b>' + fmtNum(d.duplicados.length) +
+        (d.duplicados.length === 1 ? ' venta está repetida' : ' ventas están repetidas') +
+        ' en la pestaña Marketing</b> (' + formatMoney(d.montoRepetido) +
+        ' que se estaba contando doble). Este reporte ya cuenta cada venta una sola vez. ' +
+        'Los renglones de más siguen en la hoja; hay que revisarlos ahí:' +
+        '<div class="s" style="margin-top:6px">' +
+        d.duplicados.slice(0, 20).map(function (x) {
+          return esc(x.folio) + (x.cliente ? ' · ' + esc(x.cliente) : '') +
+            ' → se queda el renglón ' + x.se_queda + ', de más: ' + esc(x.copias.join(', '));
+        }).join('<br>') +
+        (d.duplicados.length > 20 ? '<br>…y ' + (d.duplicados.length - 20) + ' más.' : '') +
+        '</div></div>';
+    }
+    // Donde la pestaña Marketing no cuadra con la venta. El reporte usa el monto
+    // de la venta; aquí se dice cuáles son, para que alguien arregle la hoja.
+    if ((d.descuadres || []).length) {
+      h += '<div class="aviso-caja"><b>' + fmtNum(d.descuadres.length) +
+        (d.descuadres.length === 1 ? ' renglón de la pestaña Marketing no cuadra'
+                                   : ' renglones de la pestaña Marketing no cuadran') +
+        ' con su venta</b> (' + formatMoney(Math.abs(d.montoDescuadre)) + ' de diferencia en total). ' +
+        'Este reporte usa el monto de la venta, que es el registro bueno. Los de más arriba:' +
+        '<div class="s" style="margin-top:6px">' +
+        d.descuadres.slice(0, 10).map(function (x) {
+          return esc(x.folio) + (x.cliente ? ' · ' + esc(x.cliente) : '') + ' → renglón ' +
+            x.fila + ': la hoja dice ' + formatMoney(x.enMarketing) + ' y la venta ' +
+            formatMoney(x.enLaVenta);
+        }).join('<br>') +
+        (d.descuadres.length > 10 ? '<br>…y ' + (d.descuadres.length - 10) + ' más.' : '') +
+        '</div></div>';
+    }
+    // Lo que pidió Camila: qué ventas les falta y poder capturarlo desde aquí
+    if ((d.faltan || []).length) {
+      h += '<div class="panel" style="margin-bottom:14px"><h4>Ventas sin “de dónde llegó” · ' +
+        fmtNum(d.faltan.length) + ' · ' + formatMoney(d.montoFaltante) + '</h4>' +
+        '<div class="panel-body">' +
+        '<div class="s" style="color:var(--slate);margin-bottom:10px">Estas son las que salen ' +
+        'como <i>Sin especificar</i>. El botón abre la misma ventana que la venta: lo que ya esté ' +
+        'capturado en la venta o en su cotización viene propuesto.' +
+        (esAdmin() ? ' <b>Recuperar de las cotizaciones</b> las llena todas de un golpe con lo ' +
+                     'que ya está capturado, sin inventar nada.' : '') + '</div>' +
+        (esAdmin()
+          ? '<div style="margin-bottom:10px"><button class="row-btn primary" id="mkJalar">' +
+            'Recuperar de las cotizaciones</button> ' +
+            '<span class="s" id="mkJalarNota" style="color:var(--muted)"></span></div>'
+          : '') +
+        '<table class="mini-table"><thead><tr><th>Folio</th><th>Cliente</th>' +
+        '<th style="text-align:right">Monto</th><th></th></tr></thead><tbody>' +
+        d.faltan.map(function (x) {
+          return '<tr><td><b>' + esc(x.folio) + '</b><div class="s" style="color:var(--muted)">' +
+            esc(x.fecha || '') + '</div></td><td>' + esc(x.cliente || '') + '</td>' +
+            '<td style="text-align:right">' + formatMoney(x.monto) + '</td>' +
+            '<td style="text-align:right"><button class="row-btn mkt-btn" data-folio="' +
+            esc(x.folio).replace(/"/g, '&quot;') + '" data-cli="' +
+            esc(x.cliente || '').replace(/"/g, '&quot;') + '">De dónde llegó</button></td></tr>';
+        }).join('') +
+        '</tbody></table></div></div>';
+    }
 
     h += '<div class="dash-cols" style="margin-bottom:14px">' +
       tablaCorte('B2B / B2C', d.tipoLinea, true) + '</div>';
@@ -8842,6 +9234,57 @@
     if (m) m.onchange = function () { mkMes = Number(this.value); loadMarketingRep(); };
     var b = document.getElementById('mkPdf');
     if (b) b.onclick = function () { pdfMarketing(d); };
+    var j = document.getElementById('mkJalar');
+    if (j) j.onclick = function () { jalarMarketing(d.anio); };
+  }
+  // Recupera en bloque lo que YA está capturado en la cotización o en la venta.
+  // Primero enseña exactamente qué va a escribir y en qué renglón; solo escribe
+  // si se confirma. Nada se inventa: si el dato no está en ningún lado, esa
+  // venta no aparece aquí y hay que preguntarle a quien la cerró.
+  function jalarMarketing(anio) {
+    var nota = document.getElementById('mkJalarNota');
+    var btn = document.getElementById('mkJalar');
+    if (btn) { btn.disabled = true; btn.textContent = 'Revisando...'; }
+    if (nota) nota.textContent = '';
+    api('marketing', { token: state.token, que: 'jalar', anio: anio || '', aplicar: false })
+      .then(function (d) {
+        var plan = d.plan || [];
+        if (!plan.length) {
+          avisoFijo('<b>No hay nada que recuperar.</b><div class="s" style="margin-top:6px">' +
+            'A las ventas que les falta el dato tampoco lo trae su cotización ni la venta: ' +
+            'hay que preguntarle a quien la cerró y capturarlo con el botón ' +
+            '<b>De dónde llegó</b> de cada venta.</div>');
+          return;
+        }
+        var campos = plan.reduce(function (a, p) { return a + p.campos; }, 0);
+        var h = '<div style="font-size:13px;color:var(--slate);margin-bottom:10px">' +
+          'Esto es lo que se va a escribir en la pestaña <b>' + esc(d.pestana || 'Marketing') +
+          '</b>: <b>' + fmtNum(campos) + '</b> ' + (campos === 1 ? 'dato' : 'datos') + ' en <b>' +
+          fmtNum(plan.length) + '</b> ' + (plan.length === 1 ? 'venta' : 'ventas') +
+          '. Solo se llenan celdas vacías: nada de lo que ya está se toca.</div>' +
+          '<table class="mini-table"><thead><tr><th>Folio</th><th>Cliente</th>' +
+          '<th>Renglón</th><th>Qué se escribe</th></tr></thead><tbody>' +
+          plan.map(function (p) {
+            return '<tr><td><b>' + esc(p.folio) + '</b></td><td>' + esc(p.cliente || '') +
+              '</td><td>' + (p.fila || '—') + '</td><td class="s">' +
+              Object.keys(p.datos || {}).map(function (k) {
+                return esc(k) + ': <b>' + esc(p.datos[k]) + '</b>';
+              }).join(' · ') + '</td></tr>';
+          }).join('') + '</tbody></table>';
+        confirmarAccion('Recuperar de las cotizaciones', h, 'Escribir en la hoja', function () {
+          api('marketing', { token: state.token, que: 'jalar', anio: anio || '', aplicar: true })
+            .then(function (r) {
+              toast('Listo: se completaron ' + fmtNum(r.escritas || 0) +
+                    ((r.escritas === 1) ? ' venta.' : ' ventas.'), 'ok');
+              loadMarketingRep();
+            })
+            .catch(fail);
+        });
+      })
+      .catch(fail)
+      .then(function () {
+        if (btn) { btn.disabled = false; btn.textContent = 'Recuperar de las cotizaciones'; }
+      });
   }
   // La versión para imprimir: sin menú, sin botones, con el logo arriba.
   function pdfMarketing(d) {
@@ -15291,6 +15734,16 @@
             '<button type="button" class="archivos-btn" data-folio="' + esc(k).replace(/"/g, '&quot;') +
               '" data-cli="' + esc(r0[cCli] || '').replace(/"/g, '&quot;') +
               '">Archivos y cobros</button>' +
+            // 19 nov. Camila: *"me ayudas a decir donde puede a cada venta
+            // ingresarle esta info de nuevo"*. Antes solo se podía contestar en
+            // el momento de cerrar la venta: si la ventana se cerraba, no había
+            // ningún otro lugar para capturarlo.
+            ((state.key === 'ventas_registro' || state.key === 'cotizaciones') &&
+             !esSoloLectura(state.key)
+              ? '<button type="button" class="mkt-btn" data-folio="' + esc(k).replace(/"/g, '&quot;') +
+                '" data-cli="' + esc(r0[cCli] || '').replace(/"/g, '&quot;') +
+                '" title="Cómo llegó, B2B o B2C, ciudad, proyecto y showroom">De dónde llegó</button>'
+              : '') +
             (state.key === 'cotizaciones' && !esSoloLectura(state.key)
               ? '<button type="button" class="dup-cot" data-folio="' + esc(k).replace(/"/g, '&quot;') +
                 '">Hacer una versión nueva</button>' : '') +
@@ -20276,6 +20729,7 @@
     document.getElementById('ventaOk').textContent = visitas.length ? 'Ligar a esta visita' : 'Registrar visita';
     document.getElementById('ventaModal').classList.add('on');
     visitaPost = { cliente: cliente, despacho: despacho, folio: folio, order: order || {}, visitas: visitas };
+    modalVentaFecha(false);
     marketingPost = null; clientePost = null; cotAConvertir = null;
     var sel = document.getElementById('visitaCual');
     if (sel) sel.addEventListener('change', function () {
@@ -20340,13 +20794,23 @@
       if (d !== null) rec['Mes'] = Math.floor(d / 100) % 100;
     }
     // Cada pregunta se guarda con el nombre que usa la pestaña Marketing
+    var dm = {};
     CAMPOS_MKT.forEach(function (m) {
       var v = datos[m.campo];
       if (v == null || String(v).trim() === '') v = datos[m.mkt];
-      if (v != null && String(v).trim() !== '') rec[m.mkt] = v;
+      if (v != null && String(v).trim() !== '') dm[m.mkt] = String(v).trim();
     });
-    return api('add', { token: state.token, key: 'marketing', record: rec })
-      .then(function () { toast('Registrado en Marketing.', 'ok'); })
+    // Antes esto era un "add" directo, y por eso la pestaña Marketing acabó con
+    // 18 ventas repetidas (~$1.4M contados dos veces en el reporte). Ahora el
+    // servidor busca el renglón del folio: si ya existe lo actualiza, y solo
+    // crea uno cuando de verdad no está.
+    var paq = { token: state.token, que: 'guardar', folio: folio, datos: dm, asegurar: true };
+    ['Mes', 'Fecha del Cierre', 'Cliente', 'Despacho', 'Productos', 'Total Pedido', 'Envio']
+      .forEach(function (c) { if (rec[c] != null && rec[c] !== '') paq[c] = rec[c]; });
+    return api('marketing', paq)
+      .then(function (d) {
+        toast(d && d.creada ? 'Registrado en Marketing.' : 'Datos de marketing guardados.', 'ok');
+      })
       .catch(function () {});
   }
 
@@ -20442,6 +20906,7 @@
     document.getElementById('ventaOk').textContent = 'Guardar cliente';
     document.getElementById('ventaModal').classList.add('on');
     clientePost = { cliente: nombre, esNuevo: esNuevo };
+    modalVentaFecha(false);
     marketingPost = null; cotAConvertir = null; visitaPost = null;
   }
   var clientePost = null;
@@ -20465,14 +20930,124 @@
     document.getElementById('ventaOk').textContent = 'Guardar';
     document.getElementById('ventaModal').classList.add('on');
     marketingPost = { folio: folio, area: area, datos: datos || {} };
+    modalVentaFecha(false);
   }
   var marketingPost = null;
+
+  // ===== "De dónde llegó": los datos de marketing de una venta ya guardada =====
+  //
+  // 19 nov. Hasta hoy estos datos solo se podían contestar en el momento exacto
+  // de cerrar la venta. Si esa ventana se cerraba —o si se tragaba las
+  // respuestas, como estaba pasando— no había ningún otro lugar donde
+  // capturarlos, y en el reporte la venta salía como "Sin especificar".
+  //
+  // Esto se abre cuando sea, desde la tarjeta de la venta o de la cotización.
+  var MKT_CAMPOS = [
+    { mkt: 'Cómo Llego',       label: 'De dónde llegó',        campo: 'Cómo Llego' },
+    { mkt: 'Tipo de Línea',    label: 'B2B o B2C',             campo: 'TIPO CLIENTE' },
+    { mkt: 'Línea de Negocio', label: 'Línea de negocio',      campo: 'Línea de Negocio' },
+    { mkt: 'Ciudad',           label: 'Ciudad',                campo: 'Ciudad' },
+    { mkt: 'Proyecto',         label: 'Tipo de proyecto',      campo: 'Tipo de Proyecto' },
+    { mkt: 'Showroom',         label: '¿Visitó el showroom?',  campo: 'Showroom' },
+    { mkt: 'Happening',        label: 'Happening',             campo: 'HAPPENING' },
+    { mkt: 'Notas',            label: 'Notas',                 campo: 'Notas' }
+  ];
+  var mktFolioPost = null;
+  // El mismo modal sirve para varias cosas. En los modos que NO son "convertir
+  // en venta" la fecha de entrega y la nota de abajo no tienen nada que hacer
+  // ahí: antes se quedaban puestas y parecía que se iba a mover la entrega.
+  function modalVentaFecha(mostrar) {
+    var b = document.getElementById('ventaFechaBloque');
+    var n = document.getElementById('ventaNota');
+    if (b) b.style.display = mostrar ? '' : 'none';
+    if (n) n.style.display = mostrar ? '' : 'none';
+  }
+  function abrirMarketingDeFolio(folio, cliente) {
+    if (!folio) return;
+    marketingPost = null; clientePost = null; visitaPost = null; cotAConvertir = null;
+    mktFolioPost = { folio: folio };
+    modalVentaFecha(false);
+    document.querySelector('#ventaModal h3').textContent = 'De dónde llegó';
+    document.getElementById('ventaMkt').innerHTML = '';
+    document.getElementById('ventaOk').textContent = 'Guardar';
+    document.getElementById('ventaResumen').innerHTML =
+      '<div style="font-size:13px;color:var(--slate)">Leyendo lo que ya está capturado de <b>' +
+      esc(folio) + '</b>...</div>';
+    document.getElementById('ventaModal').classList.add('on');
+    api('marketing', { token: state.token, que: 'uno', folio: folio })
+      .then(function (d) { pintarMarketingDeFolio(folio, cliente, d || {}); })
+      .catch(function (e) {
+        document.getElementById('ventaResumen').innerHTML =
+          '<div style="font-size:13px;color:var(--danger)">No se pudo leer: ' +
+          esc((e && e.message) || '') + '</div>';
+      });
+  }
+  function pintarMarketingDeFolio(folio, cliente, d) {
+    var datos = d.datos || {}, sug = d.sugerencias || {};
+    var h = '<div style="font-size:13px;color:var(--slate);margin-bottom:10px"><b>' + esc(folio) +
+      '</b>' + (cliente ? ' · ' + esc(cliente) : '') +
+      '<div class="s" style="margin-top:4px">Esto es lo que alimenta el reporte de marketing. ' +
+      'Lo que ya está capturado en la venta o en su cotización viene propuesto; solo revísalo y guarda.</div>' +
+      (d.copias && d.copias.length
+        ? '<div class="s" style="margin-top:6px;color:var(--amber)">Ojo: esta venta tiene ' +
+          d.copias.length + (d.copias.length === 1 ? ' renglón repetido' : ' renglones repetidos') +
+          ' en la pestaña Marketing (' + esc(d.copias.join(', ')) + '). Se guarda en el bueno.</div>'
+        : '') +
+      '</div><div class="form-grid">';
+    MKT_CAMPOS.forEach(function (m) {
+      var valor = String(datos[m.mkt] || '').trim();
+      var prop = sug[m.mkt] || null;
+      var usa = valor || (prop ? String(prop.valor || '').trim() : '');
+      var opts = opcionesMkt(m.campo) || [];
+      // Si lo que ya está en la hoja no es una de las opciones, se agrega: si no,
+      // guardar desde aquí lo borraría sin que nadie lo pida.
+      if (usa && !opts.some(function (o) { return norm(o) === norm(usa); })) opts = [usa].concat(opts);
+      h += '<div class="fld"><label>' + esc(m.label) + '</label>' +
+        (opts.length && m.mkt !== 'Notas'
+          ? '<select class="mkt-folio" data-mkt="' + esc(m.mkt) + '"><option value=""></option>' +
+            opts.map(function (o) {
+              return '<option' + (norm(o) === norm(usa) ? ' selected' : '') + '>' + esc(o) + '</option>';
+            }).join('') + '</select>'
+          : '<input class="mkt-folio" type="text" data-mkt="' + esc(m.mkt) + '" value="' +
+            esc(usa).replace(/"/g, '&quot;') + '">') +
+        (prop && !valor
+          ? '<div class="s" style="color:var(--muted);margin-top:3px">de ' + esc(prop.de) + '</div>'
+          : '') +
+        '</div>';
+    });
+    h += '</div>';
+    document.getElementById('ventaResumen').innerHTML = h;
+  }
+  function guardarMarketingDeFolio() {
+    var p = mktFolioPost; if (!p) return;
+    var btn = document.getElementById('ventaOk');
+    var datos = {};
+    document.querySelectorAll('.mkt-folio').forEach(function (el) {
+      var k = el.getAttribute('data-mkt');
+      if (k) datos[k] = String(el.value || '').trim();
+    });
+    if (!Object.keys(datos).filter(function (k) { return datos[k]; }).length) {
+      toast('No pusiste nada que guardar.', 'warn'); return;
+    }
+    btn.disabled = true; btn.textContent = 'Guardando...';
+    api('marketing', { token: state.token, que: 'guardar', folio: p.folio, datos: datos })
+      .then(function (d) {
+        toast('Listo: ' + p.folio + ' ya tiene de dónde llegó' +
+              (d && d.filasDeLaVenta ? ' (y se guardó en la venta)' : '') + '.', 'ok');
+        mktFolioPost = null;
+        cerrarConvertirVenta();
+        if (state.key === 'ventas_registro' || state.key === 'cotizaciones') loadArea();
+      })
+      .catch(fail)
+      .then(function () { btn.disabled = false; btn.textContent = 'Guardar'; });
+  }
 
   function abrirConvertirVenta(folio, cliente) {
     marketingPost = null; clientePost = null; visitaPost = null;
     document.querySelector('#ventaModal h3').textContent = 'Convertir en venta';
     document.getElementById('ventaOk').textContent = 'Convertir en venta';
     cotAConvertir = folio;
+    modalVentaFecha(true);
     // Solo se preguntan los que estén vacíos en la cotización
     var fila = (state.rows || []).filter(function (r) {
       var c = findHeaderByName('No. de Referencia') || findHeaderByName('Folio');
@@ -20528,9 +21103,12 @@
   function cerrarConvertirVenta() {
     document.getElementById('ventaModal').classList.remove('on');
     cotAConvertir = null; marketingPost = null; clientePost = null; visitaPost = null;
+    mktFolioPost = null;
     terminarPaso();
   }
   function convertirEnVenta() {
+    // Modo "De dónde llegó": datos de marketing de una venta que ya existe
+    if (mktFolioPost) { guardarMarketingDeFolio(); return; }
     // Modo "registrar la visita al showroom"
     if (visitaPost) {
       var v = visitaPost; visitaPost = null;
@@ -20642,18 +21220,44 @@
     var btn = document.getElementById('ventaOk');
     var iso = document.getElementById('ventaFecha').value;
     btn.disabled = true; btn.textContent = 'Convirtiendo...';
-    // Lo que se capturó de marketing se guarda primero en la cotización
+    // Lo que se capturó de marketing se guarda primero en la cotización.
+    //
+    // 19 nov. Camila: "a todas las cotizaciones les puse la info de donde llegaron,
+    // creo que al pasarla a ventas se borra". No se borraba: esta ventana pinta cada
+    // pregunta con data-campo y aquí se leían con otro nombre, así que TODAS las
+    // respuestas acababan en una llave vacía y se tiraban. Se notaba en la columna
+    // "Tipo de Línea" (B2B/B2C), que solo se pregunta aquí: llena en 145 de 145
+    // renglones escritos a mano y en 1 de 81 de los que creó el panel.
     var mkt = {};
     document.querySelectorAll('.venta-mkt').forEach(function (sel) {
-      if (sel.value) mkt[sel.getAttribute('data-col')] = sel.value;
+      var campo = sel.getAttribute('data-campo');
+      if (campo && String(sel.value || '').trim()) mkt[campo] = String(sel.value).trim();
     });
     var cRef2 = findHeaderByName('No. de Referencia') || findHeaderByName('Folio');
     var filaCot = (state.rows || []).filter(function (r) {
       return cRef2 && String(r[cRef2] || '').trim() === cotAConvertir;
     })[0] || {};
-    var previo = Object.keys(mkt).length && cRef2
+    // Lo que va a quedar en Marketing: lo que ya traía la cotización y, encima,
+    // lo que se acaba de contestar. Se resuelve ahora, no dentro de las promesas,
+    // porque para entonces el área ya se recargó y los encabezados pueden ser otros.
+    var dmMkt = {};
+    CAMPOS_MKT.forEach(function (m) {
+      var c = findHeaderByName(m.campo);
+      var v = (c && filaCot) ? filaCot[c] : '';
+      if (mkt[m.campo]) v = mkt[m.campo];
+      // Las hojas traen el dato con espacios al inicio (" Whatsapp"): sin limpiarlo
+      // el reporte lo cuenta como una categoría aparte.
+      if (v != null && String(v).trim() !== '') dmMkt[m.campo] = String(v).trim();
+    });
+    // A la cotización solo se le escribe lo que sí existe como columna en su hoja
+    var setCot = {};
+    Object.keys(mkt).forEach(function (campo) {
+      var c = findHeaderByName(campo);
+      if (c) setCot[c] = mkt[campo];
+    });
+    var previo = Object.keys(setCot).length && cRef2
       ? api('fill', { token: state.token, key: 'cotizaciones',
-                      match: { col: cRef2, value: cotAConvertir }, set: mkt }).catch(function () {})
+                      match: { col: cRef2, value: cotAConvertir }, set: setCot }).catch(function () {})
       : Promise.resolve();
     previo.then(function () {
     return api('to-sale', { token: state.token, folio: cotAConvertir, fechaEntrega: iso ? isoToLargo(iso) : '' })
@@ -20697,11 +21301,7 @@
           var dm = { 'Fecha del Cierre': q.fecha, 'Cliente': q.cliente, 'Despacho': q.despacho,
                      'Productos': piezas, 'Total Pedido': (q.total || 0) - (q.envio || 0),
                      'Envio': q.envio || 0 };
-          CAMPOS_MKT.forEach(function (m) {
-            var col = findHeaderByName(m.campo);
-            if (col && filaCot && filaCot[col]) dm[m.campo] = filaCot[col];
-            if (mkt[col]) dm[m.campo] = mkt[col];
-          });
+          Object.keys(dmMkt).forEach(function (k) { dm[k] = dmMkt[k]; });
           registrarMarketing(folioVenta, dm);
           // ¿Al cliente le faltan datos? Se piden después de cerrar la venta
           if (q.cliente) encolar(function () { revisarCliente(q.cliente, dm['Cómo Llego'] || ''); });
@@ -21237,6 +21837,35 @@
     document.getElementById('avisoFijo').classList.add('on');
   }
 
+  // Confirmar algo que escribe en las hojas del cliente, enseñando ANTES el
+  // detalle exacto de lo que va a pasar. No usa confirm() porque ahí no se puede
+  // mostrar una tabla, y sin ver el detalle nadie debería autorizar una escritura.
+  function confirmarAccion(titulo, html, textoOk, alAceptar) {
+    var vieja = document.getElementById('confirmaCaja');
+    if (vieja) vieja.remove();
+    var caja = document.createElement('div');
+    caja.id = 'confirmaCaja';
+    caja.className = 'modal on';
+    caja.innerHTML =
+      '<div class="modal-card" style="max-width:820px">' +
+      '<div class="modal-head"><h3>' + esc(titulo) + '</h3>' +
+      '<button class="modal-x" type="button" id="confirmaX" aria-label="Cerrar">&times;</button></div>' +
+      '<div class="modal-body" style="max-height:60vh;overflow:auto">' + html + '</div>' +
+      '<div class="modal-foot">' +
+      '<button type="button" class="row-btn" id="confirmaNo">Cancelar</button>' +
+      '<button type="button" class="primary" id="confirmaSi">' + esc(textoOk || 'Aceptar') +
+      '</button></div></div>';
+    document.body.appendChild(caja);
+    var cerrar = function () { caja.remove(); };
+    caja.addEventListener('click', function (e) { if (e.target === caja) cerrar(); });
+    document.getElementById('confirmaNo').onclick = cerrar;
+    document.getElementById('confirmaX').onclick = cerrar;
+    document.getElementById('confirmaSi').onclick = function () {
+      cerrar();
+      try { alAceptar(); } catch (err) { console.error(err); }
+    };
+  }
+
   function clearForm() {
     state.lineItems = [];
     renderForm(); // vacía todo y vuelve a sugerir el número disponible
@@ -21335,7 +21964,7 @@
     ? '⌘⇧R' : 'Ctrl+Shift+R';
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.11.18-569';
+    var mia = '2026.11.19-571';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
@@ -21786,6 +22415,8 @@
     }
     var arc = e.target.closest('.archivos-btn');
     if (arc) { abrirArchivos(arc.getAttribute('data-folio'), arc.getAttribute('data-cli')); return; }
+    var mb = e.target.closest('.mkt-btn');
+    if (mb) { abrirMarketingDeFolio(mb.getAttribute('data-folio'), mb.getAttribute('data-cli')); return; }
     var asg = e.target.closest('.asignar-btn');
     if (asg) { abrirAsignar(asg.getAttribute('data-ped')); return; }
     var pb = e.target.closest('.pdf-btn');

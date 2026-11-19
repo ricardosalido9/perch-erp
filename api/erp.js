@@ -13,6 +13,7 @@ const RUTAS = {
   vigilancia:     require('../lib/handlers/vigilancia'),
   comisiones:     require('../lib/handlers/comisiones'),
   'reporte-marketing': require('../lib/handlers/reporte-marketing'),
+  marketing:      require('../lib/handlers/marketing'),
   'caja-bancos': require('../lib/handlers/caja-bancos'),
   dashboard:      require('../lib/handlers/dashboard'),
   data:           require('../lib/handlers/data'),
