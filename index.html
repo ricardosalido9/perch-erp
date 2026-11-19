@@ -1118,7 +1118,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.19-574</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.19-575</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -19952,10 +19952,10 @@
         datosMkt['Envio'] = resumenPedido.envio;
       }
       if (areaDestino === 'ventas_registro' && folioNuevo) {
-        var faltanMkt = CAMPOS_MKT_VENTA.concat(CAMPOS_MKT_COT.filter(function (mk) {
+        var faltanMkt = sinRepetirMkt(CAMPOS_MKT_VENTA.concat(CAMPOS_MKT_COT.filter(function (mk) {
           var c = findHeaderByName(mk.campo);
           return !c || !String(order[c] || '').trim();
-        }));
+        })));
         if (faltanMkt.length) encolar(function () { pedirMarketing(folioNuevo, faltanMkt, 'ventas_registro', datosMkt); });
         else registrarMarketing(folioNuevo, datosMkt);
       }
@@ -20910,6 +20910,26 @@
     { campo: 'HAPPENING',                label: 'Happening',             mkt: 'Happening' }
   ];
   var CAMPOS_MKT = CAMPOS_MKT_COT.concat(CAMPOS_MKT_VENTA);
+
+  // Dos preguntas que escriben en la MISMA columna son la misma pregunta.
+  // "Tipo de cliente" y "Tipo de línea" van las dos a la columna *Tipo de
+  // Línea* de la pestaña Marketing, y la ventana de Datos de marketing las
+  // pedía juntas: se ve como si fueran dos datos distintos, y la de abajo pisa
+  // a la de arriba al guardar (Val, 19 nov, con la N15-26).
+  //
+  // Se deja una sola: la que tenga lista de dónde escoger. En la pestaña
+  // Categorías la columna se llama "Tipo de Línea de Negocio", así que gana ésa.
+  function sinRepetirMkt(lista) {
+    var donde = {}, out = [];
+    (lista || []).forEach(function (m) {
+      var k = norm(m.mkt);
+      if (donde[k] === undefined) { donde[k] = out.length; out.push(m); return; }
+      var yoTengo = (opcionesMkt(m.campo) || []).length;
+      var elQueEsta = (opcionesMkt(out[donde[k]].campo) || []).length;
+      if (yoTengo && !elQueEsta) out[donde[k]] = m;
+    });
+    return out;
+  }
   // Un renglón por venta en la pestaña Marketing, con lo que ya se capturó
   // Respuestas posibles de una pregunta de marketing: primero Categorías, luego el menú fijo
   function opcionesMkt(campo) {
@@ -21231,10 +21251,10 @@
       return c && String(r[c] || '').trim() === folio;
     })[0] || {};
     // Las de la venta se preguntan siempre; las de la cotización solo si quedaron vacías
-    var faltan = CAMPOS_MKT_VENTA.concat(CAMPOS_MKT_COT.filter(function (m) {
+    var faltan = sinRepetirMkt(CAMPOS_MKT_VENTA.concat(CAMPOS_MKT_COT.filter(function (m) {
       var col = findHeaderByName(m.campo);
       return !col || !String(fila[col] || '').trim();
-    }));
+    })));
     document.getElementById('ventaMkt').innerHTML = faltan.length
       ? '<div style="grid-column:1/-1;font-size:13px;color:var(--slate);margin-bottom:2px">' +
         'Antes de cerrar, completa estos datos para que la base quede llena:</div>' +
@@ -22142,7 +22162,7 @@
     ? '⌘⇧R' : 'Ctrl+Shift+R';
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.11.19-574';
+    var mia = '2026.11.19-575';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
