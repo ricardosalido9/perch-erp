@@ -1118,7 +1118,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.20-576</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.20-578</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -10650,19 +10650,25 @@
       '</select></div>' +
       '<div class="fld" id="suProvNuevoBox" style="display:none">' +
       '<label>Nombre del proveedor nuevo</label>' +
-      '<input id="suProvNuevo" placeholder="Como se llama en la factura">' +
+      '<input id="suProvNuevo" autocomplete="off" placeholder="Como se llama en la factura">' +
       '<div class="s" style="color:var(--muted);margin-top:2px">' +
       'Se da de alta en Lista de Proveedores al registrar el pedido.</div></div>' +
       '<div class="fld"><label>Pedido</label><select id="suPedSel"></select></div>' +
+      // 20 nov. Pau: *"sí puse pedido nuevo, pero me desglosó opciones del
+      // nombre del pedido y yo creo que se jaló esa"*. El navegador ofrecía
+      // números de pedido viejos como si fueran del sistema, y elegir uno que
+      // ya existe le cuelga el concepto a OTRO pedido. Es el mismo accidente
+      // que le pasó a Nico el 11 de noviembre con el COT-000071651.
       '<div class="fld" id="suPedNuevoBox"><label>Número del pedido nuevo</label>' +
-      '<input id="suPedNuevo" value="' + esc(d.pedidoSugerido || '') + '"></div>' +
+      '<input id="suPedNuevo" autocomplete="off" spellcheck="false" value="' +
+      esc(d.pedidoSugerido || '') + '"></div>' +
       '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
       '<div class="fld" style="flex:1;min-width:120px"><label>Cantidad</label>' +
-      '<input id="suCant" type="number" min="1" value="' + fmtNum(c.falta) + '"></div>' +
+      '<input id="suCant" type="number" min="1" autocomplete="off" value="' + fmtNum(c.falta) + '"></div>' +
       '<div class="fld" style="flex:1;min-width:120px"><label>Costo unitario' +
       (c.componente ? ' <span class="s" style="font-weight:400;color:var(--muted)">de ' +
         esc(c.componente) + '</span>' : '') + '</label>' +
-      '<input id="suCosto" type="number" step="0.01" value="' + (costoSug || '') + '">' +
+      '<input id="suCosto" type="number" step="0.01" autocomplete="off" value="' + (costoSug || '') + '">' +
       '<div class="s" id="suCostoNota" style="color:var(--muted);margin-top:4px;font-size:12px">' +
         (costoSug ? '' :
           (c.costoCatalogoEsDelMueble
@@ -10675,7 +10681,7 @@
       // Caja alta y de ancho completo: aquí va lo que Ursula escribió del mueble
       // —medidas, acabado, tela— y en un renglón de una línea no se leía.
       '<div class="fld"><label>Especificaciones</label>' +
-      '<textarea id="suEsp" rows="3" style="width:100%;resize:vertical;min-height:70px">' +
+      '<textarea id="suEsp" rows="3" autocomplete="off" style="width:100%;resize:vertical;min-height:70px">' +
       esc(p.especificaciones || '') + '</textarea></div></div>';
 
     document.getElementById('aventaCuerpo').innerHTML = h;
@@ -15913,6 +15919,10 @@
     var cMat = findHeaderByName('Material'), cCant = findHeaderByName('Cantidad');
     var cCU = findHeaderByName('Costo Unitario'), cIVA = findHeaderByName('Costo Total + IVA');
     var cFol = findHeaderByName('Folio cliente') || findHeaderByName('Folio');
+    // Un pedido se asigna a su venta en DOS columnas: "Folio cliente" y
+    // "Destino". Quien edita a mano suele llenar solo una, y las dos pantallas
+    // leen primero la del folio.
+    var cDest = findHeaderByName('Destino');
     var g = {}, orden = [];
     rows.forEach(function (r) {
       var k = String(r[cPed] || '').trim() || '(sin pedido)';
@@ -15956,7 +15966,18 @@
                 '<td><input class="row-input ed-campo" type="number" step="0.01" data-col="' + esc(cCU || '') +
                   '" value="' + esc(cu) + '" style="width:100px;text-align:right"></td>' +
                 '<td class="num">' + esc(formatMoney(cu * c * 1.16)) + '</td>' +
-                '<td style="white-space:nowrap"><button type="button" class="row-btn primary ed-ok" data-row="' +
+                // 20 nov. Pau: *"cuando le pico editar no me da opción de editar
+                // el folio"*. El renglón dejaba corregir material, cantidad y
+                // costo, pero no A QUÉ VENTA va la pieza, que es justo lo que se
+                // equivoca. Vacío = sin asignar, y la pieza vuelve a ser de Stock.
+                '<td style="white-space:nowrap">' +
+                  '<input class="row-input ed-campo ed-folio" data-col="' + esc(cFol || '') +
+                    '" value="' + esc(cFol ? (r[cFol] || '') : '') +
+                    '" placeholder="Sin asignar" autocomplete="off" style="width:110px" ' +
+                    'title="A qué venta va esta pieza. Déjalo vacío si no es de ninguna."> ' +
+                  (cDest ? '<input type="hidden" class="ed-campo ed-destino" data-col="' +
+                    esc(cDest) + '" value="' + esc(r[cDest] || '') + '">' : '') +
+                  '<button type="button" class="row-btn primary ed-ok" data-row="' +
                   r._row + '">Guardar</button> ' +
                 '<button type="button" class="row-btn ed-no">Cancelar</button></td></tr>';
             }
@@ -22162,7 +22183,7 @@
     ? '⌘⇧R' : 'Ctrl+Shift+R';
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.11.20-576';
+    var mia = '2026.11.20-578';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
@@ -22302,6 +22323,44 @@
   document.getElementById('menuBtn').addEventListener('click', toggleNav);
   document.getElementById('closeBtn').addEventListener('click', closeNav);
   document.getElementById('backdrop').addEventListener('click', closeNav);
+  // ===== El navegador no opina en los campos del panel =====
+  //
+  // Dos veces en dos días: el 19 nov el campo de B2B/B2C enseñaba teléfonos
+  // viejos, y el 20 el del número de pedido ofrecía números de pedidos
+  // anteriores. Pau: *"sí puse pedido nuevo, pero me desglosó opciones del
+  // nombre del pedido y yo creo que se jaló esa"*. Lo que sale en esa lista es
+  // el historial del navegador, pero del lado de quien captura se ve igualito a
+  // una lista del sistema — y elegir un número de pedido que ya existe le
+  // cuelga el concepto a OTRO pedido.
+  //
+  // Esto lo apaga en TODOS los campos del panel, los de hoy y los que se
+  // agreguen después, sin tener que acordarse campo por campo. Se hace al
+  // enfocar, que es justo antes de que el navegador dibuje su lista.
+  // Al cambiar el folio de un renglón del pedido, el Destino lo sigue — pero
+  // solo si venían diciendo lo mismo o si estaba vacío. Si el Destino dice
+  // "Stock", "Bodega" o "Showroom", eso es una decisión de alguien y no se pisa.
+  document.addEventListener('input', function (e) {
+    var el = e.target;
+    if (!el || !el.classList || !el.classList.contains('ed-folio')) return;
+    var tr = el.closest('tr');
+    var esp = tr ? tr.querySelector('.ed-destino') : null;
+    if (!esp) return;
+    var antes = String(el.defaultValue || '').trim();
+    var dest = String(esp.value || '').trim();
+    if (dest === '' || norm(dest) === norm(antes)) esp.value = el.value;
+  });
+
+  document.addEventListener('focusin', function (e) {
+    var el = e.target;
+    if (!el || !el.tagName) return;
+    var t = el.tagName.toLowerCase();
+    if (t !== 'input' && t !== 'textarea') return;
+    if (el.getAttribute('autocomplete')) return;      // si alguien lo puso a propósito, se respeta
+    // `list` es un desplegable NUESTRO (datalist): ése sí debe salir
+    if (el.getAttribute('list')) return;
+    el.setAttribute('autocomplete', 'off');
+  }, true);
+
   document.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape') return;
     if (document.getElementById('facModal').classList.contains('on')) { cerrarPasoFactura(); return; }
