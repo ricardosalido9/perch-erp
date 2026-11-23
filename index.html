@@ -1118,7 +1118,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.23-580</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.23-581</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -2966,11 +2966,23 @@
         '<th style="text-align:right">Cantidad</th><th>Comentario</th>' +
         '<th>Quién lo hace</th></tr></thead><tbody>';
       o.piezas.forEach(function (p, ip) {
+        // CUÁL tela, no solo que lleva tela. Esta columna escribía
+        // `material · materialExtra`, o sea "Rosamorada · Tela", y el nombre
+        // de la tela no aparecía por ningún lado: Nico solo la veía cuando
+        // alguien, además, la había tecleado en Especificaciones —que es la
+        // columna "Comentario" de aquí al lado—. Por eso en la N16-26 salían
+        // DAKAR TOPO y PISCO ARENA en dos renglones y el Taburete Matsu en
+        // blanco, aunque los tres tienen su Tela capturada en la hoja.
+        // Es la misma cuenta del PDF y de la tarjeta de la venta (548).
+        var extraTxt = juntaExtra(p.materialExtra, p.tela);
+        var faltaTela = faltaDecirCual(p.materialExtra, p.tela);
         h += '<tr>' +
           '<td data-th="Producto"><b>' + esc(p.producto) + '</b></td>' +
           '<td data-th="Material">' + esc(p.material || '') +
-            (p.materialExtra ? ' <span class="s" style="color:var(--slate)">· ' +
-              esc(p.materialExtra) + '</span>' : '') + '</td>' +
+            (extraTxt ? ' <span class="s" style="color:var(--slate)">· ' +
+              esc(extraTxt) + '</span>' : '') +
+            (faltaTela ? ' <span class="s" style="color:var(--amber)">· falta decir ' +
+              'qué tela</span>' : '') + '</td>' +
           '<td class="num" data-th="Cantidad">' + fmtNum(p.cantidad) + '</td>' +
           '<td data-th="Comentario" class="s">' + esc(p.especificaciones || '') + '</td>' +
           '<td data-th="Quién lo hace">' +
@@ -3003,8 +3015,18 @@
                     esc(folio).replace(/"/g, '&quot;') + '" data-p="' + ip + '" data-c="' +
                     ic + '">Instrucciones y status…</button>'
                   : '') + '</div>';
+              // Y en el componente que ES la tela, cuál tela. Aquí es donde
+              // Nico pica "Surtir o pedir": decía "Tela" a secas y había que
+              // adivinar o irse a Ventas. El nombre del componente NO se toca
+              // —con él se busca el stock y se arma el pedido—; esto solo se
+              // escribe en la pantalla.
+              var esLaTela = /^(tela|piel|textil)$/i.test(String(c.componente || '').trim());
+              var cualTela = esLaTela ? limpiaTela(p.tela) : '';
               return '<div style="margin-bottom:10px">' +
-                '<span class="s" style="color:var(--muted)">' + esc(c.componente) + '</span> ' +
+                '<span class="s" style="color:var(--muted)">' + esc(c.componente) +
+                  (cualTela ? ' ' + esc(cualTela) : '') + '</span> ' +
+                (esLaTela && !cualTela
+                  ? '<span class="s" style="color:var(--amber)">falta decir cuál</span> ' : '') +
                 tabChip(e[0], e[1], 'var(--paper)') +
                 (c.proveedor ? '<div style="font-size:13px">' + esc(c.proveedor) +
                   (c.pedido ? ' <span class="s" style="color:var(--slate)">· ' +
@@ -22208,7 +22230,7 @@
     ? '⌘⇧R' : 'Ctrl+Shift+R';
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.11.23-580';
+    var mia = '2026.11.23-581';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
