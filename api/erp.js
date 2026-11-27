@@ -15,6 +15,7 @@ const RUTAS = {
   'reporte-marketing': require('../lib/handlers/reporte-marketing'),
   marketing:      require('../lib/handlers/marketing'),
   'conectar-cot': require('../lib/handlers/conectar-cot'),
+  'expedientes-partidos': require('../lib/handlers/expedientes-partidos'),
   'caja-bancos': require('../lib/handlers/caja-bancos'),
   dashboard:      require('../lib/handlers/dashboard'),
   data:           require('../lib/handlers/data'),

@@ -1118,7 +1118,7 @@
     <div class="nav-title">Áreas</div>
     <nav id="navMenu"></nav>
     <div class="nav-foot">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.23-581</div>
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;padding:0 12px 8px">VERSIÓN 2026.11.27-582</div>
       <button type="button" id="logoutSide">
         <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         <span>Cerrar Sesión</span>
@@ -8844,6 +8844,49 @@
   // agregaron a la hoja de Ventas el 5 de noviembre. Todo lo cerrado antes se
   // convirtió cuando no existían, así que el dato se quedó en la cotización.
   // Esto lo pasa, sin que nadie recapture nada.
+  // Camila, 27 nov: *"cuando subo un cobro con esa característica se hace otra
+  // carpeta, varios pedidos tienen ya de dos a tres"*. Esto enseña cuáles, con
+  // cuántos archivos tiene cada carpeta, para poder juntarlas a mano.
+  function revisarExpedientesPartidos() {
+    var b = document.getElementById('btnExpPartidos');
+    if (b) { b.disabled = true; b.textContent = 'Revisando Drive…'; }
+    api('expedientes-partidos', { token: state.token })
+      .then(function (d) {
+        var lista = d.detalle || [];
+        if (!lista.length) {
+          toast('Ningún pedido tiene su expediente partido. Se revisaron ' +
+            fmtNum(d.folios) + ' folios con carpeta en Drive.', 'ok');
+          return;
+        }
+        var h = '<div style="font-size:13px;color:var(--slate);margin-bottom:10px">' +
+          '<b>' + fmtNum(d.partidos) + '</b> ' + (d.partidos === 1 ? 'pedido tiene' : 'pedidos tienen') +
+          ' su expediente repartido en varias carpetas: <b>' + fmtNum(d.carpetasDeMas) +
+          '</b> de más. Mueve los archivos a la que más trae y deja su link en la ' +
+          'columna <b>Link</b> de CxC — desde ahí el panel sabe cuál es la buena.</div>' +
+          '<table class="mini-table"><thead><tr><th>Folio</th><th>Carpetas</th>' +
+          '<th>Qué dice CxC</th></tr></thead><tbody>' +
+          lista.map(function (p) {
+            return '<tr><td><b>' + esc(p.folio) + '</b></td><td class="s">' +
+              p.carpetas.map(function (c, i) {
+                return '<a href="' + esc(c.link) + '" target="_blank" rel="noopener">' +
+                  esc(c.nombre) + '</a> <span style="color:var(--muted)">(' +
+                  (c.archivos == null ? '?' : fmtNum(c.archivos)) +
+                  (c.archivos === 1 ? ' archivo' : ' archivos') + ')</span>' +
+                  (i === 0 ? ' <b style="color:var(--success)">← la que más trae</b>' : '');
+              }).join('<br>') + '</td><td class="s">' +
+              (p.tieneLink ? '<b style="color:var(--success)">ya trae link</b>'
+                           : esc(p.cxc || '') || '<span style="color:var(--amber)">vacío</span>') +
+              '</td></tr>';
+          }).join('') + '</tbody></table>';
+        // En una ventana, no en la barra de avisos: la tabla no cabe ahí.
+        confirmarAccion('Carpetas repetidas en Drive', h, 'Entendido', function () {});
+      })
+      .catch(fail)
+      .then(function () {
+        if (b) { b.disabled = false; b.textContent = 'Revisar carpetas repetidas'; }
+      });
+  }
+
   function revisarConexionCot() {
     var b = document.getElementById('btnConectarCot');
     if (b) { b.disabled = true; b.textContent = 'Revisando…'; }
@@ -12841,6 +12884,16 @@
             'Conectar con sus cotizaciones</button>';
           var bc2 = document.getElementById('btnConectarCot');
           if (bc2) bc2.onclick = function () { revisarConexionCot(); };
+        }
+        // Camila, 27 nov: *"varios pedidos tienen ya de dos a tres carpetas"*.
+        // Esto las encuentra todas de una pasada, desde Cuentas por Cobrar, que
+        // es donde vive la columna Link que decide cuál es la buena.
+        if (state.key === 'fin_cxc' && esAdmin()) {
+          acc.innerHTML += '<button type="button" class="row-btn" id="btnExpPartidos" ' +
+            'title="Folios cuyo expediente quedó repartido en varias carpetas de Drive">' +
+            'Revisar carpetas repetidas</button>';
+          var bep = document.getElementById('btnExpPartidos');
+          if (bep) bep.onclick = function () { revisarExpedientesPartidos(); };
         }
       }
       // Área creada pero sin archivo: se explica qué falta en vez de salir vacía
@@ -22230,7 +22283,7 @@
     ? '⌘⇧R' : 'Ctrl+Shift+R';
   fetch('/api/erp?action=version&t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); }).then(function (v) {
-    var mia = '2026.11.23-581';
+    var mia = '2026.11.27-582';
     // Se guarda para poder decirla dentro de los avisos de error: casi todos los
     // "no funciona" se resuelven sabiendo qué versión está corriendo.
     state.version = (v && v.version) ? v.version : mia;
